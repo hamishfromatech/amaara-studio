@@ -1,0 +1,36 @@
+# ---------- Rust / Tauri ----------
+/target
+**/target
+Cargo.lock
+src-tauri/gen/**
+dist
+build
+*.log
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Windows
+Thumbs.db
+**/Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*~
+
+# Navya Studio app data (never commit secrets or projects)
+Navya Studio*/
+.navya-studio-cache/
+
+# ---------- Node / UI ----------
+node_modules
+ui/node_modules
+harness-pack/*/node_modules
+**/dist
+**/build
+
+# ---------- Plan artifacts ----------
+!plan/*.md

@@ -1,0 +1,25 @@
+{
+  "name": "navya-studio-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Navya Studio — an AI content-creation studio (Tauri + React). M0 vertical slice.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.4.1",
+  "scripts": {
+    "dev": "concurrently -k \"pnpm:dev:ui\" \"pnpm:dev:tauri\"",
+    "build": "pnpm --filter ./ui build",
+    "typecheck": "pnpm typecheck:ui && pnpm typecheck:rust-docs",
+    "typecheck:ui": "pnpm --filter ./ui typecheck",
+    "lint": "pnpm lint:ui",
+    "lint:ui": "pnpm --filter ./ui lint",
+    "format": "pnpm format:ui",
+    "format:ui": "pnpm --filter ./ui format",
+    "rust": "pnpm exec cargo tauri dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

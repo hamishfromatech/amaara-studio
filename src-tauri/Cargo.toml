@@ -1,0 +1,56 @@
+[package]
+name = "navya-studio"
+version = "0.1.0"
+description = "Navya Studio — AI content-creation studio (Tauri + React)."
+authors = ["Navya Agent"]
+edition = "2021"
+rust-version = "1.85"
+
+[lib]
+name = "app"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "navya-studio"
+path = "src/main.rs"
+
+# Feature flags: the GUI app and (future) a headless test binary.
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+[dependencies]
+tauri = { version = "2", features = ["dialog-all", "shell-open", "fs-all"] }
+tauri-plugin-shell = "2"
+tauri-plugin-store = "2"
+
+# SQLite (Phase 1): Rust owns all DB access via bundled rusqlite
+# (BUILD-GAPS risk #32). The webview never touches SQL directly.
+rusqlite = { version = "0.35", features = ["bundled"] }
+
+# Secrets (Navya key, control token) live only here (keyring), never on disk.
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "json"] }
+
+# Secrets storage (Phase 1). keyring's versioning is non-semver (current major
+# on crates.io is 4.x); `>=2` stays flexible across releases. Default features
+# pull in the platform backend.
+# automatically (Windows Credential Manager / macOS Keychain / Linux Secret
+# Service); headless/CI falls back to NAVYA_KEYRING_FAKE so no keychain is
+# touched during tests (BUILD-GAPS risk #33).
+keyring = { version = ">=2" }
+
+# Async runtime + HTTP (control server Phase 3; Navya client Phase 8).
+tokio = { version = "1", features = ["full"] }
+axum = "0.7"
+tower = "0.5"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+
+[build-dependencies]
+tauri-build = { version = "2", features = ["serde-json"] }

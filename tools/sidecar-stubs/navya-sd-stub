@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Trivial sidecar stub used to exercise the supervisor + log drawer end-to-end.
+name="$1"; shift || true
+echo "[stub] ${name} starting pid $$" >&2
+while :; do
+  line="$(cat)" || break   # read one stdin line (e.g. a stop command)
+  echo "[stub] ${name} got: $line" >&2
+done
+# Only reached if stdin closes; the exit code is set by env at spawn time.
+exit "${SIDECAR_EXIT:-0}"

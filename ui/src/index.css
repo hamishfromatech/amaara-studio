@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+/* Navya Studio palette (design.md §11). Dark by default; accent reserved for
+   running/primary state. Semantic colours only for the state-dot meanings:
+   blue = running, amber = waiting, green = done, red = error. */
+@theme {
+  --color-studio-950: #061224;
+  --color-studio-900: #0a1a2f;
+  --color-studio-800: #10273f;
+  --color-accent: #7c5cff; /* Navya violet/blue — primary + running */
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-studio-900);
+  color: #e5e7eb;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}

@@ -1,0 +1,5 @@
+[toolchain]
+channel = "stable"
+# Pin components so the Tauri build + clippy gates are reproducible.
+components = ["rustfmt", "clippy"]
+profile = "default"
