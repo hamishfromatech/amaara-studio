@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "read_file",
+      "write_file",
+      "execute_command"
+    ],
+    "deny": [
+      "read_env",
+      "write_env"
+    ]
+  },
+  "mcpServers": {
+    "navya-studio-tools": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--with",
+        "fastmcp",
+        "--with",
+        "httpx",
+        "fastmcp",
+        "run",
+        "<abs>/navya_mcp/server.py"
+      ],
+      "env": {
+        "NAVYA_CONTROL_URL": "http://127.0.0.1:<port>",
+        "NAVYA_CONTROL_TOKEN": "<token>"
+      }
+    }
+  }
+}
