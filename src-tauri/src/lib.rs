@@ -6,6 +6,9 @@ pub mod commands;
 pub mod config;
 pub mod events;
 pub(crate) mod harness;
+pub mod harness_approvals {
+    pub use crate::harness::approvals::*;
+}
 pub(crate) mod navya;
 pub(crate) mod render;
 pub(crate) mod sd;
