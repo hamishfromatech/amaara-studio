@@ -442,10 +442,20 @@ pub async fn render_to_video(
 
 async fn run_render(app: AppHandle, job: RenderJob) {
     let state = app.state::<AppState>();
-    // Resolve the bundled render worker (dev: relative to CARGO_MANIFEST_DIR).
-    let worker = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("binaries")
-        .join("render-worker.mjs");
+    // Resolve the render worker:
+    //  1. bundled Tauri resource (installed app): <resource_dir>/binaries/render-worker.mjs
+    //  2. dev fallback: src-tauri/binaries/render-worker.mjs via CARGO_MANIFEST_DIR
+    let worker = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|dir| dir.join("binaries").join("render-worker.mjs"))
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("binaries")
+                .join("render-worker.mjs")
+        });
     if !worker.exists() {
         let _ = app.emit(
             "studio://event",

@@ -13,6 +13,7 @@
     "copyright": "© 2026 Navya Studio",
     "shortDescription": "AI content-creation studio",
     "longDescription": "Navya Studio is a Tauri desktop content-creation studio powered by AI. Direct an agent, watch it make, render to video.",
+    "resources": ["binaries/render-worker.mjs"],
     "targets": ["msi", "nsis"],
     "icon": [
       "icons/icon.ico"
