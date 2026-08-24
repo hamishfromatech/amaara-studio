@@ -5,7 +5,9 @@
 pub mod config;
 pub mod events;
 pub(crate) mod harness;
+pub(crate) mod navya;
 pub(crate) mod render;
+pub(crate) mod sd;
 pub(crate) mod sidecar;
 pub(crate) mod store;
 
