@@ -4,6 +4,7 @@
 
 pub mod config;
 pub mod events;
+pub(crate) mod harness;
 pub(crate) mod sidecar;
 pub(crate) mod store;
 
