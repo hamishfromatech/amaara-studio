@@ -2,6 +2,7 @@
 // The GUI entry point lives here; main.rs only delegates so the crate also
 // builds as an rlib for tests and future headless binaries.
 
+pub mod commands;
 pub mod config;
 pub mod events;
 pub(crate) mod harness;
