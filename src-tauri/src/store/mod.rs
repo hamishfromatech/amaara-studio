@@ -23,9 +23,9 @@ pub mod schema {
             project_id TEXT NOT NULL,
             name TEXT NOT NULL,
             entry TEXT NOT NULL,       -- path to composition.html
-            width INT NOT NULL DEFAULT 1280,
-            height INT NOT NULL DEFAULT 720,
-            fps INT NOT NULL DEFAULT 30,
+            width INTEGER NOT NULL DEFAULT 1280,
+            height INTEGER NOT NULL DEFAULT 720,
+            fps INTEGER NOT NULL DEFAULT 30,
             duration REAL NOT NULL DEFAULT 0.0,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL,
@@ -38,9 +38,9 @@ pub mod schema {
             composition_id TEXT,
             target TEXT NOT NULL DEFAULT 'local',   -- local|docker|cloud|lambda|cloudrun
             quality TEXT NOT NULL DEFAULT 'draft',   -- draft|high
-            width INT NOT NULL DEFAULT 1280,
-            height INT NOT NULL DEFAULT 720,
-            fps INT NOT NULL DEFAULT 30,
+            width INTEGER NOT NULL DEFAULT 1280,
+            height INTEGER NOT NULL DEFAULT 720,
+            fps INTEGER NOT NULL DEFAULT 30,
             status TEXT NOT NULL DEFAULT 'queued',   -- queued|running|done|failed|cancelled
             started_at INTEGER,
             finished_at INTEGER,
@@ -67,7 +67,7 @@ pub mod schema {
             source TEXT NOT NULL DEFAULT 'cloud',
             prompt TEXT,
             cost_usd REAL NOT NULL DEFAULT 0.0,
-            tokens INT NOT NULL DEFAULT 0,
+            tokens INTEGER NOT NULL DEFAULT 0,
             created_at INTEGER NOT NULL
         );
 
@@ -83,7 +83,7 @@ pub mod schema {
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
     #[error("sqlite error: {0}")]
-    Sqlite(rusqlite::Error),
+    Sqlite(#[from] rusqlite::Error),
 }
 
 /// A tiny typed accessor over the project table. Kept minimal for Phase 1; the
@@ -102,7 +102,7 @@ pub struct ProjectRow {
 /// A live connection with migrations applied. Created by the app at startup; in
 /// tests we construct an in-memory connection to exercise the schema.
 pub struct ProjectStore {
-    conn: rusqlite::Connection,
+    pub(crate) conn: rusqlite::Connection,
 }
 
 impl ProjectStore {
@@ -122,7 +122,7 @@ impl ProjectStore {
     /// Open a throwaway in-memory store and run migrations (test helper).
     #[cfg(test)]
     pub fn memory() -> Result<Self, StoreError> {
-        let conn = rusqlite::Connection::in_memory();
+        let conn = rusqlite::Connection::open_in_memory().map_err(StoreError::Sqlite)?;
         Self::migrate(&conn)?;
         Ok(Self { conn })
     }
@@ -140,16 +140,8 @@ impl ProjectStore {
         let now = now_ms();
         self.conn.execute(
             "INSERT INTO projects (id, name, dir, created_at, harness, model, source)
-             VALUES (@id, @name, @dir, @now, @harness, @model, @source)",
-            rusqlite::params![
-                "-id", id,
-                "-n", name,
-                "-d", dir,
-                "-now", now,
-                "-h", harness,
-                "-m", model,
-                "-s", source,
-            ],
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![id, name, dir, now, harness, model, source],
         )?;
         Ok(ProjectRow {
             id: id.to_string(),
@@ -180,7 +172,13 @@ impl ProjectStore {
 
     /// Count rows in a table (used by the generation-log / asset row counts).
     pub fn count(&self, table: &str) -> Result<i64, StoreError> {
-        let n = self.conn.query_row("SELECT COUNT(*) FROM {table}", [table], |r| r.get(0))?;
+        // Validate table name to prevent SQL injection (only allow known tables).
+        let allowed = ["projects", "compositions", "renders", "assets", "generation_log"];
+        if !allowed.contains(&table) {
+            return Err(StoreError::Sqlite(rusqlite::Error::InvalidQuery));
+        }
+        let sql = format!("SELECT COUNT(*) FROM {}", table);
+        let n = self.conn.query_row(&sql, [], |r| r.get::<_, i64>(0))?;
         Ok(n)
     }
 }

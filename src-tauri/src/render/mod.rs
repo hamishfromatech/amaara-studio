@@ -61,7 +61,7 @@ pub struct RenderJob {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RenderStatus {
     Queued,
     Running,
@@ -121,11 +121,13 @@ impl RenderQueue {
 
     pub fn update_status(&mut self, job_id: &str, status: RenderStatus) -> bool {
         if let Some(job) = self.jobs.get_mut(job_id) {
+            let is_running = matches!(status, RenderStatus::Running);
+            let is_terminal = matches!(status, RenderStatus::Done | RenderStatus::Failed | RenderStatus::Cancelled);
             job.status = status;
-            if status == RenderStatus::Running && job.started_at_ms.is_none() {
+            if is_running && job.started_at_ms.is_none() {
                 job.started_at_ms = Some(current_time_ms());
             }
-            if status == RenderStatus::Done || status == RenderStatus::Failed || status == RenderStatus::Cancelled {
+            if is_terminal {
                 job.finished_at_ms = Some(current_time_ms());
             }
             true

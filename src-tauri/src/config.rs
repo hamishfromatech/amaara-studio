@@ -52,7 +52,6 @@ pub enum SdGpuBackend {
 
 impl Default for SdGpuBackend {
     fn default() -> Self {
-        // Windows-first: CUDA is the common NVIDIA path.
         SdGpuBackend::Cuda
     }
 }
@@ -132,26 +131,21 @@ pub fn merge_config(raw: &str, base: &NavyaConfig) -> Result<NavyaConfig, Config
         return Ok(base.clone());
     }
     let patch: serde_json::Value = serde_json::from_str(raw)?;
-    // Re-serialize to normalize, then layer onto defaults so partial fields work.
-    let merged_full: NavyaConfig = serde_json::from_str(
-        &serde_json::to_string(&default_config())?,
-    )?;
-    Ok(apply_patch(&patch, base, &merged_full))
+    apply_patch(&patch, base)
 }
 
 /// Apply a JSON patch to `base`, falling back to defaults for any key the patch
 /// does not provide. Returns the merged result (not in place).
-fn apply_patch<'a>(
-    patch: &'a serde_json::Value,
-    base: &'a NavyaConfig,
-    defaults: &NavyaConfig,
+fn apply_patch(
+    patch: &serde_json::Value,
+    base: &NavyaConfig,
 ) -> Result<NavyaConfig, ConfigError> {
     let mut out = base.clone();
     if let Some(obj) = patch.as_object() {
         for (k, v) in obj {
             match k.as_str() {
-                "navya_base_url" => out.navya_base_url = string_val(v)?.to_string(),
-                "default_model" => out.default_model = string_val(v)?.to_string(),
+                "navya_base_url" => out.navya_base_url = string_val(v)?,
+                "default_model" => out.default_model = string_val(v)?,
                 "use_auto_router" => out.use_auto_router = bool_val(v),
                 "byok" => out.byok = bool_val(v),
                 "enabled_harnesses" => {
@@ -160,7 +154,7 @@ fn apply_patch<'a>(
                         .unwrap_or_default();
                     out.enabled_harnesses = arr;
                 }
-                "local_llama_url" => out.local_llama_url = string_val(v)?.to_string(),
+                "local_llama_url" => out.local_llama_url = string_val(v)?,
                 "sd_server_url" => {
                     if let Some(s) = v.as_str() {
                         out.sd_server_url = Some(s.to_string());
@@ -168,18 +162,28 @@ fn apply_patch<'a>(
                 }
                 "sd_binary_path" => out.sd_binary_path = path_val(v),
                 "sd_models_dir" => out.sd_models_dir = path_val(v),
-                "sd_gpu_backend" => match string_val(v)?.as_str() {
-                    "vulkan" | "cuda" | "cpu" | "Cuda" | "Vulkan" | "Cpu" => {}
-                    other => return Err(ConfigError::UnknownField(other.to_string())),
-                },
-                "density" => out.density = match string_val(v)?.as_str() {
-                    "compact" | "comfortable" => Density::Compact,
-                    _ => base.density,
-                },
-                "theme" => match string_val(v)?.as_str() {
-                    "light" | "dark" => ThemeMode::Light,
-                    _ => base.theme,
-                },
+                "sd_gpu_backend" => {
+                    out.sd_gpu_backend = match string_val(v)?.as_str() {
+                        "cuda" => SdGpuBackend::Cuda,
+                        "vulkan" => SdGpuBackend::Vulkan,
+                        "cpu" => SdGpuBackend::Cpu,
+                        other => return Err(ConfigError::UnknownField(other.to_string())),
+                    };
+                }
+                "density" => {
+                    out.density = match string_val(v)?.as_str() {
+                        "compact" => Density::Compact,
+                        "comfortable" => Density::Comfortable,
+                        _ => base.density,
+                    };
+                }
+                "theme" => {
+                    out.theme = match string_val(v)?.as_str() {
+                        "light" => ThemeMode::Light,
+                        "dark" => ThemeMode::Dark,
+                        _ => base.theme,
+                    };
+                }
                 other => return Err(ConfigError::UnknownField(other.to_string())),
             }
         }
@@ -246,62 +250,54 @@ pub enum SecretError {
 }
 
 /// In-memory fallback used when no OS keychain backend is reachable (CI, tests).
+#[derive(Default)]
 struct FakeKeyring {
     store: HashMap<String, String>,
 }
 impl FakeKeyring {
-    fn get(&self, service: &str, user: &str) -> Option<String> {
-        self.store.get(format!("{service}/{user}").as_str()).cloned()
+    fn key(service: &str, user: &str) -> String {
+        format!("{service}/{user}")
     }
-    fn set(&mut self, service: &str, user: &str, val: String) -> Result<(), SecretError> {
-        self.store.insert(format!("{service}/{user}").to_string(), val);
-        Ok(())
+    fn get(&self, service: &str, user: &str) -> Option<String> {
+        self.store.get(&Self::key(service, user)).cloned()
+    }
+    fn set(&mut self, service: &str, user: &str, val: String) {
+        self.store.insert(Self::key(service, user), val);
     }
 }
 
+thread_local! {
+    static FAKE_KEYRING: std::cell::RefCell<FakeKeyring> = std::cell::RefCell::new(FakeKeyring::default());
+}
+
 fn backend_available() -> bool {
+    // NAVYA_KEYRING_FAKE forces the fake backend (for tests / headless CI).
     std::env::var_os("NAVYA_KEYRING_FAKE").is_some()
 }
 
 /// Get a secret. Prefers the OS keyring; falls back to the in-memory fake when
-/// `NAVYA_KEYRING_FAKE` is set (or any real backend errors), so tests and headless
-/// CI run without touching an OS keychain.
+/// `NAVYA_KEYRING_FAKE` is set, so tests and headless CI run without touching an OS keychain.
 pub fn get_secret(service: &str, user: &str) -> Result<Option<String>, SecretError> {
-    if !backend_available() {
-        return Ok(keyring::get_password(user, service).ok().flatten());
+    if backend_available() {
+        return Ok(FAKE_KEYRING.with(|k| k.borrow().get(service, user)));
     }
-    let fake = FakeKeyring {
-        store: HashMap::new(),
-    };
-    // Rehydrate from env-seeded values so a single process can round-trip.
-    for (k, v) in std::env::vars() {
-        if let Some(rest) = k.strip_prefix("NAVYA_KEYRING_FAKE_") {
-            fake.store.insert(rest.to_string(), v);
-        }
+    let entry = keyring::Entry::new(service, user).map_err(|_| SecretError::BackendUnavailable)?;
+    match entry.get_password() {
+        Ok(pw) => Ok(Some(pw)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(_) => Err(SecretError::BackendUnavailable),
     }
-    Ok(fake.get(service, user))
 }
 
 /// Set a secret. Writes to the OS keyring when available; otherwise stores it in
 /// the process-local fake (so unit tests can verify round-trips deterministically).
-pub fn set_secret(
-    service: &str,
-    user: &str,
-    value: String,
-) -> Result<(), SecretError> {
-    if !backend_available() {
+pub fn set_secret(service: &str, user: &str, value: String) -> Result<(), SecretError> {
+    if backend_available() {
+        FAKE_KEYRING.with(|k| k.borrow_mut().set(service, user, value));
         return Ok(());
     }
-    let mut fake = FakeKeyring {
-        store: HashMap::new(),
-    };
-    for (k, v) in std::env::vars() {
-        if let Some(rest) = k.strip_prefix("NAVYA_KEYRING_FAKE_") {
-            fake.store.insert(rest.to_string(), v);
-        }
-    }
-    fake.set(service, user, value)?;
-    Ok(())
+    let entry = keyring::Entry::new(service, user).map_err(|_| SecretError::BackendUnavailable)?;
+    entry.set_password(&value).map_err(|_| SecretError::BackendUnavailable)
 }
 
 #[cfg(test)]
@@ -339,7 +335,7 @@ mod tests {
     fn secret_round_trip_via_fake_backend() {
         std::env::set_var("NAVYA_KEYRING_FAKE", "1");
         let _ = get_secret(SERVICE_NAVYA, "api-key").unwrap(); // empty first
-        set_secret(SERVICE_NAVYA, "api-key", "sk-test-123").unwrap();
+        set_secret(SERVICE_NAVYA, "api-key", "sk-test-123".to_string()).unwrap();
         assert_eq!(get_secret(SERVICE_NAVYA, "api-key").unwrap().unwrap(), "sk-test-123");
         std::env::remove_var("NAVYA_KEYRING_FAKE");
     }

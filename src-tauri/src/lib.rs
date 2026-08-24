@@ -6,16 +6,13 @@ pub mod commands;
 pub mod config;
 pub mod events;
 pub(crate) mod harness;
-pub mod harness_approvals {
-    pub use crate::harness::approvals::*;
-}
 pub(crate) mod navya;
 pub(crate) mod render;
 pub(crate) mod sd;
 pub(crate) mod sidecar;
 pub(crate) mod store;
 
-use std::sync::{OnceLock, Mutex};
+use std::sync::OnceLock;
 
 use tauri::Manager;
 
@@ -26,24 +23,21 @@ pub fn supervisor() -> &'static sidecar::Supervisor {
     SUPERVISOR.get_or_init(sidecar::Supervisor::new)
 }
 
-fn ensure_store(app_handle: &tauri::app::Handle<()>) -> Result<(), store::StoreError> {
-    let data_dir = app_handle.path().app_data_dir();
+fn ensure_store(app_handle: &tauri::AppHandle) -> Result<store::ProjectStore, store::StoreError> {
+    let data_dir = app_handle.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     store::ProjectStore::new(data_dir.join("navya.db"))
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    // Shell + store plugins are wired in `main`; sql (Phase 1) is optional.
-    let _ = tauri_plugin_shell::init();
-    let _ = tauri_plugin_store::init();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_store::init())
+        .plugin(tauri_plugin_store::Builder::new().build())
         .setup(|app| {
             // Open the project store so later phases can query history.
-            let _ = ensure_store(app.handle());
+            let _ = ensure_store(&app.handle().clone());
             // Publish initial sidecar status to the webview (design.md status strip).
-            let _ = sidecar::Supervisor::emit(app.handle());
+            let sup = supervisor();
+            let _ = sup.emit(&app.handle().clone());
             // Onboarding hook (Phase 16). No-op in Phase 0.
             Ok(())
         })

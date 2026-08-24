@@ -174,10 +174,10 @@ mod tests {
     #[test]
     fn describe_is_stable() {
         assert_eq!(
-            HarnessEvent::ToolStart { tool_id: "a", name: "write", args: serde_json::json!({}) }.describe(),
+            HarnessEvent::ToolStart { tool_id: "a".to_string(), name: "write".to_string(), args: serde_json::json!({}) }.describe(),
             "tool:start[write]"
         );
-        assert_eq!(RenderEvent::Progress { job_id: "j", stage: "s".into(), frame: 5, total_frames: Some(10) }.describe(),
+        assert_eq!(RenderEvent::Progress { job_id: "j".to_string(), stage: "s".into(), frame: 5, total_frames: Some(10) }.describe(),
             "render:progress5/10");
     }
 }

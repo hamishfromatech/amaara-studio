@@ -5,6 +5,14 @@
 // each impl spawns/connects the harness, translates normalized commands to the
 // native protocol, and emits normalized HarnessEvent streams.
 
+pub(crate) mod event;
+pub(crate) mod approvals;
+pub(crate) mod claude;
+pub(crate) mod codex;
+pub(crate) mod hermes;
+pub(crate) mod antigravity;
+pub(crate) mod openclaw;
+
 use std::sync::Arc;
 use tokio::sync::mpsc::{self, Receiver};
 
