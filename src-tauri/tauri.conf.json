@@ -1,16 +1,22 @@
 {
   "identifier": "navya-studio",
+  "productName": "Navya Studio",
+  "version": "0.1.0",
   "build": {
     "beforeDevCommand": "pnpm --filter ./ui dev",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../ui/dist"
   },
   "bundle": {
-    "active": false,
-    "category": "DeveloperUtilities",
-    "copyright": "Navya Studio",
-    "externalBin": [],
-    "shortDescription": "AI content-creation studio"
+    "active": true,
+    "category": "Developer Tool",
+    "copyright": "© 2026 Navya Studio",
+    "shortDescription": "AI content-creation studio",
+    "longDescription": "Navya Studio is a Tauri desktop content-creation studio powered by AI. Direct an agent, watch it make, render to video.",
+    "targets": ["msi", "nsis"],
+    "icon": [
+      "icons/icon.ico"
+    ]
   },
   "app": {
     "windows": [

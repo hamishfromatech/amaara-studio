@@ -21,7 +21,7 @@ custom-protocol = ["tauri/custom-protocol"]
 [dependencies]
 # tauri floats to latest 2.11.x; tauri-build is capped at 2.6.3 on this index.
 # The minimal conf (build/bundle/app.windows) should pass schema validation.
-tauri = "2"
+tauri = { version = "2", features = [] }
 
 # NOTE: dialog / shell / fs APIs are on by default in Tauri 2.x (the old
 # `dialog-all`/`shell-open`/`fs-all` features were removed).
