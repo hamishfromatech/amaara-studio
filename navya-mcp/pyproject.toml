@@ -1,0 +1,8 @@
+[project]
+name = "navya-mcp"
+version = "0.1.0"
+description = "Navya Studio FastMCP server for studio tools"
+
+[tool.fastmcp]
+host = "127.0.0.1"
+port = 8080
