@@ -21,3 +21,7 @@ edit history. Unknowns that change early phases must also be raised to the user.
 - **[Risk #32] SQLite backend: `rusqlite` directly, not `tauri-plugin-sql`.** The plan's Phase 1 text says tauri-plugin-sql, but BUILD-GAPS risk #32 recommends rusqlite so Rust owns all DB access and the schema is unit-tested against an in-memory connection. Webview still never touches SQL (surfaced via events).
 - **[Risk #33] keyring headless fallback.** `keyring` keeps its platform backend for real app use, but `config::set_secret/get_secret` fall back to a process-local fake + `NAVYA_KEYRING_FAKE=1` so tests and CI run without an OS keychain.
 - **esbuild postinstall under pnpm.** pnpm ignores build scripts by default; allowed via `"pnpm": { "onlyBuiltDependencies": ["esbuild"] }` in ui/package.json (the vite/eslint toolchain needs the native esbuild binary).
+
+### Environmental blockers / workarounds documented
+- **Tauri 2.6 build-script icon requirement**: This environment's `tauri-build@2.6.3` unconditionally requires a valid Windows DIB-format ICO (`icons/icon.ico`) for resource generation, even with bundle disabled. The DIB format validation fails on minimal/truecolor ICOs generated via standard tools. Workaround: real icons are bundled in Phase 14; M0 dev/test gates may need a `tauri.conf.json` with no bundle targets OR a properly formatted ICO from the Tauri icon generator.
+- **ESLint config v9 flat format**: Updated to use `js.configs.recommended` + `react.configs.flat.recommended` per ESLint v9 API changes.
