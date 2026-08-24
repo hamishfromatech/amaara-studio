@@ -87,6 +87,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             commands::cancel_render,
             commands::get_sidecar_status,
             commands::reveal_in_folder,
+            commands::generate_image,
+            commands::list_cloud_models,
         ])
         .run(tauri::generate_context!())?;
     Ok(())

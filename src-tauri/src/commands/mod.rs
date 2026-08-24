@@ -12,6 +12,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 use crate::config::{self, NavyaConfig, SERVICE_NAVYA};
 use crate::events::{ProjectEvent, StudioEvent};
@@ -348,53 +349,164 @@ pub async fn render_to_video(
         }),
     );
 
-    // Spawn the render attempt in the background. Real rendering needs Node +
-    // hyperframes; if they're missing the job fails with a clear cause.
+    // Spawn the real render worker (Node + render-worker.mjs) in the background.
     let app2 = app.clone();
-    let job_id2 = job_id.clone();
+    let job2 = job.clone();
     tokio::spawn(async move {
-        run_render(app2, job_id2).await;
+        run_render(app2, job2).await;
     });
 
     Ok(job_id)
 }
 
-async fn run_render(app: AppHandle, job_id: String) {
-    // Check for Node + hyperframes before attempting.
-    let node_ok = which("node");
-    let npx_ok = which("npx");
-    if !node_ok || !npx_ok {
+async fn run_render(app: AppHandle, job: RenderJob) {
+    let state = app.state::<AppState>();
+    // Resolve the bundled render worker (dev: relative to CARGO_MANIFEST_DIR).
+    let worker = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("binaries")
+        .join("render-worker.mjs");
+    if !worker.exists() {
         let _ = app.emit(
             "studio://event",
             StudioEvent::Render(crate::events::RenderEvent::Failed {
-                job_id: job_id.clone(),
-                error: "Node.js / npx not found on PATH. Install Node 22 to render video locally."
-                    .to_string(),
+                job_id: job.job_id.clone(),
+                error: format!("render worker not found at {}", worker.display()),
             }),
         );
         return;
     }
 
-    // Real impl: hand the job to the Node render sidecar (render-worker.mjs)
-    // which runs `npx hyperframes render --quality <q>` and streams progress.
-    // Until the sidecar is wired, emit a completed event so the queue resolves.
+    // Spawn `node render-worker.mjs` with piped stdio.
+    let mut cmd = tokio::process::Command::new("node");
+    cmd.arg(&worker)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = app.emit(
+                "studio://event",
+                StudioEvent::Render(crate::events::RenderEvent::Failed {
+                    job_id: job.job_id.clone(),
+                    error: format!("failed to spawn node render worker: {e}. Is Node.js installed?"),
+                }),
+            );
+            return;
+        }
+    };
+
+    // Mark the job running.
+    {
+        let mut q = state.render_queue.lock();
+        q.update_status(&job.job_id, RenderStatus::Running);
+    }
     let _ = app.emit(
         "studio://event",
         StudioEvent::Render(crate::events::RenderEvent::Progress {
-            job_id: job_id.clone(),
-            stage: "bundling composition".to_string(),
+            job_id: job.job_id.clone(),
+            stage: "starting render worker".to_string(),
             frame: 0,
-            total_frames: Some(0),
+            total_frames: None,
         }),
     );
-    let _ = app.emit(
-        "studio://event",
-        StudioEvent::Render(crate::events::RenderEvent::Completed {
-            job_id,
-            output_path: "renders/out.mp4".to_string(),
-            duration_ms: None,
-        }),
-    );
+
+    let job_id = job.job_id.clone();
+    let app_for_stdout = app.clone();
+    let job_id_for_stdout = job_id.clone();
+
+    // Write the render job to the worker's stdin.
+    let mut stdin = child.stdin.take().expect("worker stdin");
+    let payload = serde_json::json!({
+        "type": "render",
+        "job": {
+            "job_id": job.job_id,
+            "project_id": job.project_id,
+            "composition_id": job.composition_id,
+            "target": format!("{:?}", job.target).to_lowercase(),
+            "quality": format!("{:?}", job.quality).to_lowercase(),
+            "width": job.width,
+            "height": job.height,
+            "fps": job.fps,
+        }
+    });
+    if let Err(e) = stdin.write_all(format!("{}\n", payload).as_bytes()).await {
+        let _ = app.emit(
+            "studio://event",
+            StudioEvent::Render(crate::events::RenderEvent::Failed {
+                job_id: job_id.clone(),
+                error: format!("failed to write job to worker: {e}"),
+            }),
+        );
+        return;
+    }
+    drop(stdin); // signal EOF when done (worker exits its readline loop)
+
+    // Pump stdout: parse JSONL and emit RenderEvents.
+    let stdout = child.stdout.take().expect("worker stdout");
+    let reader = tokio::io::BufReader::new(stdout);
+    let mut lines = reader.lines();
+    while let Ok(Some(line)) = lines.next_line().await {
+        let parsed: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let kind = parsed.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        match kind {
+            "progress" => {
+                let _ = app_for_stdout.emit(
+                    "studio://event",
+                    StudioEvent::Render(crate::events::RenderEvent::Progress {
+                        job_id: job_id_for_stdout.clone(),
+                        stage: parsed.get("stage").and_then(|v| v.as_str()).unwrap_or("rendering").to_string(),
+                        frame: parsed.get("frame").and_then(|v| v.as_u64()).unwrap_or(0),
+                        total_frames: parsed.get("total_frames").and_then(|v| v.as_u64()),
+                    }),
+                );
+            }
+            "completed" => {
+                let out = parsed.get("output_path").and_then(|v| v.as_str()).unwrap_or("renders/out.mp4").to_string();
+                { let mut q = state.render_queue.lock(); q.update_status(&job_id_for_stdout, RenderStatus::Done); }
+                let _ = app_for_stdout.emit(
+                    "studio://event",
+                    StudioEvent::Render(crate::events::RenderEvent::Completed {
+                        job_id: job_id_for_stdout.clone(),
+                        output_path: out,
+                        duration_ms: None,
+                    }),
+                );
+            }
+            "failed" => {
+                let err = parsed.get("error").and_then(|v| v.as_str()).unwrap_or("render failed").to_string();
+                { let mut q = state.render_queue.lock(); q.update_status(&job_id_for_stdout, RenderStatus::Failed); }
+                let _ = app_for_stdout.emit(
+                    "studio://event",
+                    StudioEvent::Render(crate::events::RenderEvent::Failed {
+                        job_id: job_id_for_stdout.clone(),
+                        error: err,
+                    }),
+                );
+            }
+            _ => { /* log / pong — ignore for now */ }
+        }
+    }
+
+    // If the worker exited without sending completed/failed, mark failed.
+    let still_running = state
+        .render_queue
+        .lock()
+        .get(&job_id)
+        .map(|j| j.status == RenderStatus::Running)
+        .unwrap_or(false);
+    if still_running {
+        let _ = app.emit(
+            "studio://event",
+            StudioEvent::Render(crate::events::RenderEvent::Failed {
+                job_id,
+                error: "render worker exited without a completion event".to_string(),
+            }),
+        );
+    }
 }
 
 #[tauri::command]
@@ -408,8 +520,64 @@ pub async fn cancel_render(state: State<'_, AppState>, job_id: String) -> Result
 }
 
 // ---------------------------------------------------------------------------
-// Sidecar status + OS integration
+// Image generation — Cloud (Navya) vs Local (sd-server) routing.
 // ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct GenerateImageArgs {
+    pub prompt: String,
+    pub model: Option<String>,
+    pub size: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GeneratedImageResult {
+    pub source: String,
+    pub url: Option<String>,
+    pub revised_prompt: Option<String>,
+    pub error: Option<String>,
+}
+
+#[tauri::command]
+pub async fn generate_image(
+    state: State<'_, AppState>,
+    args: GenerateImageArgs,
+) -> Result<GeneratedImageResult, String> {
+    let session = state.session.lock().clone();
+    let model = args.model.unwrap_or_else(|| if session.source == "local" { "sd-xl".to_string() } else { "dall-e-3".to_string() });
+
+    if session.source == "cloud" {
+        let client = state.navya.lock().clone();
+        match client.generate_image(&args.prompt, &model, args.size.as_deref()).await {
+            Ok(img) => Ok(GeneratedImageResult {
+                source: "cloud".to_string(),
+                url: img.url,
+                revised_prompt: img.revised_prompt,
+                error: None,
+            }),
+            Err(e) => Ok(GeneratedImageResult {
+                source: "cloud".to_string(),
+                url: None,
+                revised_prompt: None,
+                error: Some(e),
+            }),
+        }
+    } else {
+        // Local path: sd-server sidecar. Not yet spawned — surface honestly.
+        Ok(GeneratedImageResult {
+            source: "local".to_string(),
+            url: None,
+            revised_prompt: None,
+            error: Some("Local image generation (sd-server) is not running. Start it in Settings.".to_string()),
+        })
+    }
+}
+
+#[tauri::command]
+pub async fn list_cloud_models(state: State<'_, AppState>) -> Result<Vec<crate::navya::ModelSummary>, String> {
+    let client = state.navya.lock().clone();
+    client.list_models().await
+}
 
 #[tauri::command]
 pub fn get_sidecar_status(state: State<'_, AppState>) -> Result<Vec<crate::state::SidecarHealth>, String> {

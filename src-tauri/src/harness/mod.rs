@@ -68,6 +68,7 @@ pub trait Harness: Send + Sync {
     async fn available_models(&self) -> Result<Vec<ModelInfo>, HarnessError>;
     
     /// Subscribe to harness events (text deltas, tool calls, approvals, etc.).
+    /// Returns an mpsc receiver for the event stream.
     fn subscribe(&self) -> Receiver<HarnessEvent>;
     
     /// Stop the harness cleanly.

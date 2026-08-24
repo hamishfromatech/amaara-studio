@@ -135,4 +135,7 @@ export const Commands = {
 
   getSidecarStatus: () => invoke<SidecarHealth[]>("get_sidecar_status"),
   revealInFolder: (path: string) => invoke<void>("reveal_in_folder", { path }),
+
+  generateImage: (prompt: string, model?: string, size?: string) => invoke<{ source: string; url: string | null; revised_prompt: string | null; error: string | null }>("generate_image", { args: { prompt, model, size } }),
+  listCloudModels: () => invoke<{ id: string; kind: string }[]>("list_cloud_models"),
 };
