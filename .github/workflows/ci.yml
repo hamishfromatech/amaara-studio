@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request: {}
+  release:
+    types: [published]
 
 jobs:
   rust:
@@ -20,7 +22,7 @@ jobs:
           key: ${{{{ steps.cache.outputs.key }}}}
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
+      - run: cargo test --workspace
 
   ui:
     runs-on: ubuntu-latest
@@ -42,10 +44,20 @@ jobs:
   # Full desktop build smoke (Windows-first; macOS/Linux added in Phase 14).
   bundle-smoke:
     needs: [rust, ui]
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - run: cargo build
+      - run: cargo build --release
+
+  # Release workflow (Gate 14)
+  release:
+    needs: [rust, ui, bundle-smoke]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo tauri build
+        run: cargo tauri build --target x86_64-unknown-linux-gnu
