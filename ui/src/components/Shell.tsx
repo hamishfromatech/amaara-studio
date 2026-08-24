@@ -10,6 +10,8 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../lib/store";
 import { Commands } from "../lib/invoke";
+import { ApprovalDialog } from "./ApprovalDialog";
+import { RendersTab } from "../renders/RendersTab";
 
 // --- TopBar ---
 function TopBar() {
@@ -390,6 +392,8 @@ function TabBar({ tab, setTab }: { tab: string; setTab: (t: string) => void }) {
 export function StudioShell() {
   const [tab, setTab] = useState("Chat");
   const refreshRenders = useStore((s) => s.refreshRenders);
+  const pendingApproval = useStore((s) => s.pendingApproval);
+  const approve = useStore((s) => s.approve);
 
   useEffect(() => {
     void refreshRenders();
@@ -404,10 +408,18 @@ export function StudioShell() {
         {tab === "Chat" && <ChatView />}
         {tab === "Timeline" && <PlaceholderTab name="Timeline" hint="Open a HyperFrames composition to see the preview + tracks." />}
         {tab === "Assets" && <PlaceholderTab name="Assets" hint="Generated images and imported media appear here." />}
-        {tab === "Renders" && <PlaceholderTab name="Renders" hint="The render queue is in the right rail." />}
+        {tab === "Renders" && <RendersTab />}
         <RightRail />
       </div>
       <StatusStrip />
+      {pendingApproval && (
+        <ApprovalDialog
+          request={pendingApproval}
+          onAnswer={(answer, alwaysAllow) => {
+            void approve(answer, alwaysAllow);
+          }}
+        />
+      )}
     </div>
   );
 }

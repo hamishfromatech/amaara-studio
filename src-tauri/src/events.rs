@@ -13,6 +13,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "payload")]
 pub enum StudioEvent {
     Harness(HarnessEvent),
     Render(RenderEvent),

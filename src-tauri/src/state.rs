@@ -94,6 +94,9 @@ pub struct AppState {
     pub navya: PMutex<NavyaClient>,
     pub supervisor: Arc<Supervisor>,
     pub harness_registry: PMutex<HarnessRegistry>,
+    /// Harness id that currently has an event pump subscribed (one pump per
+    /// harness; re-subscribes when the user switches harness).
+    pub pump_harness: PMutex<Option<String>>,
 }
 
 impl AppState {
@@ -123,6 +126,7 @@ impl AppState {
             navya: PMutex::new(navya),
             supervisor: Arc::new(Supervisor::new()),
             harness_registry: PMutex::new(registry),
+            pump_harness: PMutex::new(None),
         }
     }
 

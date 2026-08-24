@@ -23,6 +23,8 @@ interface AppState extends Partial<StateSnapshot> {
   chat: ChatMessage[];
   renders: RenderJob[];
   initialized: boolean;
+  /** Pending approval request from the harness (shown as a modal). */
+  pendingApproval: { id: string; kind: string; payload: unknown } | null;
 
   loadState: () => Promise<void>;
   refreshProjects: () => Promise<void>;
@@ -44,6 +46,7 @@ interface AppState extends Partial<StateSnapshot> {
   abort: () => Promise<void>;
   render: (quality?: string) => Promise<void>;
   cancelRender: (jobId: string) => Promise<void>;
+  approve: (answer: "allow" | "deny" | "edit", alwaysAllow: boolean) => Promise<void>;
 }
 
 let unsubEvents: (() => void) | null = null;
@@ -54,6 +57,7 @@ export const useStore = create<AppState>((set, get) => ({
   chat: [],
   renders: [],
   initialized: false,
+  pendingApproval: null,
 
   loadState: async () => {
     try {
@@ -188,6 +192,18 @@ export const useStore = create<AppState>((set, get) => ({
     await Commands.cancelRender(jobId);
     await get().refreshRenders();
   },
+
+  approve: async (answer, alwaysAllow) => {
+    const req = get().pendingApproval;
+    if (!req) return;
+    const approved = answer === "allow";
+    set({ pendingApproval: null });
+    try {
+      await Commands.approve(req.id, req.kind, req.payload, approved, alwaysAllow);
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
 }));
 
 /** Reduce a StudioEvent into store mutations. */
@@ -217,10 +233,30 @@ function handleHarnessEvent(
     const chat = [...s.chat];
     const lastAgent = [...chat].reverse().find((m) => m.role === "agent");
     switch (kind) {
+      case "ApprovalRequest": {
+        const p = payload as { id: string; kind: string; payload: unknown };
+        // Surface the approval modal; keep chat untouched.
+        return { pendingApproval: { id: p.id, kind: p.kind, payload: p.payload } };
+      }
       case "TextDelta": {
         if (lastAgent) {
           lastAgent.content += String(payload);
           lastAgent.status = "tool-calling";
+        }
+        break;
+      }
+      case "ToolStart": {
+        const p = payload as { name: string };
+        if (lastAgent) {
+          lastAgent.status = "tool-calling";
+          lastAgent.content += (lastAgent.content ? "\n" : "") + `\u2699 ${p.name} …`;
+        }
+        break;
+      }
+      case "ToolEnd": {
+        const p = payload as { is_error: boolean; result: string | null };
+        if (lastAgent && p.is_error) {
+          lastAgent.content += `\n\u2716 tool failed${p.result ? `: ${p.result}` : ""}`;
         }
         break;
       }
@@ -277,7 +313,30 @@ function handleRenderEvent(
       }
     } else if (kind === "Completed") {
       if (idx >= 0) {
-        renders[idx] = { ...renders[idx], status: "done", output_path: String(p.output_path), finished_at_ms: Date.now() };
+        renders[idx] = { ...renders[idx], status: "done", output_path: String(p.output_path), finished_at_ms: Date.now(), progress: null };
+      }
+    } else if (kind === "Progress") {
+      const progress = {
+        stage: String(p.stage ?? ""),
+        frame: Number(p.frame ?? 0),
+        total_frames: p.total_frames == null ? null : Number(p.total_frames),
+      };
+      if (idx >= 0) {
+        renders[idx] = { ...renders[idx], progress };
+      } else {
+        renders.push({
+          job_id: jobId,
+          project_id: "",
+          composition_id: "",
+          target: "",
+          quality: "",
+          status: "running",
+          started_at_ms: Date.now(),
+          finished_at_ms: null,
+          output_path: null,
+          error: null,
+          progress,
+        });
       }
     } else if (kind === "Failed") {
       if (idx >= 0) {

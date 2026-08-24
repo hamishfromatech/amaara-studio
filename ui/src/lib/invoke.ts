@@ -91,6 +91,8 @@ export interface RenderJob {
   finished_at_ms: number | null;
   output_path: string | null;
   error: string | null;
+  /** Live progress pushed via studio://event (not persisted). */
+  progress?: { stage: string; frame: number; total_frames: number | null } | null;
 }
 
 // --- Commands ---------------------------------------------------------------
@@ -138,4 +140,6 @@ export const Commands = {
 
   generateImage: (prompt: string, model?: string, size?: string) => invoke<{ source: string; url: string | null; revised_prompt: string | null; error: string | null }>("generate_image", { args: { prompt, model, size } }),
   listCloudModels: () => invoke<{ id: string; kind: string }[]>("list_cloud_models"),
+  approve: (requestId: string, kind: string, payload: unknown, approved: boolean, alwaysAllow: boolean) =>
+    invoke<void>("approve", { requestId, kind, payload, approved, alwaysAllow }),
 };

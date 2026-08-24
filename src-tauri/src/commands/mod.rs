@@ -247,8 +247,89 @@ pub async fn send_prompt(
         _ => crate::harness::PromptMode::Normal,
     };
     harness.start(&ctx).await.map_err(|e| e.to_string())?;
+
+    // Ensure exactly one event pump per harness: subscribe to the harness event
+    // stream and re-emit every event on the studio://event channel for the UI.
+    let need_pump = {
+        let mut pump = state.pump_harness.lock();
+        if pump.as_deref() != Some(session.harness.as_str()) {
+            *pump = Some(session.harness.clone());
+            true
+        } else {
+            false
+        }
+    };
+    if need_pump {
+        let mut rx = harness.subscribe();
+        let app_pump = app.clone();
+        tokio::spawn(async move {
+            while let Some(ev) = rx.recv().await {
+                emit_harness_event(&app_pump, ev);
+            }
+        });
+    }
+
     harness.prompt(&msg, prompt_mode).await.map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// Convert a harness-side HarnessEvent to the UI-side events::HarnessEvent via a
+/// serde round-trip (both enums share the same normalized shape), then emit it
+/// on the studio://event channel.
+fn emit_harness_event(app: &AppHandle, ev: crate::harness::event::HarnessEvent) {
+    let Ok(value) = serde_json::to_value(&ev) else { return };
+    let Ok(ui_ev) = serde_json::from_value::<crate::events::HarnessEvent>(value) else { return };
+    let _ = app.emit("studio://event", StudioEvent::Harness(ui_ev));
+}
+
+// ---------------------------------------------------------------------------
+// Approvals — user answers an ApprovalRequest; optionally persist a scoped
+// allow rule, then relay the answer back to the harness.
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn approve(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    request_id: String,
+    kind: String,
+    payload: serde_json::Value,
+    approved: bool,
+    always_allow: bool,
+) -> Result<(), String> {
+    let session = state.session.lock().clone();
+    let harness = {
+        let registry = state.harness_registry.lock();
+        registry
+            .get(&session.harness)
+            .ok_or_else(|| format!("harness '{}' not registered", session.harness))?
+            .clone()
+    };
+
+    // Persist a scoped allow rule when the user checks "always allow".
+    if always_allow && approved {
+        let req = crate::harness::approvals::ApprovalRequest {
+            id: request_id.clone(),
+            kind: kind.clone(),
+            payload: payload.clone(),
+        };
+        crate::harness::approvals::write_allow_rule(&session.harness, &req, true)?;
+    }
+
+    // Relay the answer back to the running harness process.
+    match harness.answer_approval(&request_id, approved).await {
+        Ok(()) => Ok(()),
+        Err(crate::harness::HarnessError::NoApprovals) => {
+            let _ = app.emit(
+                "studio://event",
+                StudioEvent::Harness(crate::events::HarnessEvent::Error(
+                    "This harness does not support approval dialogs.".to_string(),
+                )),
+            );
+            Err("approvals not supported".to_string())
+        }
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 #[tauri::command]

@@ -66,6 +66,13 @@ pub trait Harness: Send + Sync {
     
     /// List available models from the harness/provider.
     async fn available_models(&self) -> Result<Vec<ModelInfo>, HarnessError>;
+
+    /// Answer an approval request from the harness. Adapters that don't support
+    /// approvals return Err(NoApprovals) (the default impl).
+    async fn answer_approval(&self, request_id: &str, approved: bool) -> Result<(), HarnessError> {
+        let _ = (request_id, approved);
+        Err(HarnessError::NoApprovals)
+    }
     
     /// Subscribe to harness events (text deltas, tool calls, approvals, etc.).
     /// Returns an mpsc receiver for the event stream.
@@ -98,6 +105,8 @@ pub enum HarnessError {
     NotStarted,
     #[error("steering is not supported by this harness")]
     NoSteer,
+    #[error("approvals are not supported by this harness")]
+    NoApprovals,
     #[error("harness process error: {0}")]
     Process(String),
     #[error(transparent)]

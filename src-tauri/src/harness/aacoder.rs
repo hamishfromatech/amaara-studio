@@ -7,7 +7,7 @@
 
 use async_trait::async_trait;
 use std::{
-    io::{BufRead, BufReader, Read, Write},
+    io::{BufRead, Read, Write},
     path::PathBuf,
     sync::Arc,
 };
@@ -241,6 +241,30 @@ impl HarnessTrait for AaaCoderCliHarness {
             name: Some("Qwen3 2B".to_string()),
             kind: "chat".to_string(),
         }])
+    }
+
+    async fn answer_approval(&self, request_id: &str, approved: bool) -> Result<(), HarnessError> {
+        let inner = self.inner.lock().unwrap();
+        if !inner.started {
+            return Err(HarnessError::NotStarted);
+        }
+
+        // Write an extension_ui_response back over stdin so the harness can
+        // continue (or abort) the pending tool call.
+        let cmd = serde_json::json!({
+            "type": "extension_ui_response",
+            "response": {
+                "request_id": request_id,
+                "approved": approved,
+            }
+        });
+
+        let mut stdin = inner.stdin.lock().unwrap();
+        let child_stdin = stdin.as_mut().ok_or(HarnessError::NotStarted)?;
+        write!(child_stdin, "{}\n", cmd)
+            .map_err(|e| HarnessError::Process(format!("write approval answer: {e}")))?;
+
+        Ok(())
     }
 
     fn subscribe(&self) -> Receiver<HarnessEvent> {
