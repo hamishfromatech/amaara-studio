@@ -1,4 +1,4 @@
-// Navya Studio — Tauri 2 application core (Phase 0 scaffold).
+// Navya Studio — Tauri 2 application core.
 // The GUI entry point lives here; main.rs only delegates so the crate also
 // builds as an rlib for tests and future headless binaries.
 
@@ -10,22 +10,23 @@ pub(crate) mod navya;
 pub(crate) mod render;
 pub(crate) mod sd;
 pub(crate) mod sidecar;
+pub mod state;
 pub(crate) mod store;
 
-use std::sync::OnceLock;
+use std::path::PathBuf;
 
 use tauri::Manager;
 
-static SUPERVISOR: OnceLock<sidecar::Supervisor> = OnceLock::new();
+use crate::state::AppState;
 
-/// Shared supervisor instance (safe to clone the guard).
-pub fn supervisor() -> &'static sidecar::Supervisor {
-    SUPERVISOR.get_or_init(sidecar::Supervisor::new)
-}
-
-fn ensure_store(app_handle: &tauri::AppHandle) -> Result<store::ProjectStore, store::StoreError> {
-    let data_dir = app_handle.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    store::ProjectStore::new(data_dir.join("navya.db"))
+/// Resolve the app-data dir + config path.
+fn config_path(app: &tauri::AppHandle) -> PathBuf {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."));
+    let _ = std::fs::create_dir_all(&dir);
+    dir.join("navya-config.json")
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -33,14 +34,60 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .setup(|app| {
-            // Open the project store so later phases can query history.
-            let _ = ensure_store(&app.handle().clone());
-            // Publish initial sidecar status to the webview (design.md status strip).
-            let sup = supervisor();
-            let _ = sup.emit(&app.handle().clone());
-            // Onboarding hook (Phase 16). No-op in Phase 0.
+            let handle = app.handle().clone();
+
+            // Config: load from app-data JSON (or default + persist).
+            let cfg_path = config_path(&handle);
+            let (config, _default) = state::load_config(cfg_path.clone());
+
+            // Store: SQLite in app-data dir.
+            let data_dir = handle
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| PathBuf::from("."));
+            let store = match store::ProjectStore::new(data_dir.join("navya.db")) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!("opening store failed, falling back to in-memory: {e}");
+                    store::ProjectStore::new(":memory:").unwrap_or_else(|_| {
+                        // Last-resort: an in-memory connection we know works.
+                        store::ProjectStore {
+                            conn: rusqlite::Connection::open_in_memory()
+                                .expect("in-memory sqlite"),
+                        }
+                    })
+                }
+            };
+
+            // Build + manage the shared state.
+            let state = AppState::new(config, cfg_path, store);
+            app.manage(state);
+
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![
+            commands::get_state,
+            commands::get_config,
+            commands::save_config,
+            commands::set_api_key,
+            commands::clear_api_key,
+            commands::has_api_key,
+            commands::new_project,
+            commands::list_projects,
+            commands::open_project,
+            commands::set_model,
+            commands::set_source,
+            commands::set_harness,
+            commands::list_models,
+            commands::send_prompt,
+            commands::steer,
+            commands::abort,
+            commands::render_to_video,
+            commands::list_renders,
+            commands::cancel_render,
+            commands::get_sidecar_status,
+            commands::reveal_in_folder,
+        ])
         .run(tauri::generate_context!())?;
     Ok(())
 }

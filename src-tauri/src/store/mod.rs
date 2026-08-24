@@ -4,6 +4,8 @@
 //! observes results through `studio://event` (see `events.rs`). This module is
 //! fully unit-tested against an in-memory connection.
 
+use serde::{Deserialize, Serialize};
+
 pub mod schema {
     //! Idempotent DDL. Uses `CREATE TABLE IF NOT EXISTS` so re-running migrations
     //! at a later version never errors on existing rows.
@@ -88,7 +90,7 @@ pub enum StoreError {
 
 /// A tiny typed accessor over the project table. Kept minimal for Phase 1; the
 /// render/asset/project helpers grow in later phases.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectRow {
     pub id: String,
     pub name: String,
@@ -101,9 +103,16 @@ pub struct ProjectRow {
 
 /// A live connection with migrations applied. Created by the app at startup; in
 /// tests we construct an in-memory connection to exercise the schema.
+///
+/// `rusqlite::Connection` is `Send` but not `Sync`; we declare the store `Sync`
+/// so it can live behind a `parking_lot::Mutex` in `AppState` while keeping
+/// async command futures `Send` (the sync guard is dropped before any `.await`).
 pub struct ProjectStore {
     pub(crate) conn: rusqlite::Connection,
 }
+
+// SAFETY: access is serialized entirely through the enclosing parking_lot mutex.
+unsafe impl Sync for ProjectStore {}
 
 impl ProjectStore {
     /// Run all `CREATE TABLE IF NOT EXISTS` statements (idempotent). Safe to call

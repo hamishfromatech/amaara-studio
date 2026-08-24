@@ -1,133 +1,65 @@
 /**
- * Studio event listener and reducer (Phase 6).
+ * Studio event listener (production wiring).
  *
- * Listens to 'studio://event' from Rust core and reduces StudioEvents into UI state:
- * turns, tool cards, render queue, sidecar status dots.
+ * Listens to the single `studio://event` channel from the Rust core and
+ * dispatches typed StudioEvents to subscribers. The UI uses this for live
+ * updates: harness text/tool deltas, render progress, sidecar status, project
+ * switches, and errors.
  */
 
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-export type StudioEvent = {
-  type: "harness" | "render" | "sidecar" | "project";
-  payload: any;
-};
+// Mirror of src-tauri/src/events.rs StudioEvent (externally-tagged enum).
+export type StudioEvent =
+  | { type: "Harness"; payload: HarnessEvent }
+  | { type: "Render"; payload: RenderEvent }
+  | { type: "Sidecar"; payload: SidecarEvent }
+  | { type: "Project"; payload: ProjectEvent };
 
-// UI state shape for the chat/reducer.
-export interface UiState {
-  turns: Turn[];
-  toolCards: ToolCard[];
-  renderQueue: RenderJob[];
-  sidecarStatus: Record<string, string>; // name -> "idle" | "busy" | "error"
-}
+export type HarnessEvent =
+  | { AgentStart: { model: string } }
+  | { AgentEnd: { success: boolean; message: string | null } }
+  | { TextDelta: string }
+  | { ThinkingDelta: string }
+  | { ToolStart: { tool_id: string; name: string; args: unknown } }
+  | { ToolUpdate: { tool_id: string; partial: string } }
+  | { ToolEnd: { tool_id: string; result: string | null; is_error: boolean } }
+  | { ApprovalRequest: { id: string; kind: string; payload: unknown } }
+  | { QueueUpdate: { steer: boolean; follow_up: boolean } }
+  | { Retry: { attempt: number; reason: string } }
+  | { Error: string };
 
-export interface Turn {
-  id: string;
-  role: "you" | "agent";
-  content: string;
-  status: "thinking" | "tool-calling" | "done" | "error";
-}
+export type RenderEvent =
+  | { Started: { job_id: string; target: string; quality: string } }
+  | { Progress: { job_id: string; stage: string; frame: number; total_frames: number | null } }
+  | { Completed: { job_id: string; output_path: string; duration_ms: number | null } }
+  | { Failed: { job_id: string; error: string } }
+  | { Cancelled: { job_id: string } };
 
-export interface ToolCard {
-  id: string;
-  type: "write" | "edit" | "generate_image" | "bash" | "render_to_video";
-  name?: string;
-  args?: any;
-  result?: string;
-  is_error: boolean;
-}
+export type SidecarEvent =
+  | { Starting: { name: string } }
+  | { Ready: { name: string } }
+  | { Exit: { name: string; code: number } }
+  | { LogLine: { name: string; level: string; message: string } };
 
-export interface RenderJob {
-  job_id: string;
-  project_id: string;
-  composition_id: string;
-  target: string;
-  quality: string;
-  status: "queued" | "running" | "done" | "failed";
-  progress?: number; // 0-100
-}
+export type ProjectEvent =
+  | { Created: { project_id: string; name: string } }
+  | { Switched: { project_id: string; name: string } }
+  | { Updated: { project_id: string; changed_at: number } };
 
-// Initial state.
-export const initialUiState: UiState = {
-  turns: [],
-  toolCards: [],
-  renderQueue: [],
-  sidecarStatus: {
-    harness: "idle",
-    render: "ready",
-    "sd-server": "idle",
-  },
-};
+export type StudioEventListener = (event: StudioEvent) => void;
 
-// Event reducer — turns StudioEvent into UiState updates.
-export function reduceUiState(state: UiState, event: StudioEvent): UiState {
-  let next = { ...state };
-
-  if (event.type === "harness") {
-    const he = event.payload;
-    // Handle tool cards and text deltas...
-    if (he.toolStart) {
-      next.toolCards.push({
-        id: he.toolStart.tool_id,
-        type: getCardType(he.toolStart.name),
-        name: he.toolStart.name,
-        args: he.toolStart.args,
-        is_error: false,
-      });
-    }
-    if (he.agentEnd) {
-      // Mark last turn as done/error
-    }
-  }
-
-  if (event.type === "render") {
-    const re = event.payload;
-    if (re.started) {
-      next.renderQueue.push({
-        job_id: re.started.job_id,
-        project_id: re.started.project_id || "default",
-        composition_id: re.started.composition_id || "default",
-        target: re.started.target || "local",
-        quality: re.started.quality || "draft",
-        status: "running",
-        progress: 0,
-      });
-    }
-    if (re.progress) {
-      // Update progress for existing job...
-    }
-  }
-
-  if (event.type === "sidecar") {
-    const se = event.payload;
-    if (se.ready || se.starting) {
-      next.sidecarStatus[se.name] = "busy";
-    }
-    if (se.exit || se.stopped) {
-      next.sidecarStatus[se.name] = "idle";
-    }
-  }
-
-  return next;
-}
-
-function getCardType(name: string): ToolCard["type"] {
-  if (name === "write" || name === "edit") return name;
-  if (name === "generate_image") return "generate_image";
-  if (name === "bash" || name === "shell") return "bash";
-  if (name === "render_to_video") return "render_to_video";
-  return "bash"; // fallback
-}
-
-// Listen to studio events and reduce into state.
-export function setupEventListeners(setState: (fn: (s: UiState) => UiState) => void) {
-  listen("studio://event", (event: any) => {
-    // Parse the event payload...
-    const parsed: StudioEvent = {
-      type: event.event || "harness",
-      payload: event.payload,
-    };
-    // In a real app, use Zustand or Redux to dispatch reduceUiState.
-    // For M0 scaffold, we just log or store in state ref.
-    console.log("studio event:", parsed);
+/**
+ * Subscribe to the studio event channel. Returns an unsubscribe function.
+ * Safe to call multiple times; each subscription gets its own listener.
+ */
+export async function subscribeStudioEvents(listener: StudioEventListener): Promise<UnlistenFn> {
+  return listen<StudioEvent>("studio://event", (e) => {
+    listener(e.payload);
   });
+}
+
+/** Normalize an internally-tagged HarnessEvent variant into a flat shape. */
+export function harnessEventKind(ev: HarnessEvent): string {
+  return Object.keys(ev)[0];
 }

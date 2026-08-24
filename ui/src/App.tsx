@@ -1,26 +1,43 @@
 /**
- * Navya Studio App (Phase 6 shell + Phase 0 branding).
+ * Navya Studio App — production wiring.
+ *
+ * Loads real state from the Rust core on mount, subscribes to the event
+ * stream, and renders either the onboarding screen (no API key / no project)
+ * or the full studio shell. No hardcoded mock data — everything comes from
+ * the store, which is fed by #[tauri::command] + studio://event.
  */
 
 import { useEffect } from "react";
-import { TopBar, LeftRail, ChatView, RightRail, StatusStrip, TabBar } from "./components/Shell";
+import { useStore } from "./lib/store";
+import { OnboardingScreen } from "./components/Onboarding";
+import { StudioShell } from "./components/Shell";
 
 export default function App() {
-  useEffect(() => {
-    // Reserved for first-launch onboarding (Phase 16). No-op now so the window
-    // renders the shell immediately.
-  }, []);
+  const loading = useStore((s) => s.loading);
+  const initialized = useStore((s) => s.initialized);
+  const hasApiKey = useStore((s) => s.has_api_key);
+  const projectCount = useStore((s) => (s.projects ?? []).length);
+  const loadState = useStore((s) => s.loadState);
 
-  return (
-    <div className="flex flex-col h-screen bg-studio-900 text-slate-100">
-      <TopBar />
-      <TabBar />
-      <div className="flex flex-1 overflow-hidden">
-        <LeftRail />
-        <ChatView />
-        <RightRail />
+  useEffect(() => {
+    void loadState();
+  }, [loadState]);
+
+  if (!initialized || loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-studio-900 text-slate-300">
+        <div className="text-center">
+          <div className="text-2xl font-bold text-accent mb-2">⬢ Navya Studio</div>
+          <div className="text-sm animate-pulse">Starting up…</div>
+        </div>
       </div>
-      <StatusStrip />
-    </div>
-  );
+    );
+  }
+
+  // First-run onboarding: no API key and no projects yet.
+  if (!hasApiKey && projectCount === 0) {
+    return <OnboardingScreen />;
+  }
+
+  return <StudioShell />;
 }

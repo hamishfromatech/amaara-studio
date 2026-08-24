@@ -54,6 +54,12 @@ tokio = { version = "1", features = ["full"] }
 axum = "0.7"
 tower = "0.5"
 
+# HTTP client for Navya Cloud + sd-server (production wiring).
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+
+# Fast sync mutex for managed state.
+parking_lot = "0.12"
+
 # async-trait for the Harness trait (Phase 4)
 async-trait = "0.1"
 

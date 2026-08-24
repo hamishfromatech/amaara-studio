@@ -5,6 +5,7 @@
 // each impl spawns/connects the harness, translates normalized commands to the
 // native protocol, and emits normalized HarnessEvent streams.
 
+pub(crate) mod aacoder;
 pub(crate) mod event;
 pub(crate) mod approvals;
 pub(crate) mod claude;
