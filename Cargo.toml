@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = [
+    "src-tauri",
+    "crates/navya-tools",
+]
+
+[profile.dev]
+# Keep dev builds snappy for the large Tauri dependency tree.
+opt-level = 0
+debug-assertions = false
+incremental = true

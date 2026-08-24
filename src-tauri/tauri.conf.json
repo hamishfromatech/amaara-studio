@@ -1,45 +1,29 @@
 {
+  "identifier": "navya-studio",
   "build": {
     "beforeDevCommand": "pnpm --filter ./ui dev",
     "devUrl": "http://localhost:5173",
-    "frontendDist": "../ui/dist",
-    "frontendDevUrl": "http://localhost:5173",
-    "withLoaders": true
+    "frontendDist": "../ui/dist"
   },
   "bundle": {
-    "active": true,
+    "active": false,
     "category": "DeveloperUtilities",
     "copyright": "Navya Studio",
     "externalBin": [],
-    "icon": [
-      "icons/icon.svg"
-    ],
-    "shortDescription": "AI content-creation studio",
-    "targets": ["msi", "dmg", "AppImage"]
+    "shortDescription": "AI content-creation studio"
   },
-  "capabilities": [
-    "default"
-  ],
-  "compatibility": {
-    "withSquirrel": false
-  },
-  "descriptions": {},
-  "framework": "tauri",
-  "identity": "navya-studio",
-  "version": "0.1.0",
-  "windows": [
-    {
-      "fullscreen": false,
-      "height": 820,
-      "center": true,
-      "minHeight": 760,
-      "maximized": true,
-      "resizable": true,
-      "security": {
-        "csp": "enable"
-      },
-      "title": "Navya Studio",
-      "width": 1280
-    }
-  ]
+  "app": {
+    "windows": [
+      {
+        "fullscreen": false,
+        "height": 820,
+        "center": true,
+        "minHeight": 760,
+        "maximized": true,
+        "resizable": true,
+        "title": "Navya Studio",
+        "width": 1280
+      }
+    ]
+  }
 }
