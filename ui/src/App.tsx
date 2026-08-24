@@ -1,21 +1,26 @@
-import { useEffect } from "react";
-
 /**
- * Phase 0 scaffold: an empty, branded page. The window shell (top bar / rails)
- * is added in Phase 6; the onboarding screen in Phase 16.
+ * Navya Studio App (Phase 6 shell + Phase 0 branding).
  */
+
+import { useEffect } from "react";
+import { TopBar, LeftRail, ChatView, RightRail, StatusStrip, TabBar } from "./components/Shell";
+
 export default function App() {
   useEffect(() => {
     // Reserved for first-launch onboarding (Phase 16). No-op now so the window
-    // renders a title immediately at Gate 0.
+    // renders the shell immediately.
   }, []);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#0a1a2f] text-slate-100">
-      <div className="text-center">
-        <p className="mb-4 text-sm tracking-widest text-violet-300">AI CONTENT-creation STUDIO</p>
-        <h1 className="text-4xl font-bold">Navya Studio</h1>
+    <div className="flex flex-col h-screen bg-studio-900 text-slate-100">
+      <TopBar />
+      <TabBar />
+      <div className="flex flex-1 overflow-hidden">
+        <LeftRail />
+        <ChatView />
+        <RightRail />
       </div>
-    </main>
+      <StatusStrip />
+    </div>
   );
 }
