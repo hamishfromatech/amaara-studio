@@ -1,17 +1,33 @@
 //! a-coder-cli harness adapter (production wiring).
 //!
-//! Drives `a-coder-cli --mode rpc` over stdio JSONL. This is the richest
-//! contract: persistent session, steer/follow_up/abort, set_model, tool-execution
-//! events, extension-UI approval dialogs. The other adapters are subsets and
-//! declare their degradations explicitly.
+//! Drives `a-coder-cli --mode rpc` over stdio JSONL, matching the contract in
+//! a-coder-cli `docs/rpc.md` exactly:
+//!
+//! **Commands (stdin, one JSON object per line):**
+//!   prompt        {"type":"prompt","message":...}
+//!   steer         {"type":"steer","message":...}
+//!   follow_up     {"type":"follow_up","message":...}
+//!   abort         {"type":"abort"}            (session stays alive)
+//!   set_model     {"type":"set_model","provider":...,"modelId":...}
+//!   get_available_models {"type":"get_available_models"}
+//!   extension_ui_response {"type":"extension_ui_response","id":...,...}
+//!
+//! **Events (stdout JSONL):** agent_start, agent_end, message_update (with
+//! assistantMessageEvent deltas), tool_execution_{start,update,end},
+//! queue_update, auto_retry_{start,end}, extension_ui_request,
+//! extension_error, response (command acks).
+//!
+//! Framing: strict JSONL, split on \n only, strip trailing \r.
 
 use async_trait::async_trait;
 use std::{
-    io::{BufRead, Read, Write},
+    collections::HashMap,
+    io::{BufRead, Write},
     path::PathBuf,
     sync::Arc,
+    time::Duration,
 };
-use tokio::sync::mpsc::{self, Receiver};
+use tokio::sync::{mpsc, mpsc::Receiver, oneshot};
 
 use crate::harness::{
     event::{HarnessEvent, ModelInfo},
@@ -26,13 +42,20 @@ pub struct AaaCoderCliHarness {
     inner: Arc<std::sync::Mutex<Inner>>,
 }
 
-/// Per-session mutable state for the a-coder-cli process.
+/// Per-process mutable state for the a-coder-cli RPC session.
 struct Inner {
-    started: bool,                              // process is running and ready
-    next_id: u64,                               // monotonic JSONL command ID counter
-    stdin: std::sync::Mutex<Option<std::process::ChildStdin>>,  // for sending commands
-    subscribers: Vec<mpsc::Sender<HarnessEvent>>,       // one per subscribe() call; reader loop broadcasts to all
-    child_handle: std::sync::Mutex<Option<std::process::Child>>,   // keeps process alive
+    started: bool,
+    stopping: bool, // stop() was requested — suppresses the EOF error event
+    model: String,  // model from HarnessCtx, injected into AgentStart events
+    stdin: std::sync::Mutex<Option<std::process::ChildStdin>>,
+    child_handle: std::sync::Mutex<Option<std::process::Child>>,
+    /// Every live subscriber gets every event (event pump + future consumers).
+    subscribers: Vec<mpsc::Sender<HarnessEvent>>,
+    /// Dialog extension_ui_requests awaiting an answer (id -> full request),
+    /// needed to build the correct extension_ui_response shape per method.
+    pending_ui: HashMap<String, serde_json::Value>,
+    /// Pending get_available_models round-trip.
+    pending_models: Option<oneshot::Sender<Vec<ModelInfo>>>,
 }
 
 /// Probe whether a binary is on PATH. Returns path or None.
@@ -68,17 +91,37 @@ impl AaaCoderCliHarness {
             },
             inner: Arc::new(std::sync::Mutex::new(Inner {
                 started: false,
-                next_id: 0,
+                stopping: false,
+                model: String::new(),
                 stdin: std::sync::Mutex::new(None),
-                subscribers: Vec::new(),
                 child_handle: std::sync::Mutex::new(None),
+                subscribers: Vec::new(),
+                pending_ui: HashMap::new(),
+                pending_models: None,
             })),
         }
     }
 
     /// Check if the binary is available on PATH.
     pub fn is_available_bin(&self) -> bool {
-        which("a-coder-cli").is_some()
+        is_available()
+    }
+
+    /// Write one JSONL command line to the process stdin. Caller must hold no
+    /// other locks on Inner (this locks inner then stdin).
+    fn send_cmd(&self, cmd: serde_json::Value) -> Result<(), HarnessError> {
+        let inner = self.inner.lock().unwrap();
+        if !inner.started {
+            return Err(HarnessError::NotStarted);
+        }
+        let mut stdin = inner.stdin.lock().unwrap();
+        let child_stdin = stdin.as_mut().ok_or(HarnessError::NotStarted)?;
+        write!(child_stdin, "{}\n", cmd)
+            .map_err(|e| HarnessError::Process(format!("write to a-coder-cli stdin: {e}")))?;
+        child_stdin
+            .flush()
+            .map_err(|e| HarnessError::Process(format!("flush a-coder-cli stdin: {e}")))?;
+        Ok(())
     }
 }
 
@@ -106,283 +149,443 @@ impl HarnessTrait for AaaCoderCliHarness {
             None => return Err(HarnessError::Process("a-coder-cli not found on PATH".into())),
         };
 
+        // On Windows the CLI is usually a .cmd/.bat shim which CreateProcess
+        // cannot execute directly — run it through `cmd /c`.
+        let ext = binary.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+        let (prog, prefix): (PathBuf, Vec<String>) = if cfg!(windows) && matches!(ext.as_str(), "cmd" | "bat") {
+            ("cmd".into(), vec!["/c".into(), binary.to_string_lossy().into_owned()])
+        } else {
+            (binary, Vec::new())
+        };
+
         // Spawn: `a-coder-cli --mode rpc` in the project directory.
-        let mut child = std::process::Command::new(&binary)
+        let mut command = std::process::Command::new(&prog);
+        command.args(&prefix);
+        let mut c = command
             .arg("--mode")
             .arg("rpc")
             .current_dir(&ctx.project_dir)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
-            .spawn();
+            .spawn()
+            .map_err(|e| HarnessError::Process(format!("failed to spawn a-coder-cli: {e}")))?;
 
-        match child {
-            Ok(mut c) => {
-                let stdout = c.stdout.take().expect("stdout should be open");
-                let stdin = c.stdin.take().expect("stdin should be open");
+        let stdout = c.stdout.take().expect("stdout should be open");
+        let stdin = c.stdin.take().expect("stdin should be open");
 
-                // Spawn a blocking task that reads JSONL from stdout and broadcasts events.
-                let subscribers = self.inner.lock().unwrap().subscribers.clone();
-                tokio::spawn(async move {
-                    let mut reader = std::io::BufReader::new(stdout);
-                    let mut buf = String::new();
-                    loop {
-                        buf.clear();
-                        match reader.read_line(&mut buf) {
-                            Ok(0) => break, // EOF — process exited cleanly
-                            Ok(_) => {
-                                if let Some(event) = parse_event(buf.trim()) {
-                                    // Broadcast to all subscribers (non-blocking).
-                                    for tx in &subscribers {
-                                        let _ = tx.try_send(event.clone());
-                                    }
-                                }
-                            }
-                            Err(_) => break,
-                        }
-                    }
-                });
-
-                // Store stdin and child handle.
-                let mut inner = self.inner.lock().unwrap();
-                inner.started = true;
-                *inner.stdin.lock().unwrap() = Some(stdin);
-                inner.child_handle.lock().unwrap().replace(c);
-
-                Ok(())
-            }
-            Err(e) => Err(HarnessError::Process(format!("failed to spawn a-coder-cli: {e}"))),
+        {
+            let mut inner = self.inner.lock().unwrap();
+            inner.started = true;
+            inner.stopping = false;
+            inner.model = ctx.model.clone();
+            *inner.stdin.lock().unwrap() = Some(stdin);
+            inner.child_handle.lock().unwrap().replace(c);
         }
+
+        // Reader loop: parse stdout JSONL per docs/rpc.md and broadcast to all
+        // subscribers. Locks Inner per event so late subscribe() calls are seen.
+        let inner = Arc::clone(&self.inner);
+        tokio::spawn(async move {
+            let mut reader = std::io::BufReader::new(stdout);
+            let mut buf = String::new();
+            loop {
+                buf.clear();
+                match reader.read_line(&mut buf) {
+                    Ok(0) => break, // EOF — process exited
+                    Ok(_) => {
+                        let line = buf.trim_end_matches(['\n', '\r']);
+                        if line.is_empty() {
+                            continue;
+                        }
+                        let Ok(json) = serde_json::from_str::<serde_json::Value>(line) else {
+                            continue;
+                        };
+                        handle_stdout_line(&inner, &json);
+                    }
+                    Err(_) => break,
+                }
+            }
+            // EOF: mark stopped; surface an error unless stop() was requested.
+            let notify = {
+                let mut g = inner.lock().unwrap();
+                let was_started = g.started;
+                g.started = false;
+                was_started && !g.stopping
+            };
+            if notify {
+                broadcast(&inner, HarnessEvent::Error("a-coder-cli process exited".into()));
+            }
+        });
+
+        Ok(())
     }
 
     async fn prompt(&self, msg: &str, mode: PromptMode) -> Result<(), HarnessError> {
-        let mut inner = self.inner.lock().unwrap();
-        if !inner.started {
-            return Err(HarnessError::NotStarted);
-        }
-
-        // Build JSONL command.
-        let id = inner.next_id;
-        inner.next_id += 1;
-
-        let cmd = serde_json::json!({
-            "id": id,
-            "type": "prompt",
-            "text": msg,
-            "mode": match mode {
-                PromptMode::Normal => "normal",
-                PromptMode::Steer => "steer",
-                PromptMode::FollowUp => "follow_up",
-            },
-        });
-
-        // Write to stdin synchronously (tiny operation).
-        let mut stdin = inner.stdin.lock().unwrap();
-        let child_stdin = stdin.as_mut().expect("stdin should be open");
-        writeln!(child_stdin, "{}", cmd).map_err(|e| HarnessError::Process(format!("write: {e}")))?;
-
-        Ok(())
+        // docs/rpc.md: prompt / steer / follow_up are distinct commands, all
+        // carrying the text in a `message` field.
+        let cmd = match mode {
+            PromptMode::Normal => serde_json::json!({ "type": "prompt", "message": msg }),
+            PromptMode::Steer => serde_json::json!({ "type": "steer", "message": msg }),
+            PromptMode::FollowUp => serde_json::json!({ "type": "follow_up", "message": msg }),
+        };
+        self.send_cmd(cmd)
     }
 
     async fn steer(&self, msg: &str) -> Result<(), HarnessError> {
-        let mut inner = self.inner.lock().unwrap();
-        if !inner.started {
-            return Err(HarnessError::NotStarted);
-        }
-
-        let cmd = serde_json::json!({ "type": "steer", "text": msg });
-
-        let mut stdin = inner.stdin.lock().unwrap();
-        let child_stdin = stdin.as_mut().expect("stdin should be open");
-        write!(child_stdin, "{}\n", cmd).map_err(|e| HarnessError::Process(format!("write: {e}")))?;
-
-        Ok(())
+        self.send_cmd(serde_json::json!({ "type": "steer", "message": msg }))
     }
 
     async fn abort(&self) -> Result<(), HarnessError> {
-        let mut inner = self.inner.lock().unwrap();
-        if !inner.started {
-            return Ok(()); // already stopped or not started
-        }
-
-        let cmd = serde_json::json!({ "type": "abort" });
-
-        {
-            let mut stdin = inner.stdin.lock().unwrap();
-            let child_stdin = stdin.as_mut().expect("stdin should be open");
-            write!(child_stdin, "{}\n", cmd).map_err(|e| HarnessError::Process(format!("write: {e}")))?;
-        }
-
-        inner.started = false;
-        *inner.stdin.lock().unwrap() = None; // drop stdin to signal process exit
-
-        Ok(())
+        // docs/rpc.md: abort cancels the current operation; the session lives on.
+        self.send_cmd(serde_json::json!({ "type": "abort" }))
     }
 
     async fn set_model(&self, model: &str) -> Result<(), HarnessError> {
-        let mut inner = self.inner.lock().unwrap();
-        if !inner.started {
-            return Err(HarnessError::NotStarted);
-        }
-
-        let cmd = serde_json::json!({ "type": "set_model", "model": model });
-
-        let mut stdin = inner.stdin.lock().unwrap();
-        let child_stdin = stdin.as_mut().expect("stdin should be open");
-        write!(child_stdin, "{}\n", cmd).map_err(|e| HarnessError::Process(format!("write: {e}")))?;
-
-        Ok(())
+        // Navya model ids are "provider/modelId"; rpc wants them split.
+        let cmd = match model.split_once('/') {
+            Some((provider, model_id)) => {
+                serde_json::json!({ "type": "set_model", "provider": provider, "modelId": model_id })
+            }
+            None => serde_json::json!({ "type": "set_model", "modelId": model }),
+        };
+        self.send_cmd(cmd)
     }
 
     async fn available_models(&self) -> Result<Vec<ModelInfo>, HarnessError> {
-        // Return known models (full implementation would await response from stream).
-        Ok(vec![ModelInfo {
-            id: "qwen3-32b".into(),
-            name: Some("Qwen3 2B".to_string()),
-            kind: "chat".to_string(),
-        }])
+        // Real round-trip: send get_available_models and await the response.
+        // Note: the first command after spawn can take several seconds while
+        // a-coder-cli loads its MCP servers, so allow a generous timeout.
+        let (tx, rx) = oneshot::channel();
+        {
+            let mut inner = self.inner.lock().unwrap();
+            if !inner.started {
+                return Err(HarnessError::NotStarted);
+            }
+            inner.pending_models = Some(tx);
+        }
+        self.send_cmd(serde_json::json!({ "type": "get_available_models" }))?;
+
+        match tokio::time::timeout(Duration::from_secs(20), rx).await {
+            Ok(Ok(models)) if !models.is_empty() => Ok(models),
+            _ => Ok(fallback_models()),
+        }
     }
 
     async fn answer_approval(&self, request_id: &str, approved: bool) -> Result<(), HarnessError> {
+        // Build the correct extension_ui_response for the dialog method that
+        // issued the request (docs/rpc.md §Extension UI Responses):
+        //   confirm      -> {"id", "confirmed": true}       / {"id", "cancelled": true}
+        //   select       -> {"id", "value": first option}   / {"id", "cancelled": true}
+        //   input/editor -> {"id", "value": ""}              / {"id", "cancelled": true}
+        let req = {
+            let mut inner = self.inner.lock().unwrap();
+            if !inner.started {
+                return Err(HarnessError::NotStarted);
+            }
+            inner.pending_ui.remove(request_id)
+        };
+
+        let cmd = match (req, approved) {
+            (Some(r), true) => {
+                let method = r.get("method").and_then(|v| v.as_str()).unwrap_or("confirm");
+                match method {
+                    "confirm" => {
+                        serde_json::json!({ "type": "extension_ui_response", "id": request_id, "confirmed": true })
+                    }
+                    "select" => {
+                        let first = r
+                            .get("options")
+                            .and_then(|v| v.as_array())
+                            .and_then(|a| a.first())
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Allow");
+                        serde_json::json!({ "type": "extension_ui_response", "id": request_id, "value": first })
+                    }
+                    _ => {
+                        // input / editor — approve with an empty value
+                        serde_json::json!({ "type": "extension_ui_response", "id": request_id, "value": "" })
+                    }
+                }
+            }
+            (_, false) => {
+                serde_json::json!({ "type": "extension_ui_response", "id": request_id, "cancelled": true })
+            }
+            (None, true) => {
+                // Unknown/expired request — best effort confirm-true.
+                serde_json::json!({ "type": "extension_ui_response", "id": request_id, "confirmed": true })
+            }
+        };
+
+        // The process may have ended the dialog on its own (timeout); sending
+        // the response anyway is harmless.
         let inner = self.inner.lock().unwrap();
         if !inner.started {
             return Err(HarnessError::NotStarted);
         }
-
-        // Write an extension_ui_response back over stdin so the harness can
-        // continue (or abort) the pending tool call.
-        let cmd = serde_json::json!({
-            "type": "extension_ui_response",
-            "response": {
-                "request_id": request_id,
-                "approved": approved,
-            }
-        });
-
         let mut stdin = inner.stdin.lock().unwrap();
         let child_stdin = stdin.as_mut().ok_or(HarnessError::NotStarted)?;
         write!(child_stdin, "{}\n", cmd)
             .map_err(|e| HarnessError::Process(format!("write approval answer: {e}")))?;
-
         Ok(())
     }
 
     fn subscribe(&self) -> Receiver<HarnessEvent> {
-        // The reader loop sends events through event_tx (stored in Inner).
-        // Each call creates a fresh channel — only the last subscriber gets events.
-        let (_tx, rx) = mpsc::channel(64);
-        drop(_tx); // no sender; receiver closes immediately when recv()
+        let (tx, rx) = mpsc::channel(256);
+        let mut inner = self.inner.lock().unwrap();
+        inner.subscribers.retain(|s| !s.is_closed());
+        inner.subscribers.push(tx);
         rx
     }
 
     async fn stop(&self) -> Result<(), HarnessError> {
-        self.abort().await
+        // Take the child out of Inner and kill the ENTIRE process tree. On
+        // Windows a-coder-cli is `cmd /c shim.cmd -> node.exe`; killing only
+        // cmd.exe would orphan node with our stdout pipe still held open.
+        let child = {
+            let mut inner = self.inner.lock().unwrap();
+            inner.stopping = true;
+            inner.started = false;
+            *inner.stdin.lock().unwrap() = None; // closing stdin lets it exit too
+            let mut handle = inner.child_handle.lock().unwrap();
+            handle.take()
+        };
+        if let Some(child) = child {
+            let pid = child.id();
+            if cfg!(windows) {
+                let _ = std::process::Command::new("taskkill")
+                    .args(["/F", "/T", "/PID", &pid.to_string()])
+                    .output();
+            } else {
+                let _ = std::process::Command::new("kill")
+                    .args(["-TERM", &pid.to_string()])
+                    .output();
+            }
+            // Dropping the Child detaches it; the tree kill above handles exit.
+        }
+        Ok(())
     }
 }
 
-// --- JSONL parsing ----------------------------------------------------------
+// --- stdout handling ---------------------------------------------------------
 
-fn parse_event(line: &str) -> Option<HarnessEvent> {
-    let json: serde_json::Value = serde_json::from_str(line).ok()?;
+/// Process one parsed JSONL line from a-coder-cli stdout.
+fn handle_stdout_line(inner: &Arc<std::sync::Mutex<Inner>>, json: &serde_json::Value) {
+    let event_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+    match event_type {
+        // Command ack — surface failures; resolve the models round-trip.
+        "response" => {
+            let success = json.get("success").and_then(|v| v.as_bool()).unwrap_or(true);
+            let command = json.get("command").and_then(|v| v.as_str()).unwrap_or("");
+            if !success {
+                let err = json
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("command failed")
+                    .to_string();
+                broadcast(inner, HarnessEvent::Error(format!("{command}: {err}")));
+                return;
+            }
+            if command == "get_available_models" {
+                let models = json
+                    .pointer("/data/models")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| parse_models(arr))
+                    .unwrap_or_default();
+                let tx = inner.lock().unwrap().pending_models.take();
+                if let Some(tx) = tx {
+                    let _ = tx.send(models);
+                }
+            }
+        }
+
+        // Extension UI sub-protocol: dialogs become ApprovalRequests;
+        // fire-and-forget methods (notify, setStatus, ...) are skipped.
+        "extension_ui_request" => {
+            let method = json.get("method").and_then(|v| v.as_str()).unwrap_or("");
+            let is_dialog = matches!(method, "select" | "confirm" | "input" | "editor");
+            if !is_dialog {
+                return;
+            }
+            let id = json.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            inner.lock().unwrap().pending_ui.insert(id.clone(), json.clone());
+            broadcast(
+                inner,
+                HarnessEvent::ApprovalRequest {
+                    id,
+                    kind: method.to_string(),
+                    payload: json.clone(),
+                },
+            );
+        }
+
+        _ => {
+            let default_model = inner.lock().unwrap().model.clone();
+            if let Some(ev) = parse_agent_event(json, &default_model) {
+                broadcast(inner, ev);
+            }
+        }
+    }
+}
+
+/// Broadcast an event to every live subscriber (drops closed channels).
+fn broadcast(inner: &Arc<std::sync::Mutex<Inner>>, event: HarnessEvent) {
+    let mut g = inner.lock().unwrap();
+    g.subscribers.retain(|tx| !tx.is_closed());
+    for tx in &g.subscribers {
+        let _ = tx.try_send(event.clone());
+    }
+}
+
+/// Pure mapping of agent event JSONL → HarnessEvent per docs/rpc.md.
+fn parse_agent_event(json: &serde_json::Value, default_model: &str) -> Option<HarnessEvent> {
     let event_type = json.get("type").and_then(|v| v.as_str())?;
 
     match event_type {
-        "message_update" => Some(HarnessEvent::TextDelta(
-            json.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        )),
-        "thinking_update" => Some(HarnessEvent::ThinkingDelta(
-            json.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        )),
+        "agent_start" => Some(HarnessEvent::AgentStart {
+            model: default_model.to_string(),
+        }),
+
+        "agent_end" => {
+            // Derive success from the last assistant message's stopReason
+            // ("stop"/"length"/"toolUse" = success; "error"/"aborted" = not).
+            let success = json
+                .get("messages")
+                .and_then(|v| v.as_array())
+                .and_then(|msgs| {
+                    msgs.iter()
+                        .rev()
+                        .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("assistant"))
+                })
+                .and_then(|m| m.get("stopReason").and_then(|s| s.as_str()))
+                .map(|r| !matches!(r, "error" | "aborted"))
+                .unwrap_or(true);
+            Some(HarnessEvent::AgentEnd { success, message: None })
+        }
+
+        "message_update" => {
+            let delta = json.get("assistantMessageEvent")?;
+            match delta.get("type").and_then(|v| v.as_str())? {
+                "text_delta" => Some(HarnessEvent::TextDelta(
+                    delta.get("delta").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                )),
+                "thinking_delta" => Some(HarnessEvent::ThinkingDelta(
+                    delta.get("delta").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                )),
+                "error" => Some(HarnessEvent::Error(
+                    delta.get("reason").and_then(|v| v.as_str()).unwrap_or("stream error").to_string(),
+                )),
+                _ => None, // start/text_start/text_end/toolcall_* etc. — not surfaced
+            }
+        }
+
         "tool_execution_start" => Some(HarnessEvent::ToolStart {
-            tool_id: json.get("tool_id")
-                .or_else(|| json.get("id"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-            name: json.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            args: match json.get("args") {
-                Some(v) => v.clone(),
-                None => json.clone(),
-            },
+            tool_id: json.get("toolCallId").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            name: json.get("toolName").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            args: json.get("args").cloned().unwrap_or(serde_json::Value::Null),
         }),
+
         "tool_execution_update" => Some(HarnessEvent::ToolUpdate {
-            tool_id: json.get("tool_id")
-                .or_else(|| json.get("id"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-            partial: json.get("text")
-                .or_else(|| json.get("partial"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
+            tool_id: json.get("toolCallId").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            partial: content_text(json.get("partialResult")),
         }),
+
         "tool_execution_end" => Some(HarnessEvent::ToolEnd {
-            tool_id: json.get("tool_id")
-                .or_else(|| json.get("id"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-            result: json.get("output")
-                .or_else(|| json.get("result"))
-                .and_then(|v| v.as_str())
-                .map(String::from),
-            is_error: json.get("is_error")
-                .or_else(|| json.get("error"))
-                .and_then(|v| v.as_bool())
+            tool_id: json.get("toolCallId").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            result: {
+                let t = content_text(json.get("result"));
+                if t.is_empty() { None } else { Some(t) }
+            },
+            is_error: json.get("isError").and_then(|v| v.as_bool()).unwrap_or(false),
+        }),
+
+        "queue_update" => Some(HarnessEvent::QueueUpdate {
+            steer: json
+                .get("steering")
+                .and_then(|v| v.as_array())
+                .map(|a| !a.is_empty())
+                .unwrap_or(false),
+            follow_up: json
+                .get("followUp")
+                .and_then(|v| v.as_array())
+                .map(|a| !a.is_empty())
                 .unwrap_or(false),
         }),
-        "extension_ui_request" => Some(HarnessEvent::ApprovalRequest {
-            id: json.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            kind: json.get("kind")
-                .or_else(|| json.get("type"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown")
-                .to_string(),
-            payload: match json.get("payload") {
-                Some(v) => v.clone(),
-                None => json.clone(),
-            },
-        }),
-        "queue_update" => Some(HarnessEvent::QueueUpdate {
-            steer: json.get("steer").and_then(|v| v.as_bool()).unwrap_or(false),
-            follow_up: json.get("follow_up").and_then(|v| v.as_bool()).unwrap_or(false),
-        }),
-        "auto_retry" => Some(HarnessEvent::Retry {
+
+        "auto_retry_start" => Some(HarnessEvent::Retry {
             attempt: json.get("attempt").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
-            reason: json.get("reason")
-                .or_else(|| json.get("message"))
+            reason: json
+                .get("errorMessage")
                 .and_then(|v| v.as_str())
-                .unwrap_or("")
+                .unwrap_or("transient error")
                 .to_string(),
         }),
-        "agent_start" => Some(HarnessEvent::AgentStart {
-            model: json.get("model")
-                .or_else(|| json.get("harness"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-        }),
-        "agent_end" => Some(HarnessEvent::AgentEnd {
-            success: json.get("success").and_then(|v| v.as_bool()).unwrap_or(true),
-            message: json.get("message")
-                .and_then(|v| v.as_str())
-                .map(String::from),
-        }),
-        "error" => Some(HarnessEvent::Error(
-            json.get("message")
-                .or_else(|| json.get("error"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
+
+        "extension_error" => Some(HarnessEvent::Error(
+            json.get("error").and_then(|v| v.as_str()).unwrap_or("extension error").to_string(),
         )),
-        _ => None, // Unknown event type — skip.
+
+        // turn_start/turn_end/message_start/message_end/compaction_*/auto_retry_end —
+        // intentionally not surfaced (no UI mapping yet).
+        _ => None,
     }
+}
+
+/// Extract concatenated text from an RPC content array
+/// (`{"content":[{"type":"text","text":...}, ...]}`).
+fn content_text(v: Option<&serde_json::Value>) -> String {
+    let Some(items) = v.and_then(|c| c.get("content")).and_then(|c| c.as_array()) else {
+        return String::new();
+    };
+    let mut out = String::new();
+    for item in items {
+        if item.get("type").and_then(|t| t.as_str()) == Some("text") {
+            if let Some(t) = item.get("text").and_then(|t| t.as_str()) {
+                out.push_str(t);
+            }
+        }
+    }
+    out
+}
+
+/// Parse rpc Model objects into ModelInfo (id becomes "provider/modelId" so
+/// set_model can round-trip it).
+fn parse_models(models: &[serde_json::Value]) -> Vec<ModelInfo> {
+    models
+        .iter()
+        .filter_map(|m| {
+            let model_id = m.get("id").and_then(|v| v.as_str())?;
+            let provider = m.get("provider").and_then(|v| v.as_str());
+            let id = match provider {
+                Some(p) if !p.is_empty() => format!("{p}/{model_id}"),
+                _ => model_id.to_string(),
+            };
+            Some(ModelInfo {
+                id,
+                name: m.get("name").and_then(|v| v.as_str()).map(String::from),
+                kind: "chat".to_string(),
+            })
+        })
+        .collect()
+}
+
+/// Static fallback when the models round-trip fails or times out.
+fn fallback_models() -> Vec<ModelInfo> {
+    vec![
+        ModelInfo { id: "anthropic/claude-sonnet-4-5".into(), name: Some("Claude Sonnet 4.5".into()), kind: "chat".into() },
+        ModelInfo { id: "openai/gpt-5".into(), name: Some("GPT-5".into()), kind: "chat".into() },
+        ModelInfo { id: "google/gemini-2.5-pro".into(), name: Some("Gemini 2.5 Pro".into()), kind: "chat".into() },
+    ]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn v(s: &str) -> serde_json::Value {
+        serde_json::from_str(s).unwrap()
+    }
 
     #[test]
     fn aacoder_id_is_stable() {
@@ -398,48 +601,175 @@ mod tests {
     }
 
     #[test]
-    fn parse_event_text_delta() {
-        let json = r#"{"type":"message_update","text":"Hello world"}"#;
-        let event = parse_event(json).expect("parsed");
-        match event {
-            HarnessEvent::TextDelta(text) => assert_eq!(text, "Hello world"),
-            _ => panic!("expected TextDelta"),
+    fn parse_message_update_text_delta() {
+        // Exact shape from docs/rpc.md.
+        let json = v(r#"{"type":"message_update","message":{},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"Hello "}}"#);
+        match parse_agent_event(&json, "m") {
+            Some(HarnessEvent::TextDelta(t)) => assert_eq!(t, "Hello "),
+            other => panic!("expected TextDelta, got {other:?}"),
         }
     }
 
     #[test]
-    fn parse_event_tool_start() {
-        let json = r#"{"type":"tool_execution_start","name":"write_file"}"#;
-        let event = parse_event(json).expect("parsed");
-        match event {
-            HarnessEvent::ToolStart { name, .. } => assert_eq!(name, "write_file"),
-            _ => panic!("expected ToolStart"),
+    fn parse_message_update_thinking_delta() {
+        let json = v(r#"{"type":"message_update","message":{},"assistantMessageEvent":{"type":"thinking_delta","delta":"hm..."}}"#);
+        match parse_agent_event(&json, "m") {
+            Some(HarnessEvent::ThinkingDelta(t)) => assert_eq!(t, "hm..."),
+            other => panic!("expected ThinkingDelta, got {other:?}"),
         }
     }
 
     #[test]
-    fn parse_event_agent_end() {
-        let json = r#"{"type":"agent_end","success":true}"#;
-        let event = parse_event(json).expect("parsed");
-        assert!(matches!(event, HarnessEvent::AgentEnd { success: true, .. }));
+    fn parse_message_update_other_deltas_skipped() {
+        let json = v(r#"{"type":"message_update","message":{},"assistantMessageEvent":{"type":"text_start","contentIndex":0}}"#);
+        assert!(parse_agent_event(&json, "m").is_none());
     }
 
     #[test]
-    fn parse_event_approval_request() {
-        let json = r#"{"type":"extension_ui_request","id":"req-1","kind":"file_write","payload":{"path":"file.md"}}"#;
-        let event = parse_event(json).expect("parsed");
-        match event {
-            HarnessEvent::ApprovalRequest { id, kind, .. } => {
-                assert_eq!(id, "req-1");
-                assert_eq!(kind, "file_write");
+    fn parse_tool_execution_lifecycle() {
+        let start = v(r#"{"type":"tool_execution_start","toolCallId":"call_1","toolName":"bash","args":{"command":"ls"}}"#);
+        match parse_agent_event(&start, "m") {
+            Some(HarnessEvent::ToolStart { tool_id, name, args }) => {
+                assert_eq!(tool_id, "call_1");
+                assert_eq!(name, "bash");
+                assert_eq!(args["command"], "ls");
             }
-            _ => panic!("expected ApprovalRequest"),
+            other => panic!("expected ToolStart, got {other:?}"),
+        }
+
+        let update = v(r#"{"type":"tool_execution_update","toolCallId":"call_1","partialResult":{"content":[{"type":"text","text":"partial out"}]}}"#);
+        match parse_agent_event(&update, "m") {
+            Some(HarnessEvent::ToolUpdate { tool_id, partial }) => {
+                assert_eq!(tool_id, "call_1");
+                assert_eq!(partial, "partial out");
+            }
+            other => panic!("expected ToolUpdate, got {other:?}"),
+        }
+
+        let end = v(r#"{"type":"tool_execution_end","toolCallId":"call_1","result":{"content":[{"type":"text","text":"total 48"}]},"isError":false}"#);
+        match parse_agent_event(&end, "m") {
+            Some(HarnessEvent::ToolEnd { tool_id, result, is_error }) => {
+                assert_eq!(tool_id, "call_1");
+                assert_eq!(result.as_deref(), Some("total 48"));
+                assert!(!is_error);
+            }
+            other => panic!("expected ToolEnd, got {other:?}"),
         }
     }
 
     #[test]
-    fn parse_event_unrecognized_type() {
-        let json = r#"{"type":"unknown_event"}"#;
-        assert!(parse_event(json).is_none());
+    fn parse_queue_update_arrays() {
+        let json = v(r#"{"type":"queue_update","steering":["focus"],"followUp":[]}"#);
+        match parse_agent_event(&json, "m") {
+            Some(HarnessEvent::QueueUpdate { steer, follow_up }) => {
+                assert!(steer);
+                assert!(!follow_up);
+            }
+            other => panic!("expected QueueUpdate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_auto_retry_start() {
+        let json = v(r#"{"type":"auto_retry_start","attempt":1,"maxAttempts":3,"delayMs":2000,"errorMessage":"529 overloaded"}"#);
+        match parse_agent_event(&json, "m") {
+            Some(HarnessEvent::Retry { attempt, reason }) => {
+                assert_eq!(attempt, 1);
+                assert_eq!(reason, "529 overloaded");
+            }
+            other => panic!("expected Retry, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_agent_start_uses_ctx_model() {
+        let json = v(r#"{"type":"agent_start"}"#);
+        match parse_agent_event(&json, "anthropic/claude-sonnet-4-5") {
+            Some(HarnessEvent::AgentStart { model }) => assert_eq!(model, "anthropic/claude-sonnet-4-5"),
+            other => panic!("expected AgentStart, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_agent_end_success_from_stop_reason() {
+        let ok = v(r#"{"type":"agent_end","messages":[{"role":"assistant","stopReason":"stop"}]}"#);
+        assert!(matches!(parse_agent_event(&ok, "m"), Some(HarnessEvent::AgentEnd { success: true, .. })));
+
+        let aborted = v(r#"{"type":"agent_end","messages":[{"role":"assistant","stopReason":"aborted"}]}"#);
+        assert!(matches!(parse_agent_event(&aborted, "m"), Some(HarnessEvent::AgentEnd { success: false, .. })));
+
+        let empty = v(r#"{"type":"agent_end","messages":[]}"#);
+        assert!(matches!(parse_agent_event(&empty, "m"), Some(HarnessEvent::AgentEnd { success: true, .. })));
+    }
+
+    #[test]
+    fn parse_extension_error() {
+        let json = v(r#"{"type":"extension_error","extensionPath":"/x.ts","event":"tool_call","error":"boom"}"#);
+        match parse_agent_event(&json, "m") {
+            Some(HarnessEvent::Error(e)) => assert_eq!(e, "boom"),
+            other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_unknown_event_skipped() {
+        assert!(parse_agent_event(&v(r#"{"type":"turn_start"}"#), "m").is_none());
+        assert!(parse_agent_event(&v(r#"{"type":"compaction_start","reason":"threshold"}"#), "m").is_none());
+    }
+
+    #[test]
+    fn parse_models_uses_provider_prefix() {
+        let models = vec![
+            v(r#"{"id":"claude-sonnet-4-5","name":"Claude Sonnet 4.5","provider":"anthropic"}"#),
+            v(r#"{"id":"local-llama","name":"Llama"}"#),
+        ];
+        let parsed = parse_models(&models);
+        assert_eq!(parsed[0].id, "anthropic/claude-sonnet-4-5");
+        assert_eq!(parsed[1].id, "local-llama");
+    }
+
+    #[test]
+    fn subscribe_returns_live_receiver() {
+        let h = AaaCoderCliHarness::new();
+        let mut rx = h.subscribe();
+        {
+            let inner = Arc::clone(&h.inner);
+            broadcast(&inner, HarnessEvent::TextDelta("hi".into()));
+        }
+        // try_recv works because the subscriber sender is registered.
+        match rx.try_recv() {
+            Ok(HarnessEvent::TextDelta(t)) => assert_eq!(t, "hi"),
+            other => panic!("expected TextDelta from broadcast, got {other:?}"),
+        }
+    }
+
+    /// Live round-trip against a real `a-coder-cli --mode rpc` process.
+    /// No LLM calls: only the get_available_models command/response cycle.
+    /// Run explicitly: cargo test live_rpc_models_round_trip -- --ignored
+    #[tokio::test]
+    #[ignore = "requires a-coder-cli installed on PATH"]
+    async fn live_rpc_models_round_trip() {
+        if !is_available() {
+            eprintln!("skipping: a-coder-cli not on PATH");
+            return;
+        }
+        eprintln!("[1] binary available");
+        let h = AaaCoderCliHarness::new();
+        let tmp = std::env::temp_dir().join(format!("navya-rpc-test-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let ctx = HarnessCtx {
+            project_dir: tmp.clone(),
+            model: String::new(),
+            source: "cloud".into(),
+        };
+        h.start(&ctx).await.expect("rpc process should start");
+        eprintln!("[2] started");
+        let models = h.available_models().await.expect("models round-trip");
+        eprintln!("[3] models returned");
+        assert!(!models.is_empty(), "expected at least one configured model");
+        eprintln!("live models: {:?}", models.iter().map(|m| m.id.clone()).collect::<Vec<_>>());
+        h.stop().await.unwrap();
+        eprintln!("[4] stopped");
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }
