@@ -16,12 +16,11 @@ pub mod spec {
     use super::*;
 
     pub fn registry() -> HashMap<&'static str, &'static str> {
-        // name -> default binary path. Phase 14 replaces PATH lookup with bundled
-        // per-target `externalBin` entries in tauri.conf.json.
+        // Real binary names looked up on PATH. If not present, the UI shows
+        // "not installed" with installation instructions.
         let mut m = HashMap::new();
-        m.insert("harness", "navya-harness-stub");
-        m.insert("render", "navya-render-stub");
-        m.insert("sd-server", "navya-sd-stub");
+        m.insert("llama-server", "llama-server");
+        m.insert("sd-server", "sd-server");
         m
     }
 
@@ -39,8 +38,8 @@ pub mod spec {
         pub fn new(name: &str) -> Self {
             let mut spec = SidecarSpec {
                 name: name.to_string(),
-                bin: "navya-harness-stub".to_string(),
-                args: vec!["--role".to_string(), name.to_string()],
+                bin: name.to_string(), // real binary name (resolved via PATH)
+                args: vec![],
                 env: HashMap::new(),
             };
             spec.resolve_bin();
@@ -48,17 +47,20 @@ pub mod spec {
         }
 
         /// Resolve the binary path from an explicit override, then a `NAVYA_<NAME>_BIN`
-        /// env var, then PATH. This lets tests point at the stub scripts directly.
+        /// env var, then PATH via `which`. Returns the resolved name even if not
+        /// found on PATH — validation happens later in `validate()`.
         pub fn resolve_bin(&mut self) {
             if let Some(p) = std::env::var_os("SIDECAR_BIN") {
                 self.bin = p.to_string_lossy().to_string();
                 return;
             }
-            if let Ok(p) = std::env::var(format!("NAVYA_SIDECAR_{}_BIN", self.name)) {
-                if Path::new(&p).exists() {
-                    self.bin = p;
-                    return;
-                }
+            if let Ok(p) = std::env::var(format!("NAVYA_SIDECAR_{}_BIN", self.name.to_uppercase().replace("-", "_"))) {
+                self.bin = p;
+                return;
+            }
+            // Try PATH lookup; if missing keep the bare name so validate() reports it.
+            if let Some(p) = which_path(&self.bin) {
+                self.bin = p.to_string_lossy().to_string();
             }
         }
 
@@ -67,9 +69,8 @@ pub mod spec {
             let full = if Path::new(&self.bin).is_absolute() {
                 PathBuf::from(&self.bin)
             } else {
-                let mut joined = std::env::current_dir()?;
-                joined.push(&self.bin);
-                joined
+                // Try PATH lookup one more time
+                which_path(&self.bin).unwrap_or_else(|| PathBuf::from(&self.bin))
             };
             if full.exists() {
                 Ok(full)
@@ -110,6 +111,19 @@ pub struct CommandOutcome {
     pub exit_code: Option<i32>,
     pub stdout: String,
     pub stderr: String,
+}
+
+/// Look up a binary on PATH (Windows: `where`, Unix: `which`).
+pub fn which_path(bin: &str) -> Option<PathBuf> {
+    let cmd = if cfg!(windows) { "where" } else { "which" };
+    let output = std::process::Command::new(cmd).arg(bin).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .next()
+        .map(|s| PathBuf::from(s.trim()))
 }
 
 fn now_ms() -> i64 {

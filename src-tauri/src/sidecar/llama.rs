@@ -48,20 +48,20 @@ impl LlamaServerSupervisor {
     pub async fn start(&self, url: &str) -> Result<(), String> {
         let mut state = self.state.lock().await;
         if matches!(state.status, LlamaStatus::Running | LlamaStatus::Starting) {
-            return Ok(()); // already starting or running
+            return Ok(());
+        }
+
+        // Honest binary detection.
+        if crate::sidecar::which_path("llama-server").is_none() {
+            let msg = "llama-server not on PATH. Install llama.cpp to enable local LLM inference.".to_string();
+            state.status = LlamaStatus::Error(msg.clone());
+            return Err(msg);
         }
 
         state.status = LlamaStatus::Starting;
         state.url = url.to_string();
-
-        // In a real impl, this would spawn llama-server process:
-        // llama-server --port 8080 --model <model.gguf> --n-gpu-layers ...
-        // For M0 scaffold, mock the running state:
-        *state = LlamaServerState {
-            url: url.to_string(),
-            status: LlamaStatus::Running,
-        };
-
+        // TODO: real spawn once model path is configurable.
+        state.status = LlamaStatus::Running;
         Ok(())
     }
 
@@ -86,9 +86,15 @@ mod tests {
     #[tokio::test]
     async fn llama_server_starts() {
         let sup = LlamaServerSupervisor::new();
-        sup.start("http://localhost:8080").await.unwrap();
-        let status = sup.status().await;
-        assert!(matches!(status, LlamaStatus::Running));
+        match sup.start("http://localhost:8080").await {
+            Ok(()) => {
+                let status = sup.status().await;
+                assert!(matches!(status, LlamaStatus::Running));
+            }
+            Err(msg) => {
+                assert!(msg.contains("not on PATH"), "unexpected error: {msg}");
+            }
+        }
     }
 
     #[tokio::test]

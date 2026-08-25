@@ -136,11 +136,10 @@ impl AppState {
         let config = self.config.lock().clone();
         let supervisor = &self.supervisor;
 
-        // Sidecar health from the supervisor.
+        // Sidecar health: llama-server + sd-server, with honest binary detection.
         let sidecars = vec![
-            sidecar_health("harness", supervisor.status("harness")),
-            sidecar_health("render", supervisor.status("render")),
-            sidecar_health("sd-server", supervisor.status("sd-server")),
+            detect_sidecar_health("llama-server", "llama-server"),
+            detect_sidecar_health("sd-server", "sd-server"),
         ];
 
         // Harnesses from the registry + capability matrix.
@@ -202,6 +201,20 @@ fn sidecar_health(name: &str, status: Option<SidecarStatus>) -> SidecarHealth {
         name: name.to_string(),
         status: s.to_string(),
         detail,
+    }
+}
+
+/// Detect whether a sidecar binary exists on PATH and build an honest health report.
+fn detect_sidecar_health(name: &str, bin: &str) -> SidecarHealth {
+    let found = crate::sidecar::which_path(bin).is_some();
+    if found {
+        sidecar_health(name, None) // idle — not yet started, but binary is present
+    } else {
+        SidecarHealth {
+            name: name.to_string(),
+            status: "not_installed".to_string(),
+            detail: Some(format!("{bin} not on PATH. Install it to enable local {name}.")),
+        }
     }
 }
 
