@@ -73,9 +73,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             let event_tx_clone = event_tx.clone();
             app.manage(event_tx);
 
-            // Launch the control server in the background.
+            // Launch the control server in the background. Use Tauri's async
+            // runtime handle (not tokio::spawn) — the setup closure runs on the
+            // main thread outside a Tokio runtime context, so tokio::spawn would
+            // panic with "no reactor running".
             let app_handle = app.handle().clone();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 match control::launch(&app_handle, event_tx_clone).await {
                     Ok(handle) => {
                         tracing::info!("control server started at {}", handle.url);
