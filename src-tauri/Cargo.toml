@@ -51,8 +51,10 @@ keyring = { version = ">=2" }
 
 # Async runtime + HTTP (control server Phase 3; Navya client Phase 8).
 tokio = { version = "1", features = ["full"] }
-axum = "0.7"
+axum = { version = "0.7", features = ["ws"] }
 tower = "0.5"
+tower-http = { version = "0.6", features = ["cors"] }
+futures-util = "0.3"
 
 # HTTP client for Navya Cloud + sd-server (production wiring).
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
@@ -62,6 +64,9 @@ parking_lot = "0.12"
 
 # async-trait for the Harness trait (Phase 4)
 async-trait = "0.1"
+
+# navya-tools shared crate (Phase 3)
+navya-tools = { path = "../crates/navya-tools" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }

@@ -71,13 +71,9 @@ impl HarnessTrait for ClaudeCodeHarness {
     }
 
     async fn available_models(&self) -> Result<Vec<ModelInfo>, HarnessError> {
-        Ok(vec![
-            ModelInfo {
-                id: "claude-3-5-sonnet".to_string(),
-                name: Some("Claude 3.5 Sonnet".to_string()),
-                kind: "chat".to_string(),
-            },
-        ])
+        // Static catalog from the descriptor registry until a live listing
+        // is wired (open-design `fallbackModels` parity).
+        Ok(crate::harness::registry::fallback_models(self.id()))
     }
 
     fn subscribe(&self) -> Receiver<HarnessEvent> {

@@ -9,6 +9,7 @@
 
 import { useState } from "react";
 import { useStore } from "../lib/store";
+import { harnessHint } from "../lib/invoke";
 
 export function OnboardingScreen() {
   const saveApiKey = useStore((s) => s.saveApiKey);
@@ -59,68 +60,67 @@ export function OnboardingScreen() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-studio-900 text-slate-100 p-8">
-      <h1 className="text-3xl font-bold mb-2">⬢ Navya Studio</h1>
-      <p className="text-center text-slate-300 mb-8 max-w-md">
+    <div className="flex h-screen flex-col items-center justify-center bg-canvas p-8 text-ink">
+      <h1 className="mb-1.5 text-2xl font-bold tracking-tight text-ink-strong">⬢ Navya Studio</h1>
+      <p className="mb-8 max-w-md text-center text-sm text-ink-muted">
         A content-creation studio powered by AI. Direct an agent. Watch it make. Render to video.
       </p>
 
-      <div className="grid grid-cols-2 gap-6 max-w-2xl w-full">
-        <div className="bg-studio-800 p-4 rounded-lg">
-          <h3 className="font-semibold mb-2">Connect Navya Cloud</h3>
+      <div className="grid w-full max-w-2xl grid-cols-2 gap-4">
+        <div className="rounded-xl border border-line-soft bg-panel p-5 shadow-[var(--shadow-xs)] transition-colors hover:border-line">
+          <h3 className="mb-1 text-sm font-semibold text-ink-strong">Connect Navya Cloud</h3>
+          <p className="mb-3 text-[13px] text-ink-muted">Paste your API key to use hosted models.</p>
           <input
             type="password"
-            className="w-full bg-studio-900 rounded px-2 py-1 text-sm mb-2 border border-studio-700"
+            className="input mb-3"
             placeholder="Paste your Navya API key"
             value={key}
             onChange={(e) => setKey(e.target.value)}
           />
-          <button
-            className="w-full bg-accent hover:bg-accent/80 text-white py-2 rounded text-sm"
-            disabled={busy}
-            onClick={connectCloud}
-          >
+          <button className="btn btn-primary w-full" disabled={busy} onClick={connectCloud}>
             {busy ? "Connecting…" : "Connect →"}
           </button>
         </div>
 
-        <div className="bg-studio-800 p-4 rounded-lg">
-          <h3 className="font-semibold mb-2">Start with a local model</h3>
-          <p className="text-sm text-slate-400 mb-2">Run fully offline with llama.cpp + sd-server.</p>
-          <button
-            className="w-full bg-studio-700 hover:bg-studio-600 py-2 rounded text-sm"
-            disabled={busy}
-            onClick={startLocal}
-          >
+        <div className="flex flex-col rounded-xl border border-line-soft bg-panel p-5 shadow-[var(--shadow-xs)] transition-colors hover:border-line">
+          <h3 className="mb-1 text-sm font-semibold text-ink-strong">Start with a local model</h3>
+          <p className="mb-3 flex-1 text-[13px] text-ink-muted">Run fully offline with llama.cpp + sd-server.</p>
+          <button className="btn w-full" disabled={busy} onClick={startLocal}>
             Use local →
           </button>
         </div>
       </div>
 
-      <div className="mt-6 text-center text-sm text-slate-400">
+      <div className="mt-5 text-center text-[13px] text-ink-muted">
         …or{" "}
-        <button className="text-accent hover:underline" onClick={startBlankProject} disabled={busy}>
+        <button
+          className="font-medium text-ink-strong underline decoration-line underline-offset-2 transition-colors hover:decoration-ink-strong"
+          onClick={startBlankProject}
+          disabled={busy}
+        >
           start a blank project
         </button>
       </div>
 
-      <div className="mt-8 flex items-center gap-2 text-sm flex-wrap justify-center max-w-2xl">
-        <span>Pick a harness:</span>
+      <div className="mt-8 flex max-w-2xl flex-wrap items-center justify-center gap-2">
+        <span className="text-xs text-ink-soft">Pick a harness</span>
         {harnesses.map((h) => (
           <button
             key={h.id}
             onClick={() => void setHarness(h.id)}
-            className={`font-mono px-2 py-1 rounded ${
-              session?.harness === h.id ? "bg-accent text-white" : "bg-studio-800"
-            } ${h.available ? "" : "opacity-50"}`}
+            className={`chip mono ${session?.harness === h.id ? "is-active" : ""}`}
+            disabled={!h.available}
             title={h.available ? "installed" : "not installed on PATH"}
           >
-            {h.available ? "●" : "○"} {h.label}
+            <span className={`text-[9px] ${h.available ? (session?.harness === h.id ? "" : "text-ok") : "text-ink-faint"}`}>
+              ●
+            </span>
+            {h.label}
           </button>
         ))}
       </div>
 
-      {err && <div className="mt-4 text-red-400 text-sm">⚠ {err}</div>}
+      {err && <div className="mt-4 text-[13px] text-danger">⚠ {err}</div>}
     </div>
   );
 }

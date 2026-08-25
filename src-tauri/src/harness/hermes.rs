@@ -64,7 +64,7 @@ impl HarnessTrait for HermesHarness {
     }
 
     async fn available_models(&self) -> Result<Vec<ModelInfo>, HarnessError> {
-        Ok(vec![])
+        Ok(crate::harness::registry::fallback_models(self.id()))
     }
 
     fn subscribe(&self) -> Receiver<HarnessEvent> {

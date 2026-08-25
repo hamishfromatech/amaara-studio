@@ -1,17 +1,27 @@
 /**
  * Navya Studio shell — state-driven (production wiring).
  *
+ * Post-onboarding layout (open-design EntryShell idiom):
+ *   TopBar  ──  EntryNavRail  ──  CenterPane (Home/Projects/Models/Sources/Tools/Renders/Settings)  ──  RightRail
+ *
  * Every panel reads from the Zustand store, which is fed by the Rust core
  * through #[tauri::command] + studio://event. Pickers call the real commands;
- * the chat renders real streamed events; the status strip reflects real
- * sidecar health. No hardcoded mock content.
+ * the home composer renders real streamed events; the status strip reflects
+ * real sidecar health. No hardcoded mock content.
  */
 
 import { useEffect, useState } from "react";
 import { useStore } from "../lib/store";
-import { Commands } from "../lib/invoke";
+import { harnessHint } from "../lib/invoke";
 import { ApprovalDialog } from "./ApprovalDialog";
 import { RendersTab } from "../renders/RendersTab";
+import { EntryNavRail, type NavId } from "./EntryNavRail";
+import { HomeView } from "./HomeView";
+import { ProjectsView } from "./ProjectsView";
+import { ModelsView } from "./ModelsView";
+import { SourcesView } from "./SourcesView";
+import { ToolsView } from "./ToolsView";
+import { SettingsView } from "./SettingsView";
 
 // --- TopBar ---
 function TopBar() {
@@ -31,11 +41,13 @@ function TopBar() {
   const current = projects.find((p) => p.id === session.current_project_id);
 
   return (
-    <header className="flex items-center justify-between bg-studio-900 border-b border-studio-800 px-4 py-2 text-slate-100">
-      <div className="flex items-center gap-4">
-        <span className="font-bold text-accent">⬢ Navya Studio</span>
+    <header className="flex h-11 shrink-0 select-none items-center justify-between gap-3 border-b border-line-soft bg-canvas px-3 text-ink">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="whitespace-nowrap text-[13px] font-bold tracking-tight text-ink-strong">
+          ⬢ Navya Studio
+        </span>
         <select
-          className="bg-studio-800 border-none rounded px-2 py-1 text-sm"
+          className="input input-sm w-44"
           value={session.current_project_id ?? ""}
           onChange={(e) => e.target.value && void openProject(e.target.value)}
         >
@@ -50,35 +62,32 @@ function TopBar() {
         </select>
       </div>
 
-      <div className="flex items-center gap-3 text-sm">
-        <button
-          className="px-3 py-1 bg-studio-800 hover:bg-studio-700 rounded"
-          onClick={() => void render("high")}
-        >
-          ⤓ Render
+      <div className="flex items-center gap-2 text-[13px]">
+        <button className="btn btn-primary btn-sm" onClick={() => void render("high")}>
+          Render
         </button>
-        <button
-          className="px-3 py-1 bg-studio-800 hover:bg-studio-700 rounded"
-          onClick={() => void abort()}
-        >
-          ◐ Stop
+        <button className="btn btn-sm" onClick={() => void abort()}>
+          Stop
         </button>
 
         <select
-          className="bg-studio-800 border-none rounded px-2 py-1"
+          className="input input-sm w-auto"
           value={session.harness}
           onChange={(e) => void setHarness(e.target.value)}
-          title="Harness"
+          title={(() => {
+            const h = harnesses.find((x) => x.id === session.harness);
+            return h ? harnessHint(h) : "Harness";
+          })()}
         >
           {harnesses.map((h) => (
-            <option key={h.id} value={h.id}>
+            <option key={h.id} value={h.id} disabled={!h.available} title={harnessHint(h)}>
               {h.label} {h.available ? "" : "(not installed)"}
             </option>
           ))}
         </select>
 
         <select
-          className="bg-studio-800 border-none rounded px-2 py-1"
+          className="input input-sm w-auto"
           value={session.model}
           onChange={(e) => void setModel(e.target.value)}
           title="Model"
@@ -90,18 +99,18 @@ function TopBar() {
           ))}
         </select>
 
-        <div className="flex items-center gap-1">
+        <div className="seg" title="Model source">
           <button
-            className={`px-2 py-1 rounded ${session.source === "cloud" ? "bg-accent text-white" : "bg-studio-800"}`}
+            className={session.source === "cloud" ? "is-active" : ""}
             onClick={() => void setSource("cloud")}
           >
-            ● Cloud
+            Cloud
           </button>
           <button
-            className={`px-2 py-1 rounded ${session.source === "local" ? "bg-accent text-white" : "bg-studio-800"}`}
+            className={session.source === "local" ? "is-active" : ""}
             onClick={() => void setSource("local")}
           >
-            ● Local
+            Local
           </button>
         </div>
       </div>
@@ -109,203 +118,74 @@ function TopBar() {
   );
 }
 
-// --- LeftRail ---
-function LeftRail() {
-  const projects = useStore((s) => s.projects) ?? [];
-  const models = useStore((s) => s.models) ?? [];
-  const session = useStore((s) => s.session);
-  const newProject = useStore((s) => s.newProject);
-  const openProject = useStore((s) => s.openProject);
-  const setModel = useStore((s) => s.setModel);
-  const [creating, setCreating] = useState(false);
-  const [name, setName] = useState("");
-  const [dir, setDir] = useState("");
-
-  return (
-    <aside className="w-60 border-r border-studio-800 bg-studio-950 text-slate-200 p-3 overflow-y-auto">
-      <div className="mb-4">
-        <h3 className="text-xs font-semibold tracking-widest text-slate-400 mb-2">PROJECTS</h3>
-        <div className="space-y-1 text-sm">
-          {projects.length === 0 && <div className="text-slate-500 text-xs">No projects yet.</div>}
-          {projects.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => void openProject(p.id)}
-              className={`w-full text-left px-2 py-1 rounded ${
-                session?.current_project_id === p.id ? "bg-studio-800 text-accent" : "hover:bg-studio-800/50"
-              }`}
-            >
-              {p.name}
-            </button>
-          ))}
-        </div>
-
-        {creating ? (
-          <div className="mt-2 space-y-1">
-            <input
-              className="w-full bg-studio-800 rounded px-2 py-1 text-sm"
-              placeholder="Project name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            <input
-              className="w-full bg-studio-800 rounded px-2 py-1 text-sm"
-              placeholder="Directory"
-              value={dir}
-              onChange={(e) => setDir(e.target.value)}
-            />
-            <div className="flex gap-1">
-              <button
-                className="px-2 py-1 bg-accent text-white rounded text-xs"
-                onClick={async () => {
-                  if (name && dir) {
-                    await newProject(name, dir);
-                    setName("");
-                    setDir("");
-                    setCreating(false);
-                  }
-                }}
-              >
-                Create
-              </button>
-              <button className="px-2 py-1 bg-studio-800 rounded text-xs" onClick={() => setCreating(false)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button className="mt-2 text-xs text-slate-400 hover:text-accent" onClick={() => setCreating(true)}>
-            + New project
-          </button>
-        )}
-      </div>
-
-      <div className="mb-4">
-        <h3 className="text-xs font-semibold tracking-widest text-slate-400 mb-2">MODELS</h3>
-        <div className="space-y-1 text-sm">
-          <div className="text-xs text-slate-500">Cloud (Navya)</div>
-          {models.filter((m) => m.source === "cloud").map((m) => (
-            <button
-              key={m.id}
-              onClick={() => void setModel(m.id)}
-              className={`w-full text-left pl-2 ${m.active ? "text-accent" : "text-slate-300 hover:text-accent"}`}
-            >
-              {m.active ? "● " : "○ "}
-              {m.name}
-            </button>
-          ))}
-          <div className="text-xs text-slate-500 mt-2">Local</div>
-          {models.filter((m) => m.source === "local").map((m) => (
-            <button
-              key={m.id}
-              onClick={() => void setModel(m.id)}
-              className={`w-full text-left pl-2 ${m.active ? "text-accent" : "text-slate-300 hover:text-accent"}`}
-            >
-              {m.active ? "● " : "○ "}
-              {m.name}
-            </button>
-          ))}
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-// --- ChatView ---
-function ChatView() {
-  const chat = useStore((s) => s.chat);
-  const session = useStore((s) => s.session);
-  const sendPrompt = useStore((s) => s.sendPrompt);
-  const steer = useStore((s) => s.steer);
-  const [text, setText] = useState("");
-
-  const send = (mode: string) => {
-    if (!text.trim()) return;
-    void sendPrompt(text, mode);
-    setText("");
-  };
-
-  return (
-    <main className="flex-1 flex flex-col bg-studio-900 text-slate-100">
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {chat.length === 0 && (
-          <div className="text-slate-500 text-sm text-center mt-8">
-            {session?.current_project_id
-              ? "Describe what you want to make. The agent will author the composition and render it."
-              : "Create or open a project to start chatting with the agent."}
-          </div>
-        )}
-        {chat.map((m) => (
-          <div key={m.id} className="space-y-1">
-            <div className="text-xs text-slate-400">
-              {m.role === "you" ? "you" : m.role === "agent" ? `agent · ${session?.harness ?? ""}` : "system"}
-              {m.status === "thinking" && " · thinking…"}
-              {m.status === "error" && " · error"}
-              {m.status === "done" && " · done"}
-            </div>
-            <p className={`text-sm ${m.status === "error" ? "text-red-400" : "text-slate-200"}`}>
-              {m.content || (m.status === "thinking" ? "…" : "")}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      <div className="border-t border-studio-800 p-4 bg-studio-950">
-        <textarea
-          className="w-full bg-studio-800 border border-studio-700 rounded p-2 text-sm resize-none focus:outline-none focus:border-accent"
-          placeholder={
-            session?.current_project_id ? "Reply to agent…" : "Open a project to enable the agent…"
-          }
-          rows={3}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send("normal");
-          }}
-        />
-        <div className="mt-2 flex gap-2 text-xs text-slate-400">
-          <button className="px-2 py-1 bg-studio-800 hover:bg-studio-700 rounded" onClick={() => send("normal")}>
-            ▶ Send
-          </button>
-          <button className="px-2 py-1 bg-studio-800 hover:bg-studio-700 rounded" onClick={() => steer(text)}>
-            ⚙ steer
-          </button>
-        </div>
-      </div>
-    </main>
-  );
-}
-
 // --- RightRail ---
 function RightRail() {
   const renders = useStore((s) => s.renders);
   const cancelRender = useStore((s) => s.cancelRender);
+  const session = useStore((s) => s.session);
+  const config = useStore((s) => s.config);
+  const projects = useStore((s) => s.projects) ?? [];
+
+  const activeCount = renders.filter((r) => r.status === "running").length;
+  const doneCount = renders.filter((r) => r.status === "done").length;
+  const current = projects.find((p) => p.id === session?.current_project_id);
 
   return (
-    <aside className="w-72 border-l border-studio-800 bg-studio-950 text-slate-200 p-3 overflow-y-auto">
-      <div className="mb-4">
-        <h3 className="text-xs font-semibold tracking-widest text-slate-400 mb-2">RENDER QUEUE</h3>
-        <div className="space-y-1 text-sm">
-          {renders.length === 0 && <div className="text-slate-500 text-xs">No renders yet.</div>}
-          {renders.map((r) => (
-            <div key={r.job_id} className="flex items-center justify-between bg-studio-800/50 p-2 rounded">
-              <span>
-                {r.status === "running" ? "▶" : r.status === "done" ? "✓" : r.status === "failed" ? "✗" : "○"}{" "}
-                {r.job_id.slice(0, 8)} · {r.quality}
+    <aside className="w-72 shrink-0 overflow-y-auto border-l border-line-soft bg-panel p-3 text-ink">
+      <div className="mb-5">
+        <h3 className="rail-label">Render Queue</h3>
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <div
+            style={{
+              padding: "8px 10px",
+              background: "var(--bg)",
+              border: "1px solid var(--border-soft)",
+              borderRadius: 8,
+            }}
+          >
+            <div style={{ fontFamily: "var(--mono)", fontSize: 16, color: "var(--text-strong)", lineHeight: 1 }}>
+              {activeCount}
+            </div>
+            <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 2 }}>running</div>
+          </div>
+          <div
+            style={{
+              padding: "8px 10px",
+              background: "var(--bg)",
+              border: "1px solid var(--border-soft)",
+              borderRadius: 8,
+            }}
+          >
+            <div style={{ fontFamily: "var(--mono)", fontSize: 16, color: "var(--text-strong)", lineHeight: 1 }}>
+              {doneCount}
+            </div>
+            <div style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 2 }}>done</div>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          {renders.length === 0 && (
+            <div className="px-2 py-1 text-xs text-ink-faint">No renders yet.</div>
+          )}
+          {renders.slice(0, 5).map((r) => (
+            <div
+              key={r.job_id}
+              className="flex items-center justify-between gap-2 rounded-lg border border-line-soft bg-canvas px-2.5 py-2"
+            >
+              <span className="flex min-w-0 items-center gap-2 text-[13px]">
+                <RenderDot status={r.status} />
+                <span className="truncate">
+                  <span className="mono text-xs">{r.job_id.slice(0, 8)}</span>
+                  <span className="text-ink-muted"> · {r.quality}</span>
+                </span>
               </span>
-              <div className="flex gap-1 text-xs">
-                {r.status === "done" && r.output_path && (
-                  <button
-                    className="px-1 bg-studio-700 rounded"
-                    onClick={() => {
-                      void Commands.revealInFolder(r.output_path!);
-                    }}
-                  >
-                    reveal
-                  </button>
-                )}
+              <div className="flex shrink-0 gap-1 text-xs">
                 {r.status === "running" && (
-                  <button className="px-1 bg-studio-700 rounded" onClick={() => void cancelRender(r.job_id)}>
+                  <button
+                    className="icon-btn h-6 w-6"
+                    title="Cancel render"
+                    onClick={() => void cancelRender(r.job_id)}
+                  >
                     ✕
                   </button>
                 )}
@@ -315,38 +195,68 @@ function RightRail() {
         </div>
       </div>
 
-      <InspectorPanel />
+      <div>
+        <h3 className="rail-label">Inspector</h3>
+        <div className="space-y-1 rounded-lg border border-line-soft bg-canvas p-3">
+          <div className="text-[13px] font-medium text-ink-strong">
+            {current ? current.name : "No project"}
+          </div>
+          {current && (
+            <>
+              <div className="mono truncate text-xs text-ink-muted" title={current.dir}>
+                {current.dir}
+              </div>
+              <div className="text-xs text-ink-muted">
+                harness <span className="text-ink">{current.harness}</span>
+              </div>
+              <div className="text-xs text-ink-muted">
+                model <span className="text-ink">{current.model}</span>
+              </div>
+            </>
+          )}
+          {session && (
+            <div className="mt-1 border-t border-line-soft pt-2">
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-faint">
+                Session
+              </div>
+              <div className="text-xs text-ink-muted">
+                source <span className="text-ink">{session.source}</span>
+              </div>
+              <div className="text-xs text-ink-muted">
+                model <span className="text-ink">{session.model}</span>
+              </div>
+            </div>
+          )}
+          {config && (
+            <div className="mt-1 border-t border-line-soft pt-2">
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-faint">
+                Config
+              </div>
+              <div className="text-xs text-ink-muted">
+                base <span style={{ fontFamily: "var(--mono)" }} className="text-ink">{config.navya_base_url}</span>
+              </div>
+              <div className="text-xs text-ink-muted">
+                byok <span className="text-ink">{config.byok ? "yes" : "no"}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </aside>
   );
 }
 
-function InspectorPanel() {
-  const session = useStore((s) => s.session);
-  const config = useStore((s) => s.config);
-  const projects = useStore((s) => s.projects) ?? [];
-  if (!session || !config) return null;
-  const current = projects.find((p) => p.id === session.current_project_id);
-
-  return (
-    <div>
-      <h3 className="text-xs font-semibold tracking-widest text-slate-400 mb-2">INSPECTOR</h3>
-      <div className="text-sm space-y-1 bg-studio-800/50 p-2 rounded">
-        <div className="font-medium">▸ {current ? current.name : "No project"}</div>
-        {current && (
-          <>
-            <div className="pl-2 text-xs text-slate-400">{current.dir}</div>
-            <div className="pl-2 text-xs text-slate-400">harness: {current.harness}</div>
-            <div className="pl-2 text-xs text-slate-400">model: {current.model}</div>
-          </>
-        )}
-        <div className="mt-2 pt-2 border-t border-studio-700">
-          <div className="text-xs font-semibold mb-1">─ session ──</div>
-          <div className="pl-2 text-xs text-slate-400">source: {session.source}</div>
-          <div className="pl-2 text-xs text-slate-400">model: {session.model}</div>
-        </div>
-      </div>
-    </div>
-  );
+function RenderDot({ status }: { status: string }) {
+  const cls =
+    status === "running"
+      ? "text-info"
+      : status === "done"
+        ? "text-ok"
+        : status === "failed"
+          ? "text-danger"
+          : "text-ink-faint";
+  const glyph = status === "running" ? "▶" : status === "done" ? "✓" : status === "failed" ? "✗" : "○";
+  return <span className={`text-xs ${cls}`}>{glyph}</span>;
 }
 
 // --- StatusStrip ---
@@ -355,42 +265,28 @@ function StatusStrip() {
   const error = useStore((s) => s.error);
   const renderCount = useStore((s) => s.render_count);
 
-  const dot = (status: string) => (status === "running" ? "text-accent" : status === "exited" ? "text-red-400" : "text-slate-500");
+  const dot = (status: string) =>
+    status === "running" ? "text-info" : status === "exited" ? "text-danger" : "text-ink-faint";
 
   return (
-    <footer className="bg-studio-950 border-t border-studio-800 px-4 py-1 text-xs flex items-center gap-4 text-slate-300">
+    <footer className="flex h-7 shrink-0 items-center gap-4 border-t border-line-soft bg-panel px-3 text-xs text-ink-muted">
       {sidecars.map((sc) => (
-        <span key={sc.name} className={dot(sc.status)} title={sc.detail ?? sc.status}>
-          ● {sc.name} {sc.status}
+        <span key={sc.name} className="flex items-center gap-1.5" title={sc.detail ?? sc.status}>
+          <span className={`text-[9px] ${dot(sc.status)}`}>●</span>
+          <span>
+            {sc.name} <span className="text-ink-faint">{sc.status}</span>
+          </span>
         </span>
       ))}
-      <span className="ml-auto text-slate-400">{renderCount} render(s)</span>
-      {error && <span className="text-red-400 truncate max-w-xs">⚠ {error}</span>}
+      <span className="numeric ml-auto text-ink-muted">{renderCount} render(s)</span>
+      {error && <span className="max-w-xs truncate text-danger">⚠ {error}</span>}
     </footer>
-  );
-}
-
-// --- TabBar + tab state ---
-function TabBar({ tab, setTab }: { tab: string; setTab: (t: string) => void }) {
-  const tabs = ["Chat", "Timeline", "Assets", "Renders"];
-  return (
-    <div className="flex border-b border-studio-800 bg-studio-950 text-sm">
-      {tabs.map((t) => (
-        <button
-          key={t}
-          className={`px-4 py-2 border-r border-studio-800 ${tab === t ? "bg-studio-800 text-accent" : "text-slate-300 hover:bg-studio-800/50"}`}
-          onClick={() => setTab(t)}
-        >
-          {t}
-        </button>
-      ))}
-    </div>
   );
 }
 
 // --- StudioShell (top-level) ---
 export function StudioShell() {
-  const [tab, setTab] = useState("Chat");
+  const [navId, setNavId] = useState<NavId>("home");
   const refreshRenders = useStore((s) => s.refreshRenders);
   const pendingApproval = useStore((s) => s.pendingApproval);
   const approve = useStore((s) => s.approve);
@@ -399,16 +295,24 @@ export function StudioShell() {
     void refreshRenders();
   }, [refreshRenders]);
 
+  const navigate = (id: NavId) => setNavId(id);
+
   return (
-    <div className="flex flex-col h-screen bg-studio-900 text-slate-100">
+    <div className="flex h-screen flex-col bg-canvas text-ink">
       <TopBar />
-      <TabBar tab={tab} setTab={setTab} />
       <div className="flex flex-1 overflow-hidden">
-        <LeftRail />
-        {tab === "Chat" && <ChatView />}
-        {tab === "Timeline" && <PlaceholderTab name="Timeline" hint="Open a HyperFrames composition to see the preview + tracks." />}
-        {tab === "Assets" && <PlaceholderTab name="Assets" hint="Generated images and imported media appear here." />}
-        {tab === "Renders" && <RendersTab />}
+        <EntryNavRail navId={navId} onChange={setNavId} />
+        <main className="entry-main">
+          <div className="entry-main__scroll">
+            {navId === "home" && <HomeView onNavigate={navigate} />}
+            {navId === "projects" && <ProjectsView />}
+            {navId === "models" && <ModelsView />}
+            {navId === "sources" && <SourcesView />}
+            {navId === "tools" && <ToolsView />}
+            {navId === "renders" && <RendersTab />}
+            {navId === "settings" && <SettingsView />}
+          </div>
+        </main>
         <RightRail />
       </div>
       <StatusStrip />
@@ -421,16 +325,5 @@ export function StudioShell() {
         />
       )}
     </div>
-  );
-}
-
-function PlaceholderTab({ name, hint }: { name: string; hint: string }) {
-  return (
-    <main className="flex-1 flex items-center justify-center bg-studio-900 text-slate-500 text-sm">
-      <div className="text-center">
-        <div className="font-medium text-slate-300 mb-1">{name}</div>
-        <div>{hint}</div>
-      </div>
-    </main>
   );
 }

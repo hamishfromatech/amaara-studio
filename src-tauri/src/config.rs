@@ -83,6 +83,10 @@ pub struct NavyaConfig {
     #[serde(default = "default_local_llama_url")]
     pub local_llama_url: String,
 
+    /// Navya Engine local proxy URL (OpenAI-compatible endpoint).
+    #[serde(default = "default_engine_url")]
+    pub engine_url: String,
+
     /// sd-server HTTP URL (Phase 8).
     #[serde(default)]
     pub sd_server_url: Option<String>,
@@ -120,6 +124,9 @@ fn default_harnesses() -> Vec<String> {
 fn default_local_llama_url() -> String {
     "http://localhost:8080".to_string()
 }
+fn default_engine_url() -> String {
+    "http://127.0.0.1:7685".to_string()
+}
 fn default_models_dir() -> PathBuf {
     PathBuf::from("models")
 }
@@ -155,6 +162,7 @@ fn apply_patch(
                     out.enabled_harnesses = arr;
                 }
                 "local_llama_url" => out.local_llama_url = string_val(v)?,
+                "engine_url" => out.engine_url = string_val(v)?,
                 "sd_server_url" => {
                     if let Some(s) = v.as_str() {
                         out.sd_server_url = Some(s.to_string());
@@ -211,6 +219,7 @@ pub fn default_config() -> NavyaConfig {
         byok: false,
         enabled_harnesses: default_harnesses(),
         local_llama_url: default_local_llama_url(),
+        engine_url: default_engine_url(),
         sd_server_url: None,
         sd_binary_path: PathBuf::from("binaries/sd-server.exe"),
         sd_models_dir: default_models_dir(),

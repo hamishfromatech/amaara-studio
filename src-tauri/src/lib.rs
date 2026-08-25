@@ -4,6 +4,8 @@
 
 pub mod commands;
 pub mod config;
+pub mod control;
+pub mod engine;
 pub mod events;
 pub(crate) mod harness;
 pub(crate) mod navya;
@@ -16,7 +18,9 @@ pub(crate) mod store;
 use std::path::PathBuf;
 
 use tauri::Manager;
+use tokio::sync::broadcast;
 
+use crate::control::EventChannel;
 use crate::state::AppState;
 
 /// Resolve the app-data dir + config path.
@@ -59,9 +63,28 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
 
-            // Build + manage the shared state.
+            // Build + manage the shared state (wrapped in Arc for sharing).
             let state = AppState::new(config, cfg_path, store);
-            app.manage(state);
+            app.manage(std::sync::Arc::new(state));
+
+            // Create the event broadcast channel for the control server.
+            // Commands send events here; the control server forwards to WS clients.
+            let event_tx: EventChannel = broadcast::Sender::new(100);
+            let event_tx_clone = event_tx.clone();
+            app.manage(event_tx);
+
+            // Launch the control server in the background.
+            let app_handle = app.handle().clone();
+            tokio::spawn(async move {
+                match control::launch(&app_handle, event_tx_clone).await {
+                    Ok(handle) => {
+                        tracing::info!("control server started at {}", handle.url);
+                    }
+                    Err(e) => {
+                        tracing::warn!("control server launch failed: {e}");
+                    }
+                }
+            });
 
             Ok(())
         })
@@ -89,6 +112,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             commands::reveal_in_folder,
             commands::generate_image,
             commands::list_cloud_models,
+            commands::detect_engine,
             commands::approve,
         ])
         .run(tauri::generate_context!())?;

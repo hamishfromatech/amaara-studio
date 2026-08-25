@@ -179,6 +179,27 @@ impl ProjectStore {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
+    /// Insert an asset row (idempotent on the derived id). Returns the asset id.
+    pub fn insert_asset(
+        &self,
+        project_id: &str,
+        composition_id: Option<&str>,
+        path: &str,
+        kind: &str,
+        source: &str,
+        prompt: Option<&str>,
+    ) -> Result<String, StoreError> {
+        let id = format!("a-{}", hash_str(path));
+        let now = now_ms();
+        self.conn.execute(
+            "INSERT INTO assets (id, project_id, composition_id, path, kind, source, prompt, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO NOTHING",
+            rusqlite::params![id, project_id, composition_id, path, kind, source, prompt, now],
+        )?;
+        Ok(id)
+    }
+
     /// Count rows in a table (used by the generation-log / asset row counts).
     pub fn count(&self, table: &str) -> Result<i64, StoreError> {
         // Validate table name to prevent SQL injection (only allow known tables).
@@ -195,6 +216,15 @@ impl ProjectStore {
 fn now_ms() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+}
+
+/// Deterministic 8-hex-char hash for derived ids (asset rows, etc.).
+fn hash_str(s: &str) -> String {
+    let mut h: u32 = 0;
+    for c in s.chars() {
+        h = h.wrapping_mul(31).wrapping_add(c as u32);
+    }
+    format!("{:08x}", h)
 }
 
 #[cfg(test)]

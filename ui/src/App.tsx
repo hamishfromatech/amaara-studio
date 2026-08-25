@@ -25,10 +25,10 @@ export default function App() {
 
   if (!initialized || loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-studio-900 text-slate-300">
+      <div className="flex h-screen items-center justify-center bg-canvas text-ink">
         <div className="text-center">
-          <div className="text-2xl font-bold text-accent mb-2">⬢ Navya Studio</div>
-          <div className="text-sm animate-pulse">Starting up…</div>
+          <div className="mb-1.5 text-xl font-bold tracking-tight text-ink-strong">⬢ Navya Studio</div>
+          <div className="animate-pulse text-[13px] text-ink-muted">Starting up…</div>
         </div>
       </div>
     );

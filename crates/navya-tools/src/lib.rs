@@ -57,13 +57,13 @@ pub struct ProjectRow {
     pub source: String,
 }
 
-/// Context passed to all tool functions. Owned or borrowed as needed.
+/// Context passed to all tool functions. Uses Box<dyn> for owned trait objects.
 #[allow(missing_debug_implementations)]
-pub struct ToolContext<'c> {
+pub struct ToolContext {
     pub project_dir: PathBuf,
-    pub config: &'c ConfigRef,
-    pub store: &'c dyn StoreRead,
-    pub sidecars: &'c dyn SidecarView,
+    pub config: Box<ConfigRef>,
+    pub store: Box<dyn StoreRead + Send + Sync>,
+    pub sidecars: Box<dyn SidecarView + Send + Sync>,
 }
 
 /// --- Tool Request/Response Types ------------------------------------------------
@@ -134,7 +134,7 @@ pub struct Snapshot {
 
 /// Generate an image. Routes to cloud or local based on ctx.config and source preference.
 /// Returns GeneratedImage with asset record created in the store.
-pub async fn generate_image(ctx: &ToolContext<'_>, req: GenerateImageReq) -> anyhow::Result<GeneratedImage> {
+pub async fn generate_image(ctx: &ToolContext, req: GenerateImageReq) -> anyhow::Result<GeneratedImage> {
     // In a real impl, this would call Navya Cloud /v1/images/generations or sd-server.
     // For M0 scaffold, we return a stub generated image with a mock asset path.
     let model_used = req.model.clone().unwrap_or_else(|| ctx.config.default_model.clone());
@@ -170,7 +170,7 @@ pub async fn generate_image(ctx: &ToolContext<'_>, req: GenerateImageReq) -> any
 }
 
 /// Render to video via the render queue / sidecar. Returns a RenderJob id.
-pub async fn render_to_video(ctx: &ToolContext<'_>, req: RenderToVideoReq) -> anyhow::Result<RenderJob> {
+pub async fn render_to_video(_ctx: &ToolContext, req: RenderToVideoReq) -> anyhow::Result<RenderJob> {
     let job_id = format!("render-{}", uuid_or_hash(&format!("{}-{}", req.project_id, req.composition_id)));
     
     Ok(RenderJob {
@@ -184,7 +184,7 @@ pub async fn render_to_video(ctx: &ToolContext<'_>, req: RenderToVideoReq) -> an
 }
 
 /// List available models (cloud + local). Mock implementation for M0.
-pub async fn list_local_models(_ctx: &ToolContext<'_>) -> anyhow::Result<ModelList> {
+pub async fn list_local_models(_ctx: &ToolContext) -> anyhow::Result<ModelList> {
     Ok(ModelList {
         cloud_models: vec!["navya/auto".to_string(), "qwen3-32b".to_string()],
         local_models: vec!["llama3-8b".to_string(), "sd-xl".to_string()],
@@ -192,12 +192,12 @@ pub async fn list_local_models(_ctx: &ToolContext<'_>) -> anyhow::Result<ModelLi
 }
 
 /// Set the generation source (cloud vs local). No-op for M0 scaffold.
-pub async fn set_generation_source(_ctx: &ToolContext<'_>, _source: String) -> anyhow::Result<()> {
+pub async fn set_generation_source(_ctx: &ToolContext, _source: String) -> anyhow::Result<()> {
     Ok(())
 }
 
 /// Get current project state from store + config.
-pub async fn get_project_state(ctx: &ToolContext<'_>) -> anyhow::Result<ProjectState> {
+pub async fn get_project_state(ctx: &ToolContext) -> anyhow::Result<ProjectState> {
     let projects = ctx.store.list_projects()?;
     let first = projects.first().map(|p| p.id.clone()).unwrap_or_else(|| "default".to_string());
     let name = projects.first().map(|p| p.name.clone()).unwrap_or_else(|| "default-project".to_string());
@@ -214,7 +214,7 @@ pub async fn get_project_state(ctx: &ToolContext<'_>) -> anyhow::Result<ProjectS
 }
 
 /// Snapshot a frame at timecode t (ms) from the current composition. Mock for M0.
-pub async fn snapshot(ctx: &ToolContext<'_>, t_ms: i64) -> anyhow::Result<Snapshot> {
+pub async fn snapshot(ctx: &ToolContext, t_ms: i64) -> anyhow::Result<Snapshot> {
     let asset_id = format!("snap-{}", uuid_or_hash(&format!("{}", t_ms)));
     let path = ctx.project_dir.join("assets").join("img").join(format!("snapshot-{}.png", asset_id));
 

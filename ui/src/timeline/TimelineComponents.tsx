@@ -10,11 +10,9 @@ import React from "react";
 // --- PreviewCanvas ---
 export function PreviewCanvas() {
   return (
-    <div className="bg-studio-950 border-b border-studio-800 p-4">
-      <div className="aspect-video bg-studio-800 rounded-lg flex items-center justify-center border border-studio-700">
-        <div className="text-slate-400 text-sm">
-          [ ▶ live preview canvas 1280×720 ]
-        </div>
+    <div className="border-b border-line-soft bg-canvas p-4">
+      <div className="flex aspect-video items-center justify-center rounded-xl border border-line-soft bg-panel">
+        <div className="text-[13px] text-ink-faint">[ ▶ live preview canvas 1280×720 ]</div>
       </div>
     </div>
   );
@@ -31,14 +29,14 @@ export function TrackView() {
   ];
 
   return (
-    <div className="p-4 space-y-2 bg-studio-950">
-      <h3 className="text-xs font-semibold tracking-widest text-slate-400 mb-2">tracks</h3>
-      {tracks.map((track, i) => (
-        <div key={track.name} className="flex items-center gap-2 text-sm">
-          <span className="w-16 text-slate-400 font-mono">{track.label}</span>
-          <span className="flex-1 bg-studio-800 h-6 rounded relative overflow-hidden">
-            <div className="absolute inset-y-0 left-0 w-[30%] bg-accent/30" />
-            <span className="absolute inset-y-0 right-2 flex items-center text-xs text-slate-300 truncate pr-2">
+    <div className="space-y-2 bg-canvas p-4">
+      <h3 className="rail-label">Tracks</h3>
+      {tracks.map((track) => (
+        <div key={track.name} className="flex items-center gap-2 text-[13px]">
+          <span className="mono w-16 text-xs text-ink-muted">{track.label}</span>
+          <span className="relative h-6 flex-1 overflow-hidden rounded-md border border-line-soft bg-panel">
+            <div className="absolute inset-y-0 left-0 w-[30%] bg-fill-secondary" />
+            <span className="absolute inset-y-0 right-2 flex items-center truncate pr-2 text-xs text-ink-muted">
               {track.content || "—"}
             </span>
           </span>
@@ -46,18 +44,18 @@ export function TrackView() {
       ))}
 
       {/* Selected clip inspector preview */}
-      <div className="mt-4 pt-4 border-t border-studio-800 text-sm space-y-1">
+      <div className="mt-4 space-y-1.5 border-t border-line-soft pt-3 text-[13px] text-ink">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-slate-300">▌title</span>
+          <span className="mono text-xs text-ink-strong">▌title</span>
           <span>"What is a black hole?"</span>
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-400">
-          <span>t=07.2s</span>
-          <span className="ml-auto flex gap-2">
-            <button className="hover:text-accent">◀ ▶ ■</button>
-            <button className="text-accent hover:opacity-80">[edit in chat]</button>
-            <button className="hover:text-accent">[snapshot]</button>
-            <button className="hover:text-accent">[add keyframe]</button>
+        <div className="flex items-center gap-2 text-xs text-ink-muted">
+          <span className="numeric">t=07.2s</span>
+          <span className="ml-auto flex gap-1.5">
+            <button className="btn btn-ghost btn-sm h-6 px-2 text-xs">◀ ▶ ■</button>
+            <button className="btn btn-ghost btn-sm h-6 px-2 text-xs">Edit in chat</button>
+            <button className="btn btn-ghost btn-sm h-6 px-2 text-xs">Snapshot</button>
+            <button className="btn btn-ghost btn-sm h-6 px-2 text-xs">Add keyframe</button>
           </span>
         </div>
       </div>
@@ -68,7 +66,7 @@ export function TrackView() {
 // --- TimelineTab ---
 export function TimelineTab() {
   return (
-    <div className="flex flex-col h-full bg-studio-900 text-slate-100">
+    <div className="flex h-full flex-col bg-canvas text-ink">
       <PreviewCanvas />
       <TrackView />
     </div>

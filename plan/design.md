@@ -498,14 +498,21 @@ etc.) so the studio gets quieter over time.
 
 ## 11. Theming
 
-- **Dark by default** (the studio is for long rendering sessions). A light
-  theme ships; both are Tauri-native (real window chrome), not web CSS only.
-- Palette anchors: a deep "studio" charcoal background, a single accent
-  (Navya violet/blue) reserved for the active/running state and primary
-  actions, neutral greys for structure, semantic colours only for state dots
-  (blue=running, amber=waiting, green=done, red=error).
-- Typography: a neutral UI sans for chrome; a mono for code/bash/output and
-  the timeline timecode. No decorative type in chrome.
+The visual language follows open-design's neutral product workspace
+(`ui/src/index.css` carries the tokens; light + dark, following the OS
+unless `data-theme` pins one).
+
+- Palette anchors: stepped warm greys carry the interface
+  (`#fff/#fafafa/#ededed/#dbdbdb` light, `#202020/#353535/#494949/#5c5c5c`
+  dark) with hairline borders and quiet shadows. Primary actions are solid
+  near-black pills (invert to cream in dark). Brand green `#87ea5c` is
+  reserved for sparse feedback and brand emphasis. Semantic colours only for
+  state dots (blue=running, amber=waiting, green=done, red=error).
+- Typography: Albert Sans for chrome (14px baseline, 13px prose), JiduMono
+  Pro for code/bash/output, ids, and the timeline timecode. No decorative
+  type in chrome.
+- Shape & motion: 4px controls / 8px cards / 12px dialogs / pill primaries;
+  100–150ms ease-out transitions, 1px press on buttons.
 - Density: a "comfortable" default and a "compact" option for laptops; the
   rails and tool cards respect it.
 

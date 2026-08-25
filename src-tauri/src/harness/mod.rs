@@ -13,6 +13,7 @@ pub(crate) mod codex;
 pub(crate) mod hermes;
 pub(crate) mod antigravity;
 pub(crate) mod openclaw;
+pub(crate) mod registry;
 
 use std::sync::Arc;
 use tokio::sync::mpsc::{self, Receiver};
@@ -88,6 +89,10 @@ pub struct HarnessCtx {
     pub project_dir: std::path::PathBuf,
     pub model: String,
     pub source: String, // "cloud" or "local"
+    /// Control server URL for the harness extension / MCP server proxy.
+    pub control_url: Option<String>,
+    /// Control server bearer token.
+    pub control_token: Option<String>,
 }
 
 /// Prompt modes for the harness.

@@ -23,44 +23,35 @@ export function ApprovalDialog({ request, onAnswer }: ApprovalDialogProps) {
   const command = isBash ? (request.payload as any)?.command || "$ npx hyperframes render --quality high" : "Tool execution";
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-studio-900 border border-studio-700 rounded-lg p-4 max-w-md w-full shadow-xl">
-        <h3 className="text-sm font-semibold text-slate-200 mb-3">Permission Request</h3>
-        
-        <div className="bg-studio-800/50 border border-studio-700 rounded p-3 mb-4 font-mono text-xs">
-          <div className="text-slate-300">{command}</div>
+    <div className="scrim">
+      <div className="modal w-full max-w-md p-5">
+        <h3 className="mb-3 text-sm font-semibold text-ink-strong">Permission Request</h3>
+
+        <div className="mono mb-4 rounded-md border border-line-soft bg-panel p-3 text-xs leading-relaxed text-ink">
+          {command}
         </div>
 
-        <div className="flex items-center gap-2 mb-4">
+        <div className="mb-5 flex items-center gap-2">
           <input
             type="checkbox"
             id="alwaysAllow"
             checked={alwaysAllow}
             onChange={(e) => setAlwaysAllow(e.target.checked)}
-            className="w-4 h-4 bg-studio-800 border-studio-700 rounded text-accent focus:ring-accent"
+            className="h-4 w-4 cursor-pointer"
           />
-          <label htmlFor="alwaysAllow" className="text-sm text-slate-300">
+          <label htmlFor="alwaysAllow" className="cursor-pointer text-[13px] text-ink">
             Always allow this {request.kind} command
           </label>
         </div>
 
-        <div className="flex gap-2 justify-end">
-          <button
-            onClick={() => onAnswer("deny", false)}
-            className="px-3 py-1 bg-studio-700 hover:bg-studio-600 rounded text-sm text-slate-300"
-          >
+        <div className="flex justify-end gap-2">
+          <button onClick={() => onAnswer("deny", false)} className="btn btn-ghost btn-sm">
             Deny
           </button>
-          <button
-            onClick={() => onAnswer("edit", false)}
-            className="px-3 py-1 bg-studio-700 hover:bg-studio-600 rounded text-sm text-slate-300"
-          >
+          <button onClick={() => onAnswer("edit", false)} className="btn btn-sm">
             Edit
           </button>
-          <button
-            onClick={() => onAnswer("allow", alwaysAllow)}
-            className="px-3 py-1 bg-accent hover:bg-accent/80 rounded text-sm text-white font-medium"
-          >
+          <button onClick={() => onAnswer("allow", alwaysAllow)} className="btn btn-primary btn-sm">
             Allow
           </button>
         </div>

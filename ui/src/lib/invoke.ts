@@ -51,6 +51,23 @@ export interface HarnessInfo {
   abort: boolean;
   persistent: boolean;
   available: boolean;
+  /** Detected binary path (when found on PATH). */
+  path?: string;
+  /** First line of `<bin> --version`, when readable. */
+  version?: string;
+  /** Install instructions link from the harness descriptor. */
+  install_url?: string;
+  /** Docs link from the harness descriptor. */
+  docs_url?: string;
+}
+
+/** One-line tooltip for a harness row: detection provenance or setup hint. */
+export function harnessHint(h: HarnessInfo): string {
+  if (h.available) {
+    return [h.version, h.path].filter(Boolean).join("\n") || "installed";
+  }
+  const base = `${h.label} is not installed or not on PATH.`;
+  return h.install_url ? `${base}\nInstall: ${h.install_url}` : base;
 }
 
 export interface SidecarHealth {

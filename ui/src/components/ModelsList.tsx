@@ -22,54 +22,32 @@ interface ModelsListProps {
 }
 
 export function ModelsList({ cloudModels, localModels, activeModelId, onModelSelect }: ModelsListProps) {
+  const renderRow = (model: ModelInfo) => (
+    <button
+      key={model.id}
+      onClick={() => onModelSelect(model.id)}
+      className={`row justify-between ${model.is_active ? "is-active" : ""}`}
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        {model.is_active && <span className="text-xs text-ok">✓</span>}
+        <span className="truncate">{model.id}</span>
+        {model.kind !== "chat" && <span className="text-xs text-ink-faint">({model.kind})</span>}
+      </span>
+    </button>
+  );
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Cloud (Navya) section */}
       <div>
-        <h3 className="text-xs font-semibold tracking-widest text-slate-400 mb-2">Cloud (Navya)</h3>
-        <div className="space-y-1">
-          {cloudModels.map((model) => (
-            <button
-              key={model.id}
-              onClick={() => onModelSelect(model.id)}
-              className={`w-full text-left text-sm p-1 rounded hover:bg-studio-800 flex items-center justify-between ${
-                model.is_active ? "text-accent font-medium" : "text-slate-300"
-              }`}
-            >
-              <span>
-                {model.is_active && <span className="mr-2">✓</span>}
-                {model.id}
-                {model.kind !== "chat" && (
-                  <span className="ml-2 text-xs text-slate-500">({model.kind})</span>
-                )}
-              </span>
-            </button>
-          ))}
-        </div>
+        <h3 className="rail-label">Cloud (Navya)</h3>
+        <div className="space-y-0.5">{cloudModels.map(renderRow)}</div>
       </div>
 
       {/* Local section */}
       <div>
-        <h3 className="text-xs font-semibold tracking-widest text-slate-400 mb-2">Local</h3>
-        <div className="space-y-1">
-          {localModels.map((model) => (
-            <button
-              key={model.id}
-              onClick={() => onModelSelect(model.id)}
-              className={`w-full text-left text-sm p-1 rounded hover:bg-studio-800 flex items-center justify-between ${
-                model.is_active ? "text-accent font-medium" : "text-slate-300"
-              }`}
-            >
-              <span>
-                {model.is_active && <span className="mr-2">✓</span>}
-                {model.id}
-                {model.kind !== "chat" && (
-                  <span className="ml-2 text-xs text-slate-500">({model.kind})</span>
-                )}
-              </span>
-            </button>
-          ))}
-        </div>
+        <h3 className="rail-label">Local</h3>
+        <div className="space-y-0.5">{localModels.map(renderRow)}</div>
       </div>
     </div>
   );

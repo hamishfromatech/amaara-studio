@@ -13,6 +13,7 @@ use parking_lot::Mutex as PMutex;
 use serde::{Deserialize, Serialize};
 
 use crate::config::{self, NavyaConfig};
+use crate::engine::EngineClient;
 use crate::harness::{Capabilities, HarnessRegistry};
 use crate::navya::NavyaClient;
 use crate::render::{RenderQueue, RenderStatus};
@@ -60,6 +61,12 @@ pub struct StateSnapshot {
     pub has_api_key: bool,
     pub harnesses: Vec<HarnessInfo>,
     pub render_count: usize,
+    /// Control server URL (set by the control server at launch).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_url: Option<String>,
+    /// Control server bearer token (set by the control server at launch).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +87,16 @@ pub struct HarnessInfo {
     pub abort: bool,
     pub persistent: bool,
     pub available: bool, // binary/impl present on this machine
+    /// Detection provenance (open-design parity): the exact binary found,
+    /// its `--version` banner if readable, and where to get help installing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub docs_url: Option<String>,
 }
 
 /// The managed state. Inner mutability via parking_lot::Mutex for sync access
@@ -92,11 +109,16 @@ pub struct AppState {
     pub store: Arc<PMutex<ProjectStore>>,
     pub render_queue: PMutex<RenderQueue>,
     pub navya: PMutex<NavyaClient>,
+    pub engine: PMutex<EngineClient>,
     pub supervisor: Arc<Supervisor>,
     pub harness_registry: PMutex<HarnessRegistry>,
     /// Harness id that currently has an event pump subscribed (one pump per
     /// harness; re-subscribes when the user switches harness).
     pub pump_harness: PMutex<Option<String>>,
+    /// Control server URL (set by the control server at launch).
+    pub control_url: Arc<PMutex<Option<String>>>,
+    /// Control server bearer token.
+    pub control_token: Arc<PMutex<Option<String>>>,
 }
 
 impl AppState {
@@ -108,6 +130,7 @@ impl AppState {
             config.use_auto_router,
             config.byok,
         );
+        let engine = EngineClient::new(&config.engine_url);
         let mut registry = HarnessRegistry::new();
         // Register the reference adapter + the secondary adapters.
         registry.register(crate::harness::aacoder::AaaCoderCliHarness::new());
@@ -124,9 +147,12 @@ impl AppState {
             store: Arc::new(PMutex::new(store)),
             render_queue: PMutex::new(RenderQueue::default()),
             navya: PMutex::new(navya),
+            engine: PMutex::new(engine),
             supervisor: Arc::new(Supervisor::new()),
             harness_registry: PMutex::new(registry),
             pump_harness: PMutex::new(None),
+            control_url: Arc::new(PMutex::new(None)),
+            control_token: Arc::new(PMutex::new(None)),
         }
     }
 
@@ -185,6 +211,8 @@ impl AppState {
             has_api_key,
             harnesses,
             render_count,
+            control_url: self.control_url.lock().clone(),
+            control_token: self.control_token.lock().clone(),
         }
     }
 }
@@ -219,37 +247,34 @@ fn detect_sidecar_health(name: &str, bin: &str) -> SidecarHealth {
 }
 
 fn harness_info(id: &str, _cfg: &NavyaConfig, caps: Option<Capabilities>) -> HarnessInfo {
-    let (label, available) = match id {
-        "a-coder-cli" => ("a-coder-cli", crate::harness::aacoder::is_available()),
-        "claude-code" => ("Claude Code", which("claude")),
-        "codex" => ("Codex", which("codex")),
-        "hermes" => ("Hermes", which("hermes")),
-        "antigravity" => ("Antigravity", which("agy")),
-        "openclaw" => ("OpenClaw", which("openclaw")),
-        other => (other, false),
-    };
+    // Descriptor-driven (harness/registry.rs): label + install/docs metadata
+    // come from the static table; availability comes from binary detection
+    // (PATH scan incl. fallback bins, plus a bounded `--version` probe).
+    let descriptor = crate::harness::registry::descriptor_for(id);
+    let detection = descriptor.map(crate::harness::registry::detect);
     let caps = caps.unwrap_or_default();
     HarnessInfo {
         id: id.to_string(),
-        label: label.to_string(),
+        label: descriptor
+            .map(|d| d.label)
+            .unwrap_or(id)
+            .to_string(),
         enabled: false,
         steer: caps.steer,
         abort: caps.abort,
         persistent: caps.persistent,
-        available,
+        available: detection.as_ref().map(|d| d.available).unwrap_or(false),
+        path: detection
+            .as_ref()
+            .and_then(|d| d.path.as_ref())
+            .map(|p| p.to_string_lossy().to_string()),
+        version: detection.and_then(|d| d.version),
+        install_url: descriptor.and_then(|d| d.install_url).map(str::to_string),
+        docs_url: descriptor.and_then(|d| d.docs_url).map(str::to_string),
     }
 }
 
-/// Check whether a binary is on PATH.
-fn which(bin: &str) -> bool {
-    let mut cmd = std::process::Command::new(if cfg!(windows) { "where" } else { "which" });
-    cmd.arg(bin);
-    cmd.stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-    cmd.status().map(|s| s.success()).unwrap_or(false)
-}
-
-fn cloud_models(active_model: &str) -> Vec<ModelEntry> {
+pub fn cloud_models(active_model: &str) -> Vec<ModelEntry> {
     vec![
         ModelEntry {
             id: "navya/auto".to_string(),

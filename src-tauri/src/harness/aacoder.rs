@@ -159,8 +159,16 @@ impl HarnessTrait for AaaCoderCliHarness {
         };
 
         // Spawn: `a-coder-cli --mode rpc` in the project directory.
+        // Pass the control server URL + token as env vars so the harness
+        // extension can proxy tool calls to the control server.
         let mut command = std::process::Command::new(&prog);
         command.args(&prefix);
+        if let Some(url) = &ctx.control_url {
+            command.env("NAVYA_CONTROL_URL", url);
+        }
+        if let Some(token) = &ctx.control_token {
+            command.env("NAVYA_CONTROL_TOKEN", token);
+        }
         let mut c = command
             .arg("--mode")
             .arg("rpc")
@@ -761,6 +769,8 @@ mod tests {
             project_dir: tmp.clone(),
             model: String::new(),
             source: "cloud".into(),
+            control_url: None,
+            control_token: None,
         };
         h.start(&ctx).await.expect("rpc process should start");
         eprintln!("[2] started");
