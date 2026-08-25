@@ -36,6 +36,7 @@ function TopBar() {
   const openProject = useStore((s) => s.openProject);
   const render = useStore((s) => s.render);
   const abort = useStore((s) => s.abort);
+  const setTheme = useStore((s) => s.setTheme);
 
   if (!session || !config) return null;
   const current = projects.find((p) => p.id === session.current_project_id);
@@ -113,6 +114,14 @@ function TopBar() {
             Local
           </button>
         </div>
+
+        <button
+          className="btn btn-sm"
+          title={config.theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          onClick={() => void setTheme(config.theme === "dark" ? "light" : "dark")}
+        >
+          {config.theme === "dark" ? "☀" : "☾"}
+        </button>
       </div>
     </header>
   );

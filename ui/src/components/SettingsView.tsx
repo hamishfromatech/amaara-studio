@@ -19,6 +19,7 @@ export function SettingsView() {
   const saveApiKey = useStore((s) => s.saveApiKey);
   const clearApiKey = useStore((s) => s.clearApiKey);
   const setHarness = useStore((s) => s.setHarness);
+  const setTheme = useStore((s) => s.setTheme);
 
   const [keyInput, setKeyInput] = useState("");
 
@@ -130,6 +131,40 @@ export function SettingsView() {
                   <span className="list-card__row-meta">
                     {h.available ? (h.version ?? "installed") : "not installed"}
                   </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <section className="entry-section">
+        <div className="entry-section__head">
+          <h2 className="entry-section__title">Appearance</h2>
+          <div className="entry-section__actions">
+            <span style={{ color: "var(--text-faint)", fontSize: 11 }}>theme</span>
+          </div>
+        </div>
+        <div className="list-card">
+          <div className="list-card__body">
+            {(["light", "dark"] as const).map((t) => {
+              const isActive = config?.theme === t;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  className={`row ${isActive ? "is-active" : ""}`}
+                  onClick={() => void setTheme(t)}
+                >
+                  <span aria-hidden style={{ fontSize: 12, width: 16, textAlign: "center" }}>
+                    {t === "light" ? "☀" : "☾"}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                    {t === "light" ? "Light" : "Dark"}
+                  </span>
+                  {isActive && (
+                    <span style={{ color: "var(--brand)", fontSize: 11 }}>● active</span>
+                  )}
                 </button>
               );
             })}

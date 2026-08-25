@@ -40,6 +40,7 @@ interface AppState extends Partial<StateSnapshot> {
   saveApiKey: (key: string) => Promise<void>;
   clearApiKey: () => Promise<void>;
   saveConfig: (config: NonNullable<StateSnapshot["config"]>) => Promise<void>;
+  setTheme: (theme: "dark" | "light") => Promise<void>;
 
   sendPrompt: (msg: string, mode?: string) => Promise<void>;
   steer: (msg: string) => Promise<void>;
@@ -50,6 +51,12 @@ interface AppState extends Partial<StateSnapshot> {
 }
 
 let unsubEvents: (() => void) | null = null;
+
+/** Apply the theme to the document root (drives the CSS data-theme tokens). */
+function applyTheme(theme: string) {
+  const root = document.documentElement;
+  root.setAttribute("data-theme", theme === "light" ? "light" : "dark");
+}
 
 export const useStore = create<AppState>((set, get) => ({
   loading: true,
@@ -63,6 +70,8 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const snap = await Commands.getState();
       set({ ...snap, loading: false, initialized: true, error: null });
+      // Apply the persisted theme to the DOM (light/dark tokens).
+      if (snap.config?.theme) applyTheme(snap.config.theme);
       // Subscribe once to the event stream.
       if (!unsubEvents) {
         const un = await subscribeStudioEvents((ev) => handleEvent(ev, set, get));
@@ -130,6 +139,18 @@ export const useStore = create<AppState>((set, get) => ({
   saveConfig: async (config) => {
     const saved = await Commands.saveConfig(config);
     set({ config: saved });
+  },
+
+  setTheme: async (theme) => {
+    const config = get().config;
+    if (!config) return;
+    applyTheme(theme); // apply immediately for responsiveness
+    try {
+      const saved = await Commands.saveConfig({ ...config, theme });
+      set({ config: saved });
+    } catch (e) {
+      set({ error: String(e) });
+    }
   },
 
   sendPrompt: async (msg, mode = "normal") => {
