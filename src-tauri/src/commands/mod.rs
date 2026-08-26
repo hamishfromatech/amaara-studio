@@ -8,7 +8,7 @@
 
 pub mod timeline;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -54,6 +54,8 @@ pub fn save_config(state: State<'_, std::sync::Arc<AppState>>, config: NavyaConf
         config.use_auto_router,
         config.byok,
     );
+    // Re-sync the Engine client with the new local proxy URL.
+    *(*state).engine.lock() = crate::engine::EngineClient::new(&config.engine_url);
     Ok(config)
 }
 
@@ -99,10 +101,13 @@ pub async fn new_project(
     args: NewProjectArgs,
 ) -> Result<crate::store::ProjectRow, String> {
     let id = format!("p{}", chrono_like_id());
+    // Normalize the requested dir to a real absolute path (onboarding passes
+    // "." — a relative dir would make the harness spawn in the app's CWD).
+    let dir = resolve_project_dir(&app, &id, &args.dir)?;
     let session = (*state).session.lock().clone();
     let store = (*state).store.lock();
     let row = store
-        .create_project(&id, &args.name, &args.dir, &session.harness, &session.model, &session.source)
+        .create_project(&id, &args.name, &dir.to_string_lossy().as_ref(), &session.harness, &session.model, &session.source)
         .map_err(|e| e.to_string())?;
 
     // Switch the session to the new project.
@@ -472,7 +477,9 @@ pub async fn render_to_video(
 }
 
 async fn run_render(app: AppHandle, job: RenderJob) {
-    let state = app.state::<AppState>();
+    // The managed state is `Arc<AppState>` (see lib.rs) — looking up the bare
+    // `AppState` type would panic with "state not found" on every render.
+    let state = app.state::<std::sync::Arc<AppState>>();
     // Resolve the render worker:
     //  1. bundled Tauri resource (installed app): <resource_dir>/binaries/render-worker.mjs
     //  2. dev fallback: src-tauri/binaries/render-worker.mjs via CARGO_MANIFEST_DIR
@@ -537,6 +544,13 @@ async fn run_render(app: AppHandle, job: RenderJob) {
     let app_for_stdout = app.clone();
     let job_id_for_stdout = job_id.clone();
 
+    // The worker shells out to `npx hyperframes render` with cwd = project_dir,
+    // so the job must carry the real project directory (not the app's CWD).
+    let project_dir = {
+        let session = (**state).session.lock().clone();
+        current_project_dir(&**state, &session)
+    };
+
     // Write the render job to the worker's stdin.
     let mut stdin = child.stdin.take().expect("worker stdin");
     let payload = serde_json::json!({
@@ -550,6 +564,7 @@ async fn run_render(app: AppHandle, job: RenderJob) {
             "width": job.width,
             "height": job.height,
             "fps": job.fps,
+            "project_dir": project_dir.to_string_lossy(),
         }
     });
     if let Err(e) = stdin.write_all(format!("{}\n", payload).as_bytes()).await {
@@ -588,7 +603,7 @@ async fn run_render(app: AppHandle, job: RenderJob) {
             }
             "completed" => {
                 let out = parsed.get("output_path").and_then(|v| v.as_str()).unwrap_or("renders/out.mp4").to_string();
-                { let mut q = (*state).render_queue.lock(); q.update_status(&job_id_for_stdout, RenderStatus::Done); }
+                { let mut q = (*state).render_queue.lock(); q.complete(&job_id_for_stdout, &out); }
                 let _ = app_for_stdout.emit(
                     "studio://event",
                     StudioEvent::Render(crate::events::RenderEvent::Completed {
@@ -613,7 +628,8 @@ async fn run_render(app: AppHandle, job: RenderJob) {
         }
     }
 
-    // If the worker exited without sending completed/failed, mark failed.
+    // If the worker exited without sending completed/failed, mark failed — in
+    // both the queue and the event stream, so the UI never shows a stuck job.
     let still_running = state
         .render_queue
         .lock()
@@ -621,6 +637,10 @@ async fn run_render(app: AppHandle, job: RenderJob) {
         .map(|j| j.status == RenderStatus::Running)
         .unwrap_or(false);
     if still_running {
+        {
+            let mut q = (*state).render_queue.lock();
+            q.update_status(&job_id, RenderStatus::Failed);
+        }
         let _ = app.emit(
             "studio://event",
             StudioEvent::Render(crate::events::RenderEvent::Failed {
@@ -750,6 +770,38 @@ pub fn reveal_in_folder(path: String) -> Result<(), String> {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Normalize a user-supplied project directory into an existing absolute path.
+///
+/// - empty / `"."` (onboarding's blank project) → `<app_data>/projects/<id>`
+/// - leading `~` → expanded against the home dir
+/// - relative paths → joined under `<app_data>/projects/`
+/// - absolute paths → used as-is
+///
+/// The directory is created when missing so the harness can spawn in it.
+fn resolve_project_dir(app: &AppHandle, project_id: &str, raw: &str) -> Result<PathBuf, String> {
+    let trimmed = raw.trim();
+    let base = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("projects");
+    let dir = if trimmed.is_empty() || trimmed == "." {
+        base.join(project_id)
+    } else if let Some(rest) = trimmed.strip_prefix('~') {
+        let home = std::env::var_os("USERPROFILE")
+            .or_else(|| std::env::var_os("HOME"))
+            .ok_or_else(|| "cannot expand ~ (no home directory found)".to_string())?;
+        PathBuf::from(home).join(rest.trim_start_matches(['/', '\\']))
+    } else if Path::new(trimmed).is_absolute() {
+        PathBuf::from(trimmed)
+    } else {
+        base.join(trimmed)
+    };
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("creating project dir {}: {e}", dir.display()))?;
+    Ok(dir)
+}
+
 /// A monotonic-ish id from the current time (no chrono dep needed).
 fn chrono_like_id() -> u128 {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -759,12 +811,20 @@ fn chrono_like_id() -> u128 {
         .unwrap_or(0)
 }
 
+/// Resolve the on-disk directory of the session's current project.
+///
+/// The store is behind a `parking_lot::Mutex` (sync), so a plain lock is fine
+/// here — the earlier `"."` fallback made every harness spawn in the app's
+/// CWD instead of the project tree.
 fn current_project_dir(state: &AppState, session: &Session) -> PathBuf {
-    if let Some(pid) = &session.current_project_id {
-        // Best-effort sync lookup via a try_lock isn't available on tokio Mutex
-        // from a sync context; fall back to the projects dir under app data.
-        let _ = state;
-        let _ = pid;
-    }
-    PathBuf::from(".")
+    let Some(pid) = &session.current_project_id else {
+        return PathBuf::from(".");
+    };
+    let store = state.store.lock();
+    store
+        .list_projects()
+        .ok()
+        .and_then(|ps| ps.into_iter().find(|p| p.id == *pid))
+        .map(|p| PathBuf::from(p.dir))
+        .unwrap_or_else(|| PathBuf::from("."))
 }

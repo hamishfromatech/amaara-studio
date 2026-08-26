@@ -6,6 +6,7 @@ pub mod commands;
 pub mod config;
 pub mod control;
 pub mod engine;
+pub mod errors;
 pub mod events;
 pub(crate) mod harness;
 pub(crate) mod navya;
@@ -42,7 +43,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             // Config: load from app-data JSON (or default + persist).
             let cfg_path = config_path(&handle);
-            let (config, _default) = state::load_config(cfg_path.clone());
+            let config = state::load_config(cfg_path.clone());
 
             // Store: SQLite in app-data dir.
             let data_dir = handle

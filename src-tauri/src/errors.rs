@@ -18,11 +18,27 @@ pub enum ErrorCode {
     RenderFailed,
     /// sd-server health probe failed.
     SdServerUnavailable,
+    /// llama-server health probe failed.
+    LlamaServerUnavailable,
     /// Navya Cloud API error (rate limit, auth failure, etc.).
     NavyaApiError,
 }
 
-/// Typed studio error with user action guidance.
+impl From<String> for StudioError {
+    fn from(message: String) -> Self {
+        StudioError {
+            code: ErrorCode::SidecarCrash,
+            message,
+            user_action: UserAction::CheckSettings,
+        }
+    }
+}
+
+impl From<&str> for StudioError {
+    fn from(message: &str) -> Self {
+        StudioError::from(message.to_string())
+    }
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StudioError {
     pub code: ErrorCode,
