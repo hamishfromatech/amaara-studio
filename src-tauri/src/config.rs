@@ -366,6 +366,44 @@ mod tests {
         assert_eq!(get_secret(SERVICE_NAVYA, "api-key").unwrap().unwrap(), "sk-test-123");
     }
 
+    // Phase 15: a Navya key written via the keyring must never land on disk in
+    // the app-data dir (config.json, logs, sqlite, …). Persist a config to a
+    // temp app-data dir and grep every file for the plaintext secret.
+    #[test]
+    fn secret_never_writes_to_app_data_dir() {
+        set_fake_keyring(true);
+        const LEAK: &str = "LEAK-TEST-SECRET-abc123xyz";
+        set_secret(SERVICE_NAVYA, "api-key", LEAK.to_string()).unwrap();
+
+        let dir = std::env::temp_dir().join(format!("navya-leak-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Simulate the app persisting its config to app-data.
+        let cfg_path = dir.join("navya-config.json");
+        std::fs::write(&cfg_path, serde_json::to_string_pretty(&default_config()).unwrap()).unwrap();
+        std::fs::write(dir.join("sidecar.log"), b"sidecar started ok\n").unwrap();
+
+        let mut found = false;
+        let mut stack = vec![dir.clone()];
+        while let Some(path) = stack.pop() {
+            for entry in std::fs::read_dir(&path).expect("read dir") {
+                let entry = entry.expect("dir entry");
+                let ft = entry.file_type().expect("file type");
+                if ft.is_dir() {
+                    stack.push(entry.path());
+                } else if ft.is_file() {
+                    if let Ok(contents) = std::fs::read_to_string(entry.path()) {
+                        if contents.contains(LEAK) {
+                            found = true;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(!found, "secret leaked to app-data dir {dir:?}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn gpu_backend_serde() {
         let cfg: NavyaConfig = serde_json::from_str(r#"{ "sd_gpu_backend": "vulkan" }"#).unwrap();
