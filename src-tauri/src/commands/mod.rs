@@ -552,6 +552,11 @@ async fn run_render(app: AppHandle, job: RenderJob) {
         current_project_dir(&**state, &session)
     };
 
+    // Telemetry is opt-in (Phase 15): only pass `--no-telemetry` to HyperFrames
+    // when the user has NOT enabled analytics, so no usage leaves the machine by
+    // default. The flag rides on the job so the Node worker can honour it.
+    let allow_telemetry = state.config.lock().share_analytics;
+
     // Write the render job to the worker's stdin.
     let mut stdin = child.stdin.take().expect("worker stdin");
     let payload = serde_json::json!({
@@ -566,6 +571,7 @@ async fn run_render(app: AppHandle, job: RenderJob) {
             "height": job.height,
             "fps": job.fps,
             "project_dir": project_dir.to_string_lossy(),
+            "telemetry": allow_telemetry,
         }
     });
     if let Err(e) = stdin.write_all(format!("{}\n", payload).as_bytes()).await {

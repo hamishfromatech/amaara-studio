@@ -4,7 +4,9 @@
  * A line-based JSONL stdio protocol so the Rust core can spawn this worker,
  * feed it render jobs, and receive typed progress events:
  *
- *   Rust → worker (stdin):  {"type":"render","job":{job_id,project_id,composition_id,target,quality,width,height,fps,project_dir}}
+ *   Rust → worker (stdin):  {"type":"render","job":{job_id,project_id,composition_id,target,quality,width,height,fps,project_dir,telemetry}}
+ *   `telemetry` (bool, default false): when false the worker passes
+ *   `--no-telemetry` to `npx hyperframes render` (telemetry is opt-in).
  *   worker → Rust (stdout): {"type":"progress","job_id":"...","stage":"...","frame":N,"total_frames":M}
  *                            {"type":"completed","job_id":"...","output_path":"..."}
  *                            {"type":"failed","job_id":"...","error":"..."}
@@ -25,10 +27,13 @@ function send(obj) {
 }
 
 async function processJob(job) {
-  const { job_id, target = "local", quality = "draft", project_dir } = job;
+  const { job_id, target = "local", quality = "draft", project_dir, telemetry = false } = job;
   send({ type: "log", job_id, message: `starting ${target}/${quality} render` });
 
   const args = ["hyperframes", "render", "--quality", quality];
+  // Telemetry is opt-in (Phase 15): the studio only allows it when the user
+  // enabled analytics, so default to disabling HyperFrames' anonymous telemetry.
+  if (!telemetry) args.push("--no-telemetry");
   if (target === "docker") args.push("--docker", "--strict");
   if (target === "cloud") args.unshift("cloud");
   if (target === "lambda") args.unshift("lambda");

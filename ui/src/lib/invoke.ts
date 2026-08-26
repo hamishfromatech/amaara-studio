@@ -34,6 +34,7 @@ export interface NavyaConfig {
   sd_gpu_backend: "cuda" | "vulkan" | "cpu";
   density: "comfortable" | "compact";
   theme: "dark" | "light";
+  share_analytics: boolean;
 }
 
 export interface ModelEntry {

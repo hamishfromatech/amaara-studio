@@ -20,6 +20,7 @@ export function SettingsView() {
   const clearApiKey = useStore((s) => s.clearApiKey);
   const setHarness = useStore((s) => s.setHarness);
   const setTheme = useStore((s) => s.setTheme);
+  const setShareAnalytics = useStore((s) => s.setShareAnalytics);
 
   const [keyInput, setKeyInput] = useState("");
 
@@ -170,6 +171,46 @@ export function SettingsView() {
             })}
           </div>
         </div>
+      </section>
+
+      <section className="entry-section">
+        <div className="entry-section__head">
+          <h2 className="entry-section__title">Privacy</h2>
+          <div className="entry-section__actions">
+            <span style={{ color: "var(--text-faint)", fontSize: 11 }}>
+              anonymous usage telemetry
+            </span>
+          </div>
+        </div>
+        <div className="list-card">
+          <div className="list-card__body">
+            {([false, true] as const).map((on) => {
+              const isActive = config?.share_analytics === on;
+              return (
+                <button
+                  key={String(on)}
+                  type="button"
+                  className={`row ${isActive ? "is-active" : ""}`}
+                  onClick={() => void setShareAnalytics(on)}
+                >
+                  <span aria-hidden style={{ fontSize: 12, width: 16, textAlign: "center" }}>
+                    {on ? "●" : "○"}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                    {on ? "Enabled" : "Disabled"}
+                  </span>
+                  {isActive && (
+                    <span style={{ color: "var(--brand)", fontSize: 11 }}>● active</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <p style={{ marginTop: 8, fontSize: 11, color: "var(--text-faint)", lineHeight: 1.6 }}>
+          Off by default. When disabled, renders run with HyperFrames' telemetry
+          disabled; enable it to share anonymous usage with the team.
+        </p>
       </section>
 
       <section className="entry-section">

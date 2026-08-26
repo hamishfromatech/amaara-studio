@@ -110,6 +110,12 @@ pub struct NavyaConfig {
     /// Theme mode (design.md §11).
     #[serde(default)]
     pub theme: ThemeMode,
+
+    /// Opt-in anonymous analytics. Off by default; when false the studio passes
+    /// HyperFrames' `--no-telemetry` (and sets `HYPERFRAMES_NO_TELEMETRY`) so no
+    /// usage leaves the machine unless the user explicitly enables it (Phase 15).
+    #[serde(default)]
+    pub share_analytics: bool,
 }
 
 fn default_base_url() -> String {
@@ -192,6 +198,9 @@ fn apply_patch(
                         _ => base.theme,
                     };
                 }
+                "share_analytics" => {
+                    out.share_analytics = bool_val(v);
+                }
                 other => return Err(ConfigError::UnknownField(other.to_string())),
             }
         }
@@ -226,6 +235,7 @@ pub fn default_config() -> NavyaConfig {
         sd_gpu_backend: SdGpuBackend::Cuda,
         density: Density::Comfortable,
         theme: ThemeMode::Dark,
+        share_analytics: false,
     }
 }
 
@@ -339,6 +349,22 @@ mod tests {
         .unwrap();
         assert_eq!(compact.density, Density::Compact);
         assert_eq!(compact.theme, ThemeMode::Light);
+    }
+
+    #[test]
+    fn share_analytics_is_off_by_default() {
+        // Telemetry must be opt-in: a fresh/default config never shares analytics.
+        assert!(!default_config().share_analytics);
+    }
+
+    #[test]
+    fn share_analytics_merge_is_opt_in() {
+        // Enabling it through the settings patch flips the flag; anything else
+        // stays off. An empty patch leaves it off.
+        let enabled = merge_config(r#"{ "share_analytics": true }"#, &default_config()).unwrap();
+        assert!(enabled.share_analytics);
+        let disabled = merge_config("", &default_config()).unwrap();
+        assert!(!disabled.share_analytics);
     }
 
     #[test]

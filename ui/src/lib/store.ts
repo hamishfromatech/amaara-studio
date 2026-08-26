@@ -74,6 +74,7 @@ interface AppState extends Partial<StateSnapshot> {
   clearApiKey: () => Promise<void>;
   saveConfig: (config: NonNullable<StateSnapshot["config"]>) => Promise<void>;
   setTheme: (theme: "dark" | "light") => Promise<void>;
+  setShareAnalytics: (share: boolean) => Promise<void>;
 
   sendPrompt: (msg: string, mode?: string) => Promise<void>;
   steer: (msg: string) => Promise<void>;
@@ -258,6 +259,20 @@ export const useStore = create<AppState>((set, get) => ({
     applyTheme(theme); // apply immediately for responsiveness
     try {
       const saved = await Commands.saveConfig({ ...config, theme });
+      set({ config: saved });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  setShareAnalytics: async (share) => {
+    const config = get().config;
+    if (!config) return;
+    try {
+      // Opt-in analytics: when off (default) the studio passes HyperFrames'
+      // `--no-telemetry` to every render (Phase 15). Persist the flag so it
+      // survives relaunch.
+      const saved = await Commands.saveConfig({ ...config, share_analytics: share });
       set({ config: saved });
     } catch (e) {
       set({ error: String(e) });
