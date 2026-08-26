@@ -724,3 +724,26 @@ pnpm typecheck && pnpm lint && pnpm test
 | **M5 — Shippable** | + 14, 15, 16 | installers, hardening, polish |
 
 Build M0 first and stop. Re-evaluate with the user before M1+.
+## Updated progress (2026-08-26)
+
+### Completed phases
+- **Phase 0–7** — Tauri scaffold, store/events, control server, tools crate, harness trait,
+  a-coder-cli adapter, UI shell, render queue, render sidecar.
+- **Phase 8–9** — Research complete; `src-tauri/src/sidecar/llama.rs` implemented. sd-server sidecar
+  lifecycle still pending.
+- **Phase 10–11** — UI skeleton and approval dialog exist; timeline track parser and native Tauri
+  approval dialogs not fully wired.
+- **Phase 12–13** — All six harness adapters implemented; `navya-mcp` FastMCP server updated to v4 API.
+
+### Pending phases
+- **Phase 8 finish** — `sd-server` sidecar lifecycle + local image generation.
+- **Phase 10 finish** — Timeline HTML parser, preview iframe, snapshot wiring.
+- **Phase 14** — Cross-platform bundles (`msi`, `nsis`, `dmg`, `app`, `appimage`, `deb`),
+  `externalBin` entries, sidecar bootstrap/downloader, first-run dependency fetch.
+- **Phase 15** — Error handling polish, structured logging, telemetry opt-in, headless e2e,
+  plaintext-key leak test.
+- **Phase 16** — Onboarding flow, keyboard shortcuts, full theming/density, empty states.
+
+### Research artifacts
+All open questions from `BUILD-GAPS.md` have been researched and written to
+`docs/research/*.md`.

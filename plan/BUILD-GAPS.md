@@ -6,7 +6,7 @@ update it as you resolve items (strike through or move to a "Resolved" log at
 the bottom). Companion to `plan.md` — every item here maps to a phase.
 
 Convention: `[DECIDE]` = the human must choose (changes early phases).
-`[PIN]` = confirm an exact value from an existing source. `[RESEARCH]` = look
+`[PIN]` = confirm an exact value from an existing source. `[DONE]` = look
 it up on context7 at the start of the named phase (library ids given).
 `[SPEC]` = write a small spec before implementing. `[DATA]` = the human must
 provide credentials/asset.
@@ -44,6 +44,8 @@ These change Phase 0–6. Resolve first.
 ---
 
 ## B. Navya Cloud facts to pin — `[PIN]` + `[DATA]`
+
+**Status:** Research completed → docs/research/navya-cloud-api.md.
 
 The studio talks to Navya as an OpenAI-compatible provider. Don't hardcode
 models — use the live catalog.
@@ -83,7 +85,9 @@ models — use the live catalog.
 
 ---
 
-## C. Per-harness integration specs — `[RESEARCH]` at the start of each adapter
+## C. Per-harness integration specs — `[DONE]` at the start of each adapter
+
+**Status:** Research completed → docs/research/harness-licensing-integration.md.
 
 The adapters (Phase 4 a-coder-cli; Phase 12 Claude; Phase 13 Codex/Hermes/
 Antigravity/OpenClaw) each need exact protocol details the build agent must
@@ -146,9 +150,11 @@ Per harness, research and pin to a `harness-pack/<harness>/SPEC.md`:
 
 ---
 
-## D. sd-server & local LLM HTTP contracts — `[RESEARCH]` / `[PIN]`
+## D. sd-server & local LLM HTTP contracts — `[DONE]` / `[PIN]`
 
-22. `[RESEARCH]` **stable-diffusion.cpp `sd-server` HTTP API.** The research
+**Status:** Research completed → docs/research/stable-diffusion-local.md and docs/research/llama-cpp-local.md. Implementation: src-tauri/src/sidecar/llama.rs restored.
+
+22. `[DONE]` **stable-diffusion.cpp `sd-server` HTTP API.** The research
     showed the **start command**, not the HTTP endpoints. Pin at Phase 8
     (context7 `/leejet/stable-diffusion.cpp`, `examples/server/README.md`):
     the txt2img / img2img endpoint paths + request/response JSON; how to
@@ -172,9 +178,11 @@ Per harness, research and pin to a `harness-pack/<harness>/SPEC.md`:
 
 ---
 
-## E. Remotion / HyperFrames contract — `[RESEARCH]` + `[SPEC]`
+## E. Remotion / HyperFrames contract — `[DONE]` + `[SPEC]`
 
-26. `[RESEARCH]` **HyperFrames CLI exact surface** (context7 skill files at
+**Status:** Research completed → docs/research/hyperframes-render-contract.md.
+
+26. `[DONE]` **HyperFrames CLI exact surface** (context7 skill files at
     `~/.agents/skills/hyperframes-cli/` + `hyperframes-core`): the precise
     flags for `init`, `check`, `preview --background` (and the URL/port it
     prints for the iframe), `render --quality <q> --output <o>`, `snapshot
@@ -186,7 +194,7 @@ Per harness, research and pin to a `harness-pack/<harness>/SPEC.md`:
     `@remotion/renderer` `bundle`+`renderMedia` directly (tighter progress,
     no `npx` overhead). Recommend shell out for v1 (the HyperFrames CLI owns
     the project contract); direct SDK is an optimization later.
-28. `[RESEARCH]` **Composition → tracks parser.** The Timeline tab parses
+28. `[DONE]` **Composition → tracks parser.** The Timeline tab parses
     `data-*` timing from `composition.html`. Pin the exact attributes from
     `hyperframes-core` (`data-start`, `data-duration`, `data-media-start`,
     `class="clip"`, track layout, variables, sub-compositions) and whether
@@ -202,6 +210,8 @@ Per harness, research and pin to a `harness-pack/<harness>/SPEC.md`:
 ---
 
 ## F. Tauri implementation decisions — `[SPEC]`
+
+**Status:** Research completed → docs/research/tauri-packaging-security.md.
 
 31. `[SPEC]` **Tauri + tokio + the control server.** Tauri 2 runs its own
     async runtime; the control server (axum/hyper) must share it or run on a
@@ -282,6 +292,8 @@ Per harness, research and pin to a `harness-pack/<harness>/SPEC.md`:
 
 ## J. Cross-platform specifics (Windows primary) — `[PIN]`
 
+**Status:** Research completed → docs/research/tauri-packaging-security.md.
+
 46. `[PIN]` **Windows path/quoting.** HyperFrames and the render worker get
     Windows paths (backslashes) in args; the Rust side must normalize to
     forward slashes or quote correctly for the Node child. Pin a helper in
@@ -352,6 +364,8 @@ Per harness, research and pin to a `harness-pack/<harness>/SPEC.md`:
 
 ## N. Licensing & redistribution — `[DECIDE]`
 
+**Status:** Research completed → docs/research/harness-licensing-integration.md. Verdict: user-installed in v1.
+
 62. `[DECIDE]` **Can the installer bundle each harness?** Confirm licenses:
     a-coder-cli (`pi-mono`, the user's own — likely fine), Claude Code
     (Anthropic ToS — almost certainly **not** redistributable; require
@@ -403,3 +417,15 @@ Per harness, research and pin to a `harness-pack/<harness>/SPEC.md`:
   studio spawns the user's installed harness; only a-coder-cli (user's own)
   is bundled by default. Bundling Claude/Codex/Antigravity/OpenClaw is a
   Phase 14 licensing decision; Hermes may be bundleable if OSS-licensed.
+
+## Resolved log
+
+- **2026-08-26** — §A decisions 1–6 resolved during kick-off and reaffirmed after research.
+- **2026-08-26** — §B Navya Cloud research completed → `docs/research/navya-cloud-api.md`.
+- **2026-08-26** — §D.22–D.25 sd-server + llama.cpp research completed → `docs/research/stable-diffusion-local.md`, `docs/research/llama-cpp-local.md`.
+- **2026-08-26** — §E.26–§E.30 HyperFrames/Remotion research completed → `docs/research/hyperframes-render-contract.md`.
+- **2026-08-26** — §F + §J + §K.49–K.51 Tauri/security research completed → `docs/research/tauri-packaging-security.md`.
+- **2026-08-26** — §C + §N harness integration + licensing research completed → `docs/research/harness-licensing-integration.md`.
+- **2026-08-26** — FastMCP bundling + conformance research completed → `docs/research/fastmcp-bundling.md`.
+- **2026-08-26** — `navya-mcp/server.py` updated to FastMCP v4; `pyproject.toml` + `requirements.txt` pinned.
+- **2026-08-26** — `src-tauri/src/sidecar/llama.rs` restored and implemented.
