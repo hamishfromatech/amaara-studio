@@ -11,6 +11,7 @@
 import { useState } from "react";
 import { useStore } from "../lib/store";
 import { formatRelative, swatchFor } from "../lib/format";
+import { EmptyState } from "./EmptyState";
 
 export function ProjectsView() {
   const projects = useStore((s) => s.projects) ?? [];
@@ -83,43 +84,62 @@ export function ProjectsView() {
         )}
 
         <div className="project-card-grid">
-          {projects.map((p) => {
-            const isActive = session?.current_project_id === p.id;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                className={`project-card ${isActive ? "is-active" : ""}`}
-                onClick={() => void openProject(p.id)}
-                aria-current={isActive ? "true" : undefined}
-              >
-                <div className="project-card__head">
-                  <div
-                    className="project-card__swatch"
-                    style={{ background: swatchFor(p.id) }}
-                    aria-hidden
-                  />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="project-card__title">{p.name}</div>
-                    <div className="project-card__dir" title={p.dir}>{p.dir}</div>
-                  </div>
-                </div>
-                <div className="project-card__meta">
-                  <span className="project-card__chip">{p.harness}</span>
-                  <span>{formatRelative(p.created_at_ms)}</span>
-                </div>
-              </button>
-            );
-          })}
+          {projects.length === 0 && !creating ? (
+            <EmptyState
+              glyph="◳"
+              title="No projects yet"
+              description="Create your first project to start composing and rendering."
+              action={
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setCreating(true)}
+                >
+                  + New project
+                </button>
+              }
+            />
+          ) : (
+            <>
+              {projects.map((p) => {
+                const isActive = session?.current_project_id === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`project-card ${isActive ? "is-active" : ""}`}
+                    onClick={() => void openProject(p.id)}
+                    aria-current={isActive ? "true" : undefined}
+                  >
+                    <div className="project-card__head">
+                      <div
+                        className="project-card__swatch"
+                        style={{ background: swatchFor(p.id) }}
+                        aria-hidden
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="project-card__title">{p.name}</div>
+                        <div className="project-card__dir" title={p.dir}>{p.dir}</div>
+                      </div>
+                    </div>
+                    <div className="project-card__meta">
+                      <span className="project-card__chip">{p.harness}</span>
+                      <span>{formatRelative(p.created_at_ms)}</span>
+                    </div>
+                  </button>
+                );
+              })}
 
-          {!creating && (
-            <button
-              type="button"
-              className="project-card-grid__new"
-              onClick={() => setCreating(true)}
-            >
-              + New project
-            </button>
+              {!creating && (
+                <button
+                  type="button"
+                  className="project-card-grid__new"
+                  onClick={() => setCreating(true)}
+                >
+                  + New project
+                </button>
+              )}
+            </>
           )}
         </div>
       </section>

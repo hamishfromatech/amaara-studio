@@ -1190,6 +1190,33 @@ code {
     color: var(--text-faint);
     padding: 20px 0;
   }
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 48px 24px;
+    text-align: center;
+  }
+  .empty-state__glyph {
+    font-family: var(--mono);
+    font-size: 18px;
+    color: var(--text-soft);
+    line-height: 1;
+  }
+  .empty-state__title {
+    margin-top: 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-strong);
+  }
+  .empty-state__desc {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-faint);
+    line-height: 1.6;
+    max-width: 34ch;
+  }
   .recent-projects-strip__new-card {
     flex: 0 0 200px;
     min-width: 200px;
