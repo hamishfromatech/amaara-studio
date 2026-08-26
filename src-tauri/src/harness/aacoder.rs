@@ -46,6 +46,7 @@ pub struct AaaCoderCliHarness {
 struct Inner {
     started: bool,
     stopping: bool, // stop() was requested — suppresses the EOF error event
+    project_dir: PathBuf, // project dir the child was spawned in
     model: String,  // model from HarnessCtx, injected into AgentStart events
     stdin: std::sync::Mutex<Option<std::process::ChildStdin>>,
     child_handle: std::sync::Mutex<Option<std::process::Child>>,
@@ -74,6 +75,7 @@ pub fn which(bin: &str) -> Option<PathBuf> {
 }
 
 /// Check if the binary is available on PATH.
+#[cfg(test)]
 pub fn is_available() -> bool {
     which("a-coder-cli").is_some()
 }
@@ -92,6 +94,7 @@ impl AaaCoderCliHarness {
             inner: Arc::new(std::sync::Mutex::new(Inner {
                 started: false,
                 stopping: false,
+                project_dir: PathBuf::new(),
                 model: String::new(),
                 stdin: std::sync::Mutex::new(None),
                 child_handle: std::sync::Mutex::new(None),
@@ -100,11 +103,6 @@ impl AaaCoderCliHarness {
                 pending_models: None,
             })),
         }
-    }
-
-    /// Check if the binary is available on PATH.
-    pub fn is_available_bin(&self) -> bool {
-        is_available()
     }
 
     /// Write one JSONL command line to the process stdin. Caller must hold no
@@ -144,6 +142,16 @@ impl HarnessTrait for AaaCoderCliHarness {
     }
 
     async fn start(&self, ctx: &HarnessCtx) -> Result<(), HarnessError> {
+        // Idempotent: if already running with the same project_dir, return Ok.
+        // If the project_dir changed, stop the old process and restart.
+        let need_restart = {
+            let inner = self.inner.lock().unwrap();
+            inner.started && inner.project_dir != ctx.project_dir
+        };
+        if need_restart {
+            self.stop().await?; // stop the old process before restarting
+        }
+
         let binary = match which("a-coder-cli") {
             Some(b) => b,
             None => return Err(HarnessError::Process("a-coder-cli not found on PATH".into())),
@@ -186,6 +194,7 @@ impl HarnessTrait for AaaCoderCliHarness {
             let mut inner = self.inner.lock().unwrap();
             inner.started = true;
             inner.stopping = false;
+            inner.project_dir = ctx.project_dir.clone();
             inner.model = ctx.model.clone();
             *inner.stdin.lock().unwrap() = Some(stdin);
             inner.child_handle.lock().unwrap().replace(c);

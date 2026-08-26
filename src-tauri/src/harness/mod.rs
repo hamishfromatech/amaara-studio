@@ -6,17 +6,18 @@
 // native protocol, and emits normalized HarnessEvent streams.
 
 pub(crate) mod aacoder;
-pub(crate) mod event;
-pub(crate) mod approvals;
+pub(crate) mod antigravity;
 pub(crate) mod claude;
 pub(crate) mod codex;
+pub(crate) mod common;
+pub(crate) mod event;
 pub(crate) mod hermes;
-pub(crate) mod antigravity;
 pub(crate) mod openclaw;
+pub(crate) mod approvals;
 pub(crate) mod registry;
 
 use std::sync::Arc;
-use tokio::sync::mpsc::{self, Receiver};
+use tokio::sync::mpsc::Receiver;
 
 use crate::harness::event::{HarnessEvent, ModelInfo};
 
@@ -176,7 +177,7 @@ mod tests {
             async fn set_model(&self, _model: &str) -> Result<(), HarnessError> { Ok(()) }
             async fn available_models(&self) -> Result<Vec<ModelInfo>, HarnessError> { Ok(vec![]) }
             fn subscribe(&self) -> Receiver<HarnessEvent> {
-                let (_tx, rx) = mpsc::channel(10);
+                let (_tx, rx) = tokio::sync::mpsc::channel(10);
                 rx
             }
             async fn stop(&self) -> Result<(), HarnessError> { Ok(()) }

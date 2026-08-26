@@ -15,6 +15,8 @@ pub struct ApprovalRequest {
 }
 
 /// User's answer to an approval request.
+/// Scaffold — wired into the approval dialog in Phase 11.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ApprovalAnswer {
     Allow,
@@ -40,6 +42,8 @@ pub fn write_allow_rule(harness_id: &str, request: &ApprovalRequest, always_allo
 }
 
 /// Apply "always allow" rule for identical calls.
+/// Scaffold — wired into the approval dialog in Phase 11.
+#[allow(dead_code)]
 pub fn should_auto_approve(harness_id: &str, request: &ApprovalRequest) -> bool {
     // In a real impl, check the harness's native permission config for an existing
     // scoped allow rule matching this request's kind and payload pattern.
@@ -59,7 +63,7 @@ mod tests {
             kind: "bash".to_string(),
             payload: serde_json::json!({"command": "npx hyperframes lint"}),
         };
-        assert!(write_allow_rule("aaa-coder-cli", &req, true).is_ok());
+        assert!(write_allow_rule("a-coder-cli", &req, true).is_ok());
     }
 
     #[test]
@@ -69,6 +73,6 @@ mod tests {
             kind: "bash".to_string(),
             payload: serde_json::json!({"command": "npx hyperframes lint"}),
         };
-        assert!(!should_auto_approve("aaa-coder-cli", &req));
+        assert!(!should_auto_approve("a-coder-cli", &req));
     }
 }
