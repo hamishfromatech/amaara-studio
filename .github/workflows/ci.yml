@@ -41,20 +41,31 @@ jobs:
       - run: cd ui && pnpm lint
       - run: cd ui && pnpm build
 
-  # Full desktop build smoke (Windows-first; macOS/Linux added in Phase 14).
-  bundle-smoke:
+  # Cross-platform release-build smoke. Verifies the day-1 cross-platform
+  # decision: the Rust/Tauri crate must compile on both Windows and macOS
+  # (Apple Silicon). Linux needs system webkit/gtk dev packages, so it is
+  # covered by the Phase 14 packaging installers rather than this job.
+  build-matrix:
     needs: [rust, ui]
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-env: true
+          key: ${{{{ steps.cache.outputs.key }}}}
       - run: cargo build --release
 
   # Release workflow (Gate 14)
   release:
-    needs: [rust, ui, bundle-smoke]
+    needs: [rust, ui, build-matrix]
     runs-on: ubuntu-latest
     if: github.event_name == 'release'
     steps:
