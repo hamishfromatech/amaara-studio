@@ -119,7 +119,7 @@ fn default_model() -> String {
     "navya/auto".to_string()
 }
 fn default_harnesses() -> Vec<String> {
-    vec!["aaa-coder-cli".to_string()]
+    vec!["a-coder-cli".to_string()]
 }
 fn default_local_llama_url() -> String {
     "http://localhost:8080".to_string()
@@ -276,19 +276,37 @@ impl FakeKeyring {
 }
 
 thread_local! {
-    static FAKE_KEYRING: std::cell::RefCell<FakeKeyring> = std::cell::RefCell::new(FakeKeyring::default());
+    /// When true, all secret calls go through the in-memory fake backend.
+    /// This avoids env-var races between tests and works on machines that
+    /// have a real OS keyring (the real keyring may already contain a Navya
+    /// key, which would make the "errors when unset" test fail).
+    static FAKE_KEYRING: std::cell::RefCell<(bool, FakeKeyring)> =
+        std::cell::RefCell::new((false, FakeKeyring::default()));
+}
+
+/// Force the fake keyring backend for the current thread (tests only).
+pub fn set_fake_keyring(on: bool) {
+    FAKE_KEYRING.with(|k| k.borrow_mut().0 = on);
 }
 
 fn backend_available() -> bool {
-    // NAVYA_KEYRING_FAKE forces the fake backend (for tests / headless CI).
-    std::env::var_os("NAVYA_KEYRING_FAKE").is_some()
+    FAKE_KEYRING.with(|k| k.borrow().0)
+}
+
+fn fake_get(service: &str, user: &str) -> Option<String> {
+    FAKE_KEYRING.with(|k| k.borrow().1.get(service, user))
+}
+
+fn fake_set(service: &str, user: &str, val: String) {
+    FAKE_KEYRING.with(|k| k.borrow_mut().1.set(service, user, val));
 }
 
 /// Get a secret. Prefers the OS keyring; falls back to the in-memory fake when
-/// `NAVYA_KEYRING_FAKE` is set, so tests and headless CI run without touching an OS keychain.
+/// `set_fake_keyring(true)` has been called, so tests and headless CI run
+/// without touching an OS keychain.
 pub fn get_secret(service: &str, user: &str) -> Result<Option<String>, SecretError> {
     if backend_available() {
-        return Ok(FAKE_KEYRING.with(|k| k.borrow().get(service, user)));
+        return Ok(fake_get(service, user));
     }
     let entry = keyring::Entry::new(service, user).map_err(|_| SecretError::BackendUnavailable)?;
     match entry.get_password() {
@@ -302,7 +320,7 @@ pub fn get_secret(service: &str, user: &str) -> Result<Option<String>, SecretErr
 /// the process-local fake (so unit tests can verify round-trips deterministically).
 pub fn set_secret(service: &str, user: &str, value: String) -> Result<(), SecretError> {
     if backend_available() {
-        FAKE_KEYRING.with(|k| k.borrow_mut().set(service, user, value));
+        fake_set(service, user, value);
         return Ok(());
     }
     let entry = keyring::Entry::new(service, user).map_err(|_| SecretError::BackendUnavailable)?;
@@ -342,11 +360,10 @@ mod tests {
 
     #[test]
     fn secret_round_trip_via_fake_backend() {
-        std::env::set_var("NAVYA_KEYRING_FAKE", "1");
+        set_fake_keyring(true);
         let _ = get_secret(SERVICE_NAVYA, "api-key").unwrap(); // empty first
         set_secret(SERVICE_NAVYA, "api-key", "sk-test-123".to_string()).unwrap();
         assert_eq!(get_secret(SERVICE_NAVYA, "api-key").unwrap().unwrap(), "sk-test-123");
-        std::env::remove_var("NAVYA_KEYRING_FAKE");
     }
 
     #[test]

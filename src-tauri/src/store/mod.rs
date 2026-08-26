@@ -15,7 +15,7 @@ pub mod schema {
             name TEXT NOT NULL,
             dir TEXT NOT NULL,
             created_at INTEGER NOT NULL,
-            harness TEXT NOT NULL DEFAULT 'aaa-coder-cli',
+            harness TEXT NOT NULL DEFAULT 'a-coder-cli',
             model TEXT NOT NULL DEFAULT 'navya/auto',
             source TEXT NOT NULL DEFAULT 'cloud'
         );
@@ -79,6 +79,8 @@ pub mod schema {
     "#;
 
     /// Current schema version (bump on every breaking change).
+    /// Schema version — incremented when DDL changes require migration.
+    #[allow(dead_code)]
     pub const VERSION: i64 = 1;
 }
 
@@ -245,7 +247,7 @@ mod tests {
     #[test]
     fn project_round_trip() {
         let store = ProjectStore::memory().unwrap();
-        let row = store.create_project("p1", "black-holes-explainer", "/proj/abc", "aaa-coder-cli", "navya/auto", "cloud").unwrap();
+        let row = store.create_project("p1", "black-holes-explainer", "/proj/abc", "a-coder-cli", "navya/auto", "cloud").unwrap();
         assert_eq!(row.created_at_ms, now_ms());
 
         let list = store.list_projects().unwrap();
@@ -257,8 +259,8 @@ mod tests {
     #[test]
     fn primary_key_conflict_fails() {
         let store = ProjectStore::memory().unwrap();
-        store.create_project("dup", "a", "/x", "aaa-coder-cli", "m", "cloud").unwrap();
-        let err = store.create_project("dup", "b", "/y", "aaa-coder-cli", "m", "cloud").unwrap_err();
+        store.create_project("dup", "a", "/x", "a-coder-cli", "m", "cloud").unwrap();
+        let err = store.create_project("dup", "b", "/y", "a-coder-cli", "m", "cloud").unwrap_err();
         assert!(matches!(err, StoreError::Sqlite(_)));
     }
 }

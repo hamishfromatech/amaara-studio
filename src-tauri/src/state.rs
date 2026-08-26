@@ -16,8 +16,8 @@ use crate::config::{self, NavyaConfig};
 use crate::engine::EngineClient;
 use crate::harness::{Capabilities, HarnessRegistry};
 use crate::navya::NavyaClient;
-use crate::render::{RenderQueue, RenderStatus};
-use crate::sidecar::{self, SidecarStatus, Supervisor};
+use crate::render::RenderQueue;
+use crate::sidecar::{SidecarStatus, Supervisor};
 use crate::store::{ProjectRow, ProjectStore};
 
 /// The active session — what the top bar and center panes key off of.
@@ -162,11 +162,19 @@ impl AppState {
         let config = self.config.lock().clone();
         let supervisor = &self.supervisor;
 
-        // Sidecar health: llama-server + sd-server, with honest binary detection.
-        let sidecars = vec![
-            detect_sidecar_health("llama-server", "llama-server"),
-            detect_sidecar_health("sd-server", "sd-server"),
-        ];
+        // Sidecar health: prefer the live supervisor status (if a sidecar has
+        // been started/stopped within this session), and fall back to binary
+        // detection (PATH scan) when the supervisor has no entry yet.
+        let sidecars = ["llama-server", "sd-server"]
+            .into_iter()
+            .map(|name| {
+                if let Some(status) = supervisor.status(name) {
+                    sidecar_health(name, Some(status))
+                } else {
+                    detect_sidecar_health(name, name)
+                }
+            })
+            .collect::<Vec<_>>();
 
         // Harnesses from the registry + capability matrix.
         let registry = self.harness_registry.lock();
@@ -302,22 +310,17 @@ pub fn cloud_models(active_model: &str) -> Vec<ModelEntry> {
 
 /// Resolve the config file path in the app data dir, loading it if present or
 /// falling back to defaults (and writing the default so the user can edit it).
-pub fn load_config(config_path: PathBuf) -> (NavyaConfig, NavyaConfig) {
+pub fn load_config(config_path: PathBuf) -> NavyaConfig {
     if config_path.exists() {
-        match std::fs::read_to_string(&config_path) {
-            Ok(raw) => match serde_json::from_str::<NavyaConfig>(&raw) {
-                Ok(c) => return (c.clone(), c),
-                Err(_) => {
-                    let d = config::default_config();
-                    return (d.clone(), d);
-                }
-            },
-            Err(_) => {}
+        if let Ok(raw) = std::fs::read_to_string(&config_path) {
+            if let Ok(c) = serde_json::from_str::<NavyaConfig>(&raw) {
+                return c;
+            }
         }
     }
     let d = config::default_config();
     // Best-effort persist the default so Settings shows a real file.
     let _ = std::fs::create_dir_all(config_path.parent().unwrap_or(&PathBuf::from(".")));
     let _ = std::fs::write(&config_path, serde_json::to_string_pretty(&d).unwrap_or_default());
-    (d.clone(), d)
+    d
 }
