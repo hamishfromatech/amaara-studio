@@ -74,6 +74,7 @@ pub enum ProjectEvent {
     Created { project_id: String, name: String },
     Switched { project_id: String, name: String },
     Updated { project_id: String, changed_at: i64 },
+    AssetAdded { project_id: String, asset_id: String, path: String },
 }
 
 impl StudioEvent {
@@ -143,6 +144,7 @@ impl ProjectEvent {
             ProjectEvent::Created { project_id, name } => format!("project:create[{project_id}] {name}"),
             ProjectEvent::Switched { project_id, name } => format!("project:switch[{project_id}] {name}"),
             ProjectEvent::Updated { changed_at, .. } => format!("project:update@{changed_at}"),
+            ProjectEvent::AssetAdded { project_id, asset_id, .. } => format!("project:asset[{project_id}:{asset_id}]"),
         }
     }
 }

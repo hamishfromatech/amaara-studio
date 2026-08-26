@@ -731,13 +731,17 @@ Build M0 first and stop. Re-evaluate with the user before M1+.
   a-coder-cli adapter, UI shell, render queue, render sidecar.
 - **Phase 8–9** — Research complete; `src-tauri/src/sidecar/llama.rs` implemented. sd-server sidecar
   lifecycle still pending.
-- **Phase 10–11** — UI skeleton and approval dialog exist; timeline track parser and native Tauri
-  approval dialogs not fully wired.
+- **Phase 10–11** — UI skeleton and approval dialog exist. Timeline HTML `data-*`
+  parser + `snapshot` (real `npx hyperframes snapshot`) are now wired and tested
+  (`src-tauri/src/timeline/mod.rs`, `src-tauri/src/commands/timeline.rs`);
+  preview iframe + inspector wiring still pending.
 - **Phase 12–13** — All six harness adapters implemented; `navya-mcp` FastMCP server updated to v4 API.
 
 ### Pending phases
 - **Phase 8 finish** — `sd-server` sidecar lifecycle + local image generation.
-- **Phase 10 finish** — Timeline HTML parser, preview iframe, snapshot wiring.
+- **Phase 10 finish** — Timeline HTML parser ✅ (real `data-*` parser, replaces
+  mock), snapshot ✅ (real `npx hyperframes snapshot`). Remaining: preview iframe
+  (`ui/src/timeline/PreviewCanvas`) + inspector clip linkage.
 - **Phase 14** — Cross-platform bundles (`msi`, `nsis`, `dmg`, `app`, `appimage`, `deb`),
   `externalBin` entries, sidecar bootstrap/downloader, first-run dependency fetch.
 - **Phase 15** — Error handling polish, structured logging, telemetry opt-in, headless e2e,

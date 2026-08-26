@@ -15,6 +15,7 @@ pub(crate) mod sd;
 pub(crate) mod sidecar;
 pub mod state;
 pub(crate) mod store;
+pub mod timeline;
 
 use std::path::PathBuf;
 
@@ -113,6 +114,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             commands::list_renders,
             commands::cancel_render,
             commands::get_sidecar_status,
+            commands::timeline::get_timeline,
+            commands::timeline::snapshot,
             commands::reveal_in_folder,
             commands::generate_image,
             commands::list_cloud_models,

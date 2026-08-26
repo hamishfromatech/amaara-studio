@@ -71,6 +71,10 @@ tokio-tungstenite = "0.24"
 # async-trait for the Harness trait (Phase 4)
 async-trait = "0.1"
 
+# regex for the timeline composition parser (Phase 10): extract data-* timing
+# attributes from a HyperFrames composition's HTML.
+regex = "1"
+
 # navya-tools shared crate (Phase 3)
 navya-tools = { path = "../crates/navya-tools" }
 
