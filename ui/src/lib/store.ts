@@ -74,6 +74,7 @@ interface AppState extends Partial<StateSnapshot> {
   clearApiKey: () => Promise<void>;
   saveConfig: (config: NonNullable<StateSnapshot["config"]>) => Promise<void>;
   setTheme: (theme: "dark" | "light") => Promise<void>;
+  setDensity: (density: "comfortable" | "compact") => Promise<void>;
   setShareAnalytics: (share: boolean) => Promise<void>;
 
   sendPrompt: (msg: string, mode?: string) => Promise<void>;
@@ -126,6 +127,12 @@ function applyTheme(theme: string) {
   root.setAttribute("data-theme", theme === "light" ? "light" : "dark");
 }
 
+/** Apply the density to the document root (drives the data-density tokens). */
+function applyDensity(density: string) {
+  const root = document.documentElement;
+  root.setAttribute("data-density", density === "compact" ? "compact" : "comfortable");
+}
+
 export const useStore = create<AppState>((set, get) => ({
   loading: true,
   error: null,
@@ -171,6 +178,7 @@ export const useStore = create<AppState>((set, get) => ({
       set({ ...snap, loading: false, initialized: true, error: null });
       // Apply the persisted theme to the DOM (light/dark tokens).
       if (snap.config?.theme) applyTheme(snap.config.theme);
+      if (snap.config?.density) applyDensity(snap.config.density);
       // Refresh engine models (discovered via the Navya Engine proxy).
       void get().refreshModels();
       // Subscribe once to the event stream.
@@ -259,6 +267,18 @@ export const useStore = create<AppState>((set, get) => ({
     applyTheme(theme); // apply immediately for responsiveness
     try {
       const saved = await Commands.saveConfig({ ...config, theme });
+      set({ config: saved });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  setDensity: async (density) => {
+    const config = get().config;
+    if (!config) return;
+    applyDensity(density); // apply immediately for responsiveness
+    try {
+      const saved = await Commands.saveConfig({ ...config, density });
       set({ config: saved });
     } catch (e) {
       set({ error: String(e) });

@@ -214,6 +214,31 @@
   }
 }
 
+/* Compact density (design.md §11): tighter rails, cards, and rows for
+   laptops. Comfortable is the default — these only apply when the root
+   carries data-density="compact" (set from the persisted config). */
+html[data-density="compact"] .entry-nav-rail__btn {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+html[data-density="compact"] .entry-nav-rail__group {
+  margin-bottom: 6px;
+}
+html[data-density="compact"] .entry-nav-rail__group-label {
+  padding: 4px 8px 2px;
+}
+html[data-density="compact"] .entry-section {
+  margin-bottom: 20px;
+}
+html[data-density="compact"] .row {
+  min-height: 24px;
+  padding: 2px 8px;
+}
+html[data-density="compact"] .list-card__row {
+  padding: 5px 10px;
+}
+
 /* -------- Tailwind v4 theme bridge -----------------------------------
    `inline` keeps utilities referencing the runtime var(), so every class
    (bg-panel, text-ink-muted, border-line) flips with the active theme. */

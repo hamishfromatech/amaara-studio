@@ -20,6 +20,7 @@ export function SettingsView() {
   const clearApiKey = useStore((s) => s.clearApiKey);
   const setHarness = useStore((s) => s.setHarness);
   const setTheme = useStore((s) => s.setTheme);
+  const setDensity = useStore((s) => s.setDensity);
   const setShareAnalytics = useStore((s) => s.setShareAnalytics);
 
   const [keyInput, setKeyInput] = useState("");
@@ -162,6 +163,40 @@ export function SettingsView() {
                   </span>
                   <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                     {t === "light" ? "Light" : "Dark"}
+                  </span>
+                  {isActive && (
+                    <span style={{ color: "var(--brand)", fontSize: 11 }}>● active</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="list-card" style={{ marginTop: 12 }}>
+          <div className="list-card__body">
+            <div style={{ padding: "10px 14px 0", fontSize: 11, color: "var(--text-faint)" }}>
+              density
+            </div>
+            {(["comfortable", "compact"] as const).map((d) => {
+              const isActive = (config?.density ?? "comfortable") === d;
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  className={`row ${isActive ? "is-active" : ""}`}
+                  onClick={() => void setDensity(d)}
+                >
+                  <span aria-hidden style={{ fontSize: 12, width: 16, textAlign: "center" }}>
+                    {d === "compact" ? "≡" : "☰"}
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                    {d === "compact" ? "Compact" : "Comfortable"}
+                    {d === "compact" && (
+                      <span style={{ color: "var(--text-faint)", marginLeft: 6, fontSize: 11 }}>
+                        tighter spacing for laptops
+                      </span>
+                    )}
                   </span>
                   {isActive && (
                     <span style={{ color: "var(--brand)", fontSize: 11 }}>● active</span>
