@@ -61,6 +61,15 @@ struct Inner {
 
 /// Probe whether a binary is on PATH. Returns path or None.
 pub fn which(bin: &str) -> Option<PathBuf> {
+    // Test/CI override (headless e2e): drive the adapter against a stub binary
+    // without mutating PATH. Checked only for a-coder-cli.
+    if bin == "a-coder-cli" {
+        if let Ok(over) = std::env::var("NAVYA_AACODER_BIN") {
+            if !over.is_empty() {
+                return Some(PathBuf::from(over));
+            }
+        }
+    }
     let cmd_bin = if cfg!(windows) { "where" } else { "which" };
     let mut cmd = std::process::Command::new(cmd_bin);
     cmd.arg(bin);
@@ -790,5 +799,94 @@ mod tests {
         h.stop().await.unwrap();
         eprintln!("[4] stopped");
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+}
+
+/// Headless end-to-end (Phase 15): drive the real adapter against the
+/// `tools/harness-stubs/a-coder-cli` stub speaking the documented rpc
+/// protocol, and assert a full prompt → agent_start → text deltas →
+/// agent_end cycle plus a get_available_models round-trip. Runs in CI —
+/// no LLM, no network, plain Node.
+#[cfg(test)]
+mod e2e_stub {
+    use super::*;
+    use std::time::Duration;
+
+    fn stub_dir() -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("tools")
+            .join("harness-stubs")
+    }
+
+    fn stub_shim() -> std::path::PathBuf {
+        if cfg!(windows) {
+            stub_dir().join("a-coder-cli.cmd")
+        } else {
+            stub_dir().join("a-coder-cli")
+        }
+    }
+
+    // multi_thread: the adapter's stdout reader does blocking read_line in a
+    // spawned task, which would starve a current-thread runtime.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn e2e_prompt_completes_against_stub() {
+        let shim = stub_shim();
+        assert!(shim.exists(), "stub shim missing: {}", shim.display());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755));
+        }
+        // Route the adapter's which("a-coder-cli") at the stub.
+        std::env::set_var("NAVYA_AACODER_BIN", &shim);
+
+        let h = AaaCoderCliHarness::new();
+        let tmp = std::env::temp_dir().join(format!("navya-e2e-aacoder-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let ctx = HarnessCtx {
+            project_dir: tmp.clone(),
+            model: "stub/stub-model".into(),
+            source: "cloud".into(),
+            control_url: None,
+            control_token: None,
+        };
+        h.start(&ctx).await.expect("stub should start");
+
+        // Models round-trip over the same framing.
+        let models = h.available_models().await.expect("models round-trip");
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].id, "stub/stub-model");
+
+        // Prompt cycle: collect events until AgentEnd.
+        let mut rx = h.subscribe();
+        h.prompt("say hi", crate::harness::PromptMode::Normal)
+            .await
+            .expect("prompt should send");
+
+        let mut saw_start = false;
+        let mut text = String::new();
+        let mut ended: Option<bool> = None;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+        while ended.is_none() {
+            let ev = tokio::time::timeout_at(deadline, rx.recv())
+                .await
+                .expect("timed out waiting for agent_end")
+                .expect("event channel closed");
+            match ev {
+                HarnessEvent::AgentStart { .. } => saw_start = true,
+                HarnessEvent::TextDelta(t) => text.push_str(&t),
+                HarnessEvent::AgentEnd { success, .. } => ended = Some(success),
+                _ => {}
+            }
+        }
+
+        h.stop().await.unwrap();
+        std::env::remove_var("NAVYA_AACODER_BIN");
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        assert!(saw_start, "no AgentStart event");
+        assert_eq!(text, "stub reply", "unexpected streamed text");
+        assert_eq!(ended, Some(true), "agent should end successfully");
     }
 }

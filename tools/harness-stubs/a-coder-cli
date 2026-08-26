@@ -1,0 +1,4 @@
+#!/bin/sh
+# POSIX shim: the adapter resolves a-coder-cli via `which`, which finds this
+# executable script; it forwards to the Node stub.
+exec node "$(dirname "$0")/a-coder-cli-stub.mjs" "$@"
