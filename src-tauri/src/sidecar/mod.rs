@@ -10,6 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::events;
 
+pub mod bootstrap;
 pub mod llama;
 
 pub mod spec {

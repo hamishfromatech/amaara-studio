@@ -80,6 +80,9 @@ navya-tools = { path = "../crates/navya-tools" }
 
 # "Send feedback" packager (Phase 15): zip redacted logs + session summary.
 zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# SHA256 checksums for the Phase 14 sidecar bootstrap (download-on-first-run).
+sha2 = "0.10"
 tracing-appender = "0.2.5"
 
 [dev-dependencies]

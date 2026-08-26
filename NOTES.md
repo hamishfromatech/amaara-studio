@@ -25,3 +25,32 @@ edit history. Unknowns that change early phases must also be raised to the user.
 ### Environmental blockers / workarounds documented
 - **Tauri 2.6 build-script icon requirement**: This environment's `tauri-build@2.6.3` unconditionally requires a valid Windows DIB-format ICO (`icons/icon.ico`) for resource generation, even with bundle disabled. The DIB format validation fails on minimal/truecolor ICOs generated via standard tools. Workaround: real icons are bundled in Phase 14; M0 dev/test gates may need a `tauri.conf.json` with no bundle targets OR a properly formatted ICO from the Tauri icon generator.
 - **ESLint config v9 flat format**: Updated to use `js.configs.recommended` + `react.configs.flat.recommended` per ESLint v9 API changes.
+
+## Phase 14 packaging decisions (2026-08-27)
+
+- **Node sidecar: require host Node in v1.** The plan recommends bundling a
+  standalone Node 22, but v1 ships requiring Node ≥ 22 on PATH (the render
+  worker and a-coder-cli both spawn `node`/`npx` today, and the onboarding
+  hint already says "Install Node.js (≥ 22)"). Bundling standalone Node
+  changes the installer by ~50MB/platform and needs a real release build to
+  embed and test — deferred until Gate 14 clean-VM runs are possible.
+- **sd-server: download-on-first-run** (per plan recommendation, smaller
+  installer). Flavor (cpu/cuda/vulkan) comes from `config.sd_backend`; the
+  binary lands in the configured `sd_binary_path` (default under app-data).
+  SHA256 sidecar files (`.sha256`) are written by `scripts/build-sidecars.*`
+  and verified by `sidecar::bootstrap` before use. The release base URL is
+  `NAVYA_SD_RELEASE_BASE` (no hardcoded, unverified URL in the binary);
+  without it, local generation requires the user to point `sd_binary_path`
+  at a binary (BUILD-GAPS: release asset naming is still unresolved).
+- **FastMCP `navya-mcp`: via `uv`** (plan-recommended). Only the five
+  MCP-capable harnesses need it; the a-coder-cli reference path needs no
+  Python. Offline wheel bundling deferred.
+- **Bundle targets**: `all` (per-host: msi+nsis on Windows, app+dmg on macOS,
+  deb+appimage+rpm on Linux) — matches Gate 14's five-format requirement.
+- **externalBin**: kept OUT of the base `tauri.conf.json` because tauri-build
+  validates the per-triple files at every compile (breaking dev/CI without the
+  staged binary). Release builds that want the binary embedded run
+  `scripts/build-sidecars.*` first, then
+  `cargo tauri build --config src-tauri/tauri.release.conf.json` (overlay adds
+  `bundle.externalBin: [binaries/sd-server]`). When the binary is absent,
+  `sidecar/bootstrap.rs` download-on-first-run covers the runtime path.
