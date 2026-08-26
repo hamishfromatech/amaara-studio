@@ -2,7 +2,27 @@
 name = "navya-mcp"
 version = "0.1.0"
 description = "Navya Studio FastMCP server for studio tools"
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp>=4.0.0b3",
+    "httpx>=0.28.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.fastmcp]
+# Default host/port only used when running via HTTP transport; stdio transport
+# (the default for harness child processes) ignores these.
 host = "127.0.0.1"
 port = 8080
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
