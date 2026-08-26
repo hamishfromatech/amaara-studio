@@ -14,7 +14,9 @@ import { useEffect, useState } from "react";
 import { useStore } from "../lib/store";
 import { harnessHint } from "../lib/invoke";
 import { ApprovalDialog } from "./ApprovalDialog";
+import { Inspector } from "./Inspector";
 import { RendersTab } from "../renders/RendersTab";
+import { TimelineTab } from "../timeline/TimelineTab";
 import { EntryNavRail, type NavId } from "./EntryNavRail";
 import { HomeView } from "./HomeView";
 import { ProjectsView } from "./ProjectsView";
@@ -134,6 +136,9 @@ function RightRail() {
   const session = useStore((s) => s.session);
   const config = useStore((s) => s.config);
   const projects = useStore((s) => s.projects) ?? [];
+  const timeline = useStore((s) => s.timeline);
+  const selectedClipId = useStore((s) => s.selectedClipId);
+  const sendPrompt = useStore((s) => s.sendPrompt);
 
   const activeCount = renders.filter((r) => r.status === "running").length;
   const doneCount = renders.filter((r) => r.status === "done").length;
@@ -207,9 +212,16 @@ function RightRail() {
       <div>
         <h3 className="rail-label">Inspector</h3>
         <div className="space-y-1 rounded-lg border border-line-soft bg-canvas p-3">
-          <div className="text-[13px] font-medium text-ink-strong">
-            {current ? current.name : "No project"}
-          </div>
+          {selectedClipId && timeline ? (
+            <Inspector
+              clip={timeline.clips.find((c) => c.id === selectedClipId) ?? null}
+              onEdit={(instruction) => void sendPrompt(instruction)}
+            />
+          ) : (
+            <div className="text-[13px] font-medium text-ink-strong">
+              {current ? current.name : "No project"}
+            </div>
+          )}
           {current && (
             <>
               <div className="mono truncate text-xs text-ink-muted" title={current.dir}>
@@ -317,6 +329,7 @@ export function StudioShell() {
           <div className="entry-main__scroll">
             {navId === "home" && <HomeView onNavigate={navigate} />}
             {navId === "projects" && <ProjectsView />}
+            {navId === "timeline" && <TimelineTab />}
             {navId === "models" && <ModelsView />}
             {navId === "sources" && <SourcesView />}
             {navId === "tools" && <ToolsView />}

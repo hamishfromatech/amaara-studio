@@ -1,93 +1,87 @@
 /**
- * Inspector Component (Phase 10).
+ * Inspector — clip detail panel (Phase 10).
  *
- * Contextual panels (project, selected clip, selected asset, generation source)
- * per design.md §6; every editable field's "edit in chat" pre-fills the Composer
- * with a targeted instruction.
+ * Shows the currently selected clip's timing, media source, and composition
+ * variables, with an "edit in chat" button that pre-fills a targeted
+ * instruction for the agent. Renders `null` when no clip is selected so the
+ * parent can fall back to the project summary.
  */
 
-import React from "react";
+import type { Clip } from "../lib/invoke";
 
 interface InspectorProps {
-  selectedType: "project" | "clip" | "asset" | "source";
-  selectedData?: any;
+  clip: Clip | null;
+  /** Called with a targeted instruction when the user hits "edit in chat". */
+  onEdit: (instruction: string) => void;
 }
 
-export function Inspector({ selectedType, selectedData }: InspectorProps) {
-  if (selectedType === "project") {
-    return (
-      <div>
-        <h3 className="rail-label">Project</h3>
-        <div className="space-y-1 rounded-lg border border-line-soft bg-canvas p-3 text-[13px] text-ink">
-          <div className="font-medium text-ink-strong">black-holes-explainer</div>
-          <div className="text-xs text-ink-muted">30s · 1280×720 · 30fps</div>
-          <div className="text-xs text-ink-muted">
-            harness <span className="text-ink">a-coder-cli</span>
-          </div>
-          <div className="text-xs text-ink-muted">
-            model <span className="text-ink">navya/auto</span>
-          </div>
-          <div className="text-xs text-ink-muted">4 scenes · 6 assets</div>
-        </div>
-      </div>
-    );
-  }
+export function Inspector({ clip, onEdit }: InspectorProps) {
+  if (!clip) return null;
+  const vars = parseVariables(clip.variables);
+  const start = clip.start_s;
+  const end = clip.start_s + clip.duration_s;
 
-  if (selectedType === "clip") {
-    return (
-      <div>
-        <h3 className="rail-label">Selected: scene2 clip</h3>
-        <div className="space-y-1 rounded-lg border border-line-soft bg-canvas p-3 text-[13px] text-ink">
+  return (
+    <div>
+      <h3 className="rail-label">Selected clip</h3>
+      <div className="text-[13px] font-medium text-ink-strong">{clip.id}</div>
+      <div className="mt-1 space-y-1 rounded-lg border border-line-soft bg-canvas p-2 text-xs text-ink-muted">
+        <div className="flex justify-between">
+          <span>start</span>
+          <span className="text-ink">{fmtSec(start)} ▾</span>
+        </div>
+        <div className="flex justify-between">
+          <span>dur</span>
+          <span className="text-ink">{fmtSec(clip.duration_s)} ▾</span>
+        </div>
+        {clip.src && (
           <div className="flex justify-between">
-            <span className="text-ink-muted">start</span>
-            <span className="numeric">06.0s ▾</span>
+            <span>media</span>
+            <span className="mono truncate text-left text-xs text-ink" title={clip.src}>
+              {clip.src.split(/[\/]/).pop()}
+            </span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-ink-muted">dur</span>
-            <span className="numeric">06.0s ▾</span>
+        )}
+      </div>
+      {Object.keys(vars).length > 0 && (
+        <div className="mt-2 rounded-lg border border-line-soft bg-canvas p-2">
+          <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-faint">
+            Variables
           </div>
-          <div className="flex justify-between">
-            <span className="text-ink-muted">media</span>
-            <span className="mono text-xs">scene2.png</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-ink-muted">motion</span>
-            <span>reveal-up</span>
-          </div>
-          <div className="mt-2 border-t border-line-soft pt-2">
-            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-faint">Variables</div>
-            <div className="flex justify-between text-xs">
-              <span className="text-ink-muted">title</span>
-              <span>"The horizon"</span>
+          {Object.entries(vars).map(([k, v]) => (
+            <div className="flex justify-between text-xs" key={k}>
+              <span className="text-ink-muted">{k}</span>
+              <span className="text-ink">{String(v)}</span>
             </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-ink-muted">palette</span>
-              <span className="mono">#202020</span>
-            </div>
-          </div>
-          <button className="btn btn-ghost btn-sm mt-2 w-full text-xs">Edit in chat</button>
+          ))}
         </div>
-      </div>
-    );
-  }
+      )}
+      <button
+        className="btn btn-ghost btn-sm mt-2 w-full text-xs"
+        title="Send a targeted edit instruction to the agent"
+        onClick={() => onEdit(`Adjust clip "${clip.id}" (currently ${fmtSec(start)}–${fmtSec(end)}): `)}
+      >
+        Edit in chat
+      </button>
+    </div>
+  );
+}
 
-  if (selectedType === "source") {
-    return (
-      <div>
-        <h3 className="rail-label">Generation Source</h3>
-        <div className="space-y-1.5 rounded-lg border border-line-soft bg-canvas p-3 text-[13px] text-ink">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-ok">●</span>
-            <span className="font-medium text-ink-strong">Cloud (Navya)</span>
-          </div>
-          <div className="flex items-center gap-2 text-ink-muted">
-            <span className="text-[10px] text-ink-faint">○</span>
-            <span>Local (sd-server)</span>
-          </div>
-        </div>
-      </div>
-    );
+/** Parse the raw `data-composition-variables` JSON into a plain object. */
+function parseVariables(raw: string | null): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
   }
+}
 
-  return null;
+function fmtSec(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return "0:00";
+  const total = Math.floor(sec);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }

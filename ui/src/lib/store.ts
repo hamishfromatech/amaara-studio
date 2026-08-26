@@ -7,8 +7,15 @@
  */
 
 import { create } from "zustand";
-import { Commands, type StateSnapshot, type RenderJob, type ProjectRow } from "./invoke";
-import { subscribeStudioEvents, type StudioEvent, type HarnessEvent } from "./events";
+import {
+  Commands,
+  type StateSnapshot,
+  type RenderJob,
+  type ProjectRow,
+  type TimelineState,
+  type Asset,
+} from "./invoke";
+import { subscribeStudioEvents, type StudioEvent, type HarnessEvent, type PreviewEvent } from "./events";
 
 interface ChatMessage {
   id: string;
@@ -25,6 +32,20 @@ interface AppState extends Partial<StateSnapshot> {
   initialized: boolean;
   /** Pending approval request from the harness (shown as a modal). */
   pendingApproval: { id: string; kind: string; payload: unknown } | null;
+
+  /** Live HyperFrames preview server (Timeline tab). */
+  preview: {
+    status: "idle" | "starting" | "running" | "error";
+    url: string | null;
+    port: number | null;
+    error: string | null;
+  };
+  /** Parsed timeline for the current composition (Timeline tab). */
+  timeline: TimelineState | null;
+  /** Id of the clip currently selected in the inspector / playhead. */
+  selectedClipId: string | null;
+  /** Assets pinned to the current project (images, snapshots, media). */
+  assets: Asset[];
 
   loadState: () => Promise<void>;
   refreshProjects: () => Promise<void>;
@@ -49,6 +70,12 @@ interface AppState extends Partial<StateSnapshot> {
   render: (quality?: string) => Promise<void>;
   cancelRender: (jobId: string) => Promise<void>;
   approve: (answer: "allow" | "deny" | "edit", alwaysAllow: boolean) => Promise<void>;
+
+  // --- Preview (Timeline tab) --------------------------------------------
+  startPreview: () => Promise<void>;
+  stopPreview: () => Promise<void>;
+  loadTimeline: (projectId: string, compositionId: string) => Promise<void>;
+  selectClip: (clipId: string | null) => void;
 }
 
 let unsubEvents: (() => void) | null = null;
@@ -66,6 +93,11 @@ export const useStore = create<AppState>((set, get) => ({
   renders: [],
   initialized: false,
   pendingApproval: null,
+
+  preview: { status: "idle", url: null, port: null, error: null },
+  timeline: null,
+  selectedClipId: null,
+  assets: [],
 
   loadState: async () => {
     try {
@@ -136,6 +168,8 @@ export const useStore = create<AppState>((set, get) => ({
     await Commands.openProject(projectId);
     const snap = await Commands.getState();
     set({ session: snap.session });
+    // The composition changes with the project — tear down any preview.
+    void get().stopPreview();
   },
 
   saveApiKey: async (key) => {
@@ -237,6 +271,42 @@ export const useStore = create<AppState>((set, get) => ({
       set({ error: String(e) });
     }
   },
+
+  // --- Preview (Timeline tab) --------------------------------------------
+  // Start the live preview server for the current composition. Idempotent:
+  // a running server is left alone; a failed one is retried.
+  startPreview: async () => {
+    const { preview } = get();
+    if (preview.status === "running" || preview.status === "starting") return;
+    set({ preview: { ...preview, status: "starting", error: null } });
+    try {
+      await Commands.startPreview();
+    } catch (e) {
+      set({ preview: { status: "error", url: null, port: null, error: String(e) } });
+    }
+  },
+
+  // Stop the preview server (called when leaving the Timeline tab).
+  stopPreview: async () => {
+    try {
+      await Commands.stopPreview();
+    } catch {
+      /* non-fatal — the Stopped event still clears state */
+    }
+  },
+
+  // Parse the current composition into a timeline and select its first clip.
+  loadTimeline: async (projectId, compositionId) => {
+    try {
+      const timeline = await Commands.getTimeline(projectId, compositionId);
+      const selectedClipId = timeline.clips[0]?.id ?? null;
+      set({ timeline, selectedClipId });
+    } catch (e) {
+      set({ timeline: null, selectedClipId: null, error: String(e) });
+    }
+  },
+
+  selectClip: (clipId) => set({ selectedClipId: clipId }),
 }));
 
 /** Reduce a StudioEvent into store mutations. */
@@ -250,10 +320,57 @@ function handleEvent(
   } else if (ev.type === "Render") {
     handleRenderEvent(ev.payload, set);
   } else if (ev.type === "Project") {
-    // Refresh the project list on create/switch.
-    void useStore.getState().refreshProjects();
+    const payload = ev.payload as { type: string; AssetAdded?: { project_id: string; asset_id: string; path: string } };
+    if (payload.type === "AssetAdded" && payload.AssetAdded) {
+      handleAssetAdded(payload.AssetAdded, set);
+    } else {
+      // Refresh the project list on create/switch.
+      void useStore.getState().refreshProjects();
+    }
   } else if (ev.type === "Sidecar") {
     handleSidecarEvent(ev.payload, set);
+  } else if (ev.type === "Preview") {
+    handlePreviewEvent(ev.payload, set);
+  }
+}
+
+/** Accumulate an asset pinned via the snapshot command (AssetAdded event). */
+function handleAssetAdded(
+  a: { project_id: string; asset_id: string; path: string },
+  set: (fn: (s: AppState) => Partial<AppState>) => void,
+) {
+  set((s) => {
+    if (s.assets.some((x) => x.id === a.asset_id)) return {};
+    const asset: Asset = {
+      id: a.asset_id,
+      project_id: a.project_id,
+      composition_id: null,
+      path: a.path,
+      kind: "image",
+      source: "local",
+      prompt: null,
+      created_at_ms: Date.now(),
+    };
+    return { assets: [...s.assets, asset] };
+  });
+}
+
+function handlePreviewEvent(
+  ev: PreviewEvent,
+  set: (fn: (s: AppState) => Partial<AppState>) => void,
+) {
+  const kind = Object.keys(ev)[0] as keyof PreviewEvent;
+  const p = (ev as Record<string, unknown>)[kind] as { url?: string; port?: number; error?: string };
+  switch (kind) {
+    case "Started":
+      set(() => ({ preview: { status: "running", url: p.url ?? null, port: p.port ?? null, error: null } }));
+      break;
+    case "Stopped":
+      set(() => ({ preview: { status: "idle", url: null, port: null, error: null } }));
+      break;
+    case "Failed":
+      set(() => ({ preview: { status: "error", url: null, port: null, error: p.error ?? "preview failed to start" } }));
+      break;
   }
 }
 

@@ -15,10 +15,11 @@ import { useStore } from "../lib/store";
 export type NavId =
   | "home"
   | "projects"
+  | "timeline"
+  | "renders"
   | "models"
   | "sources"
   | "tools"
-  | "renders"
   | "settings";
 
 interface NavItem {
@@ -46,6 +47,7 @@ export function EntryNavRail({ navId, onChange }: Props) {
   const renders = useStore((s) => s.renders) ?? [];
   const session = useStore((s) => s.session);
   const hasApiKey = useStore((s) => s.has_api_key) ?? false;
+  const previewRunning = useStore((s) => s.preview.status === "running");
 
   const runningRenders = renders.filter((r) => r.status === "running").length;
 
@@ -59,6 +61,12 @@ export function EntryNavRail({ navId, onChange }: Props) {
           label: "Projects",
           glyph: "▤",
           badge: projects.length ? String(projects.length) : undefined,
+        },
+        {
+          id: "timeline",
+          label: "Timeline",
+          glyph: "▰",
+          dot: previewRunning,
         },
         {
           id: "renders",

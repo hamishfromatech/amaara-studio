@@ -14,7 +14,8 @@ export type StudioEvent =
   | { type: "Harness"; payload: HarnessEvent }
   | { type: "Render"; payload: RenderEvent }
   | { type: "Sidecar"; payload: SidecarEvent }
-  | { type: "Project"; payload: ProjectEvent };
+  | { type: "Project"; payload: ProjectEvent }
+  | { type: "Preview"; payload: PreviewEvent };
 
 export type HarnessEvent =
   | { AgentStart: { model: string } }
@@ -45,7 +46,18 @@ export type SidecarEvent =
 export type ProjectEvent =
   | { Created: { project_id: string; name: string } }
   | { Switched: { project_id: string; name: string } }
-  | { Updated: { project_id: string; changed_at: number } };
+  | { Updated: { project_id: string; changed_at: number } }
+  | { AssetAdded: { project_id: string; asset_id: string; path: string } };
+
+/**
+ * HyperFrames preview-server lifecycle (Timeline tab). The server is
+ * `npx hyperframes preview --background` bound to a loopback port; the UI
+ * embeds its URL in an iframe. Mirrors `PreviewEvent` in events.rs.
+ */
+export type PreviewEvent =
+  | { Started: { url: string; port: number } }
+  | { Stopped: null }
+  | { Failed: { error: string } };
 
 export type StudioEventListener = (event: StudioEvent) => void;
 

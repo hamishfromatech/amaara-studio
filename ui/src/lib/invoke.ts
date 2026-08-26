@@ -98,6 +98,51 @@ export interface StateSnapshot {
   render_count: number;
 }
 
+export interface Clip {
+  id: string;
+  src: string | null; // block/component HTML path, when referenced
+  start_s: number; // data-start (seconds)
+  duration_s: number; // data-duration (seconds)
+  track_index: number; // data-track-index (layer / z-order)
+  width: number | null;
+  height: number | null;
+  /** Raw `data-composition-variables` JSON string, when present. */
+  variables: string | null;
+}
+
+export interface TimelineTrack {
+  index: number;
+  name: string;
+  label: string;
+  start_ms: number;
+  duration_ms: number;
+  media: string | null;
+}
+
+export interface TimelineState {
+  project_id: string;
+  composition_id: string;
+  /** Composition file that was parsed (relative to the project dir). */
+  entry: string;
+  clips: Clip[];
+  tracks: TimelineTrack[];
+  duration_ms: number;
+  width: number;
+  height: number;
+  fps: number;
+}
+
+export interface SnapshotResult {
+  asset_id: string;
+  path: string;
+  timecode_ms: number;
+}
+
+export interface PreviewStatus {
+  running: boolean;
+  port: number | null;
+}
+
 export interface RenderJob {
   job_id: string;
   project_id: string;
@@ -153,6 +198,18 @@ export const Commands = {
   listRenders: () => invoke<RenderJob[]>("list_renders"),
   cancelRender: (jobId: string) => invoke<boolean>("cancel_render", { jobId }),
 
+  getTimeline: (
+    projectId: string,
+    compositionId: string,
+  ) => invoke<TimelineState>("get_timeline", { project_id: projectId, composition_id: compositionId }),
+  snapshot: (
+    projectId: string,
+    tMs: number,
+  ) => invoke<SnapshotResult>("snapshot", { project_id: projectId, t_ms: tMs }),
+  startPreview: () => invoke<void>("preview_start"),
+  stopPreview: () => invoke<void>("preview_stop"),
+  previewStatus: () => invoke<PreviewStatus>("preview_status"),
+
   getSidecarStatus: () => invoke<SidecarHealth[]>("get_sidecar_status"),
   revealInFolder: (path: string) => invoke<void>("reveal_in_folder", { path }),
 
@@ -161,3 +218,15 @@ export const Commands = {
   approve: (requestId: string, kind: string, payload: unknown, approved: boolean, alwaysAllow: boolean) =>
     invoke<void>("approve", { requestId, kind, payload, approved, alwaysAllow }),
 };
+
+/** An asset pinned to the project (image / snapshot / generated media). */
+export interface Asset {
+  id: string;
+  project_id: string;
+  composition_id: string | null;
+  path: string;
+  kind: string; // image | audio | video | ...
+  source: string; // cloud | local
+  prompt: string | null;
+  created_at_ms: number;
+}

@@ -732,16 +732,20 @@ Build M0 first and stop. Re-evaluate with the user before M1+.
 - **Phase 8–9** — Research complete; `src-tauri/src/sidecar/llama.rs` implemented. sd-server sidecar
   lifecycle still pending.
 - **Phase 10–11** — UI skeleton and approval dialog exist. Timeline HTML `data-*`
-  parser + `snapshot` (real `npx hyperframes snapshot`) are now wired and tested
-  (`src-tauri/src/timeline/mod.rs`, `src-tauri/src/commands/timeline.rs`);
-  preview iframe + inspector wiring still pending.
+  parser + `snapshot` (real `npx hyperframes snapshot`) are wired and tested
+  (`src-tauri/src/timeline/mod.rs`, `src-tauri/src/commands/timeline.rs`).
+  Preview server (`src-tauri/src/preview/mod.rs`, `npx hyperframes preview`)
+  + iframe (`ui/src/timeline/PreviewCanvas.tsx`), scrubable track view
+  (`ui/src/timeline/TrackView.tsx`), transport/snapshot, nav rail entry,
+  and data-driven clip Inspector are all wired and passing typecheck + lint.
 - **Phase 12–13** — All six harness adapters implemented; `navya-mcp` FastMCP server updated to v4 API.
 
 ### Pending phases
 - **Phase 8 finish** — `sd-server` sidecar lifecycle + local image generation.
-- **Phase 10 finish** — Timeline HTML parser ✅ (real `data-*` parser, replaces
-  mock), snapshot ✅ (real `npx hyperframes snapshot`). Remaining: preview iframe
-  (`ui/src/timeline/PreviewCanvas`) + inspector clip linkage.
+- **Phase 10 finish** — Timeline parser ✅, snapshot ✅, preview server ✅
+  (`src-tauri/src/preview/mod.rs`), preview iframe ✅, track view + transport ✅,
+  nav rail entry ✅, data-driven Inspector ✅. All typecheck + lint clean; 91 Rust
+  tests pass.
 - **Phase 14** — Cross-platform bundles (`msi`, `nsis`, `dmg`, `app`, `appimage`, `deb`),
   `externalBin` entries, sidecar bootstrap/downloader, first-run dependency fetch.
 - **Phase 15** — Error handling polish, structured logging, telemetry opt-in, headless e2e,
