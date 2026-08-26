@@ -741,19 +741,29 @@ Build M0 first and stop. Re-evaluate with the user before M1+.
 - **Phase 12–13** — All six harness adapters implemented; `navya-mcp` FastMCP server updated to v4 API.
 
 ### Pending phases
-- **Phase 8 finish** — `sd-server` sidecar lifecycle + local image generation.
-- **Phase 10 finish** — Timeline parser ✅, snapshot ✅, preview server ✅
-  (`src-tauri/src/preview/mod.rs`), preview iframe ✅, track view + transport ✅,
-  nav rail entry ✅, data-driven Inspector ✅. All typecheck + lint clean; 91 Rust
-  tests pass.
 - **Phase 14** — Cross-platform bundles (`msi`, `nsis`, `dmg`, `app`, `appimage`, `deb`),
   `externalBin` entries, sidecar bootstrap/downloader, first-run dependency fetch.
-- **Phase 15** — Error handling polish ✅ (typed `StudioEvent::Error` + UI strip,
-  committed), structured logging ✅ (`src-tauri/src/logging.rs`: daily-rotating
-  JSON logs to app-data/logs/, stderr fallback; wired into `lib.rs` setup,
-  2 tests). Remaining: telemetry opt-in flag, per-sidecar log drawer, "send
-  feedback" packager, headless e2e, plaintext-key leak test, CI matrix.
-- **Phase 16** — Onboarding flow, keyboard shortcuts, full theming/density, empty states.
+  Code-level pieces (tauri.conf bundle config, `scripts/build-sidecars.*`,
+  real `bootstrap.rs` download-on-first-run) in progress; Gate 14 clean-VM
+  smoke tests remain manual.
+
+### Completed since 2026-08-26 (2026-08-27 session)
+- **Phase 10 finish** — Timeline tab committed: preview iframe, scrubable
+  TrackView, data-driven Inspector, store wiring (`b4..` → `0eef7a0` era).
+- **Phase 15 — COMPLETE** — telemetry opt-in (`share_analytics`, `--no-telemetry`
+  passed to HyperFrames renders; off by default), per-sidecar log drawer wired
+  to real sidecar output (`sidecar::spawn_log_forwarder` — also fixes latent
+  pipe-buffer deadlock), send-feedback packager (`feedback.rs` redacted zip),
+  headless e2e driving the a-coder-cli adapter against a Node RPC stub
+  (`tools/harness-stubs/`), plaintext-key leak test. 106 Rust tests pass;
+  clippy at baseline.
+- **Phase 16 — COMPLETE** — keyboard shortcuts + ⌘K command palette + `?`
+  overlay, reusable EmptyState (+ ProjectsView), density comfortable/compact
+  through config → `data-density` CSS (§11), motion polish per §9 (card
+  fade/slide, render-done green flash, width-only progress), all
+  reduced-motion-safe. Onboarding verified production-wired.
+- **Loose end**: Gate 15 references `pnpm test`, which does not exist in
+  `ui/package.json` (typecheck + lint are the UI gates).
 
 ### Research artifacts
 All open questions from `BUILD-GAPS.md` have been researched and written to
