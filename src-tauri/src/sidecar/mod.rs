@@ -259,6 +259,37 @@ impl Supervisor {
     }
 }
 
+/// Forward a sidecar child's stdout/stderr to the UI as `SidecarEvent::LogLine`
+/// lines (status-strip log drawer, Phase 15). Also prevents pipe-buffer
+/// deadlock: without a reader, a chatty child can stall once its pipe fills.
+///
+/// The task runs detached for the life of the stream — when the child exits
+/// the stream closes and the loop ends naturally.
+pub fn spawn_log_forwarder(
+    name: &str,
+    stream: impl tokio::io::AsyncRead + Unpin + Send + 'static,
+    level: &'static str,
+    app_handle: tauri::AppHandle,
+) {
+    use tauri::Emitter;
+    use tokio::io::AsyncBufReadExt;
+    let name = name.to_string();
+    tokio::spawn(async move {
+        let reader = tokio::io::BufReader::new(stream);
+        let mut lines = reader.lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            let _ = app_handle.emit(
+                "studio://event",
+                events::SidecarEvent::LogLine {
+                    name: name.clone(),
+                    level: level.to_string(),
+                    message: line,
+                },
+            );
+        }
+    });
+}
+
 impl std::fmt::Debug for Supervisor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Supervisor")

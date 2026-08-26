@@ -10,7 +10,7 @@
  * real sidecar health. No hardcoded mock content.
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStore } from "../lib/store";
 import { useKeyboardShortcuts } from "../lib/shortcuts";
 import { harnessHint } from "../lib/invoke";
@@ -287,45 +287,115 @@ function RenderDot({ status }: { status: string }) {
 // --- StatusStrip ---
 function StatusStrip() {
   const sidecars = useStore((s) => s.sidecars) ?? [];
+  const sidecarLogs = useStore((s) => s.sidecarLogs);
   const error = useStore((s) => s.error);
   const studioError = useStore((s) => s.studioError);
   const dismissError = useStore((s) => s.dismissError);
   // Live render count from the renders array (updated by events), not the
   // one-shot snapshot value which is stale after the initial load.
   const renderCount = useStore((s) => s.renders?.length ?? 0);
+  // Which sidecar's log drawer is open (Phase 15); null = closed.
+  const [openLog, setOpenLog] = useState<string | null>(null);
 
   const dot = (status: string) =>
     status === "running" ? "text-info" : status === "exited" ? "text-danger" : "text-ink-faint";
 
+  const activeLogs = openLog ? (sidecarLogs?.[openLog] ?? []) : [];
   return (
-    <footer className="flex h-7 shrink-0 items-center gap-4 border-t border-line-soft bg-panel px-3 text-xs text-ink-muted">
-      {sidecars.map((sc) => (
-        <span key={sc.name} className="flex items-center gap-1.5" title={sc.detail ?? sc.status}>
-          <span className={`text-[9px] ${dot(sc.status)}`}>●</span>
-          <span>
-            {sc.name} <span className="text-ink-faint">{sc.status}</span>
-          </span>
-        </span>
-      ))}
-      <span className="numeric ml-auto text-ink-muted">{renderCount} render(s)</span>
-      {studioError && (
-        <span
-          className="flex items-center gap-2 rounded border border-danger-border bg-danger-bg px-2 py-0.5 text-danger"
-          title={studioError.code}
-        >
-          <span className="max-w-xs truncate">⚠ {studioError.message}</span>
-          <span className="text-ink-faint">— {userActionLabel(studioError.user_action)}</span>
+    <div className="relative shrink-0">
+      {openLog !== null && <SidecarLogDrawer name={openLog} logs={activeLogs} onClose={() => setOpenLog(null)} />}
+      <footer className="flex h-7 shrink-0 items-center gap-4 border-t border-line-soft bg-panel px-3 text-xs text-ink-muted">
+        {sidecars.map((sc) => (
           <button
-            className="icon-btn h-4 w-4 shrink-0 text-danger"
-            title="Dismiss"
-            onClick={() => dismissError()}
+            key={sc.name}
+            type="button"
+            className={`flex items-center gap-1.5 rounded px-1 py-0.5 transition-colors hover:bg-fill-secondary ${
+              openLog === sc.name ? "bg-fill-secondary text-ink" : ""
+            }`}
+            title={openLog === sc.name ? "Close log" : "View log"}
+            onClick={() => setOpenLog(openLog === sc.name ? null : sc.name)}
           >
-            ×
+            <span className={`text-[9px] ${dot(sc.status)}`}>●</span>
+            <span>
+              {sc.name} <span className="text-ink-faint">{sc.status}</span>
+            </span>
           </button>
-        </span>
-      )}
-      {error && <span className="max-w-xs truncate text-danger">⚠ {error}</span>}
-    </footer>
+        ))}
+        <span className="numeric ml-auto text-ink-muted">{renderCount} render(s)</span>
+        {studioError && (
+          <span
+            className="flex items-center gap-2 rounded border border-danger-border bg-danger-bg px-2 py-0.5 text-danger"
+            title={studioError.code}
+          >
+            <span className="max-w-xs truncate">⚠ {studioError.message}</span>
+            <span className="text-ink-faint">— {userActionLabel(studioError.user_action)}</span>
+            <button
+              className="icon-btn h-4 w-4 shrink-0 text-danger"
+              title="Dismiss"
+              onClick={() => dismissError()}
+            >
+              ×
+            </button>
+          </span>
+        )}
+        {error && <span className="max-w-xs truncate text-danger">⚠ {error}</span>}
+      </footer>
+    </div>
+  );
+}
+
+/**
+ * Per-sidecar log drawer (Phase 15): opens above the status strip when a
+ * sidecar chip is clicked. Shows the tail of the sidecar's output, newest
+ * last, auto-scrolled to the bottom.
+ */
+function SidecarLogDrawer({
+  name,
+  logs,
+  onClose,
+}: {
+  name: string;
+  logs: { ts: number; level: string; message: string }[];
+  onClose: () => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [logs.length]);
+
+  const levelTone = (level: string) =>
+    level === "error" ? "text-danger" : level === "ok" ? "text-ok" : "text-ink-muted";
+
+  return (
+    <div className="border-t border-line-soft bg-panel">
+      <div className="flex items-center justify-between px-3 pb-1 pt-1.5">
+        <span className="rail-label text-ink-muted">{name} — log (latest {logs.length})</span>
+        <button className="icon-btn h-4 w-4 text-ink-muted" title="Close" onClick={onClose}>
+          ×
+        </button>
+      </div>
+      <div
+        ref={scrollRef}
+        className="mono max-h-44 overflow-y-auto px-3 pb-2 text-[11px] leading-relaxed"
+      >
+        {logs.length === 0 ? (
+          <div className="py-3 text-ink-faint">no output yet — lines appear as {name} runs</div>
+        ) : (
+          logs.map((l, i) => (
+            <div key={i} className="flex gap-2">
+              <span className="numeric shrink-0 text-ink-faint">
+                {new Date(l.ts).toLocaleTimeString()}
+              </span>
+              <span className={`whitespace-pre-wrap break-all ${levelTone(l.level)}`}>
+                {l.message}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   );
 }
 

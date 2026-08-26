@@ -525,6 +525,11 @@ async fn run_render(app: AppHandle, job: RenderJob) {
             return;
         }
     };
+    // Forward the worker's stderr to the sidecar log drawer (Phase 15) — the
+    // worker prints node/npx diagnostics there. Stdout is pumped as JSONL below.
+    if let Some(err) = child.stderr.take() {
+        crate::sidecar::spawn_log_forwarder("render", err, "error", app.clone());
+    }
 
     // Mark the job running.
     {
@@ -631,7 +636,24 @@ async fn run_render(app: AppHandle, job: RenderJob) {
                     }),
                 );
             }
-            _ => { /* log / pong — ignore for now */ }
+            _ => {
+                // Worker informational lines → sidecar log drawer (Phase 15).
+                if kind == "log" {
+                    let msg = parsed
+                        .get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("&line")
+                        .to_string();
+                    let _ = app_for_stdout.emit(
+                        "studio://event",
+                        StudioEvent::Sidecar(crate::events::SidecarEvent::LogLine {
+                            name: "render".to_string(),
+                            level: "info".to_string(),
+                            message: msg,
+                        }),
+                    );
+                }
+            }
         }
     }
 
@@ -695,6 +717,14 @@ pub async fn preview_start(
 
     // Spawn the preview server, then wait for it to answer on its port.
     let mut child = spawn_preview(&project_dir, PORT).await?;
+    // Drain the server's output into the sidecar log drawer (Phase 15). This
+    // also keeps the pipes from filling and stalling the server during startup.
+    if let Some(out) = child.stdout.take() {
+        crate::sidecar::spawn_log_forwarder("preview", out, "info", app.clone());
+    }
+    if let Some(err) = child.stderr.take() {
+        crate::sidecar::spawn_log_forwarder("preview", err, "error", app.clone());
+    }
     match poll_ready(PORT, std::time::Duration::from_secs(30)).await {
         Ok(url) => {
             let mut guard = state.preview.lock();

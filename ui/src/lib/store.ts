@@ -57,6 +57,8 @@ interface AppState extends Partial<StateSnapshot> {
   selectedClipId: string | null;
   /** Assets pinned to the current project (images, snapshots, media). */
   assets: Asset[];
+  /** Per-sidecar log lines for the status-strip log drawer (Phase 15). */
+  sidecarLogs: Record<string, SidecarLogLine[]>;
 
   loadState: () => Promise<void>;
   refreshProjects: () => Promise<void>;
@@ -121,6 +123,16 @@ interface AppState extends Partial<StateSnapshot> {
 
 let unsubEvents: (() => void) | null = null;
 
+/** Max log lines kept per sidecar in the status-strip log drawer. */
+const MAX_SIDECAR_LOG_LINES = 200;
+
+/** One line in a sidecar's log drawer (status strip, Phase 15). */
+export interface SidecarLogLine {
+  ts: number;
+  level: string;
+  message: string;
+}
+
 /** Apply the theme to the document root (drives the CSS data-theme tokens). */
 function applyTheme(theme: string) {
   const root = document.documentElement;
@@ -146,6 +158,7 @@ export const useStore = create<AppState>((set, get) => ({
   timeline: null,
   selectedClipId: null,
   assets: [],
+  sidecarLogs: {},
 
   // Layout / keyboard shortcuts (Phase 16).
   navId: "home",
@@ -489,6 +502,23 @@ function handleSidecarEvent(
   const p = (ev as Record<string, unknown>)[kind] as Record<string, unknown>;
   const name = String(p.name ?? "");
   set((s) => {
+    // Every sidecar event seeds a line in the log drawer so lifecycle
+    // transitions stay visible even when the process itself is quiet.
+    const seed: SidecarLogLine | null =
+      kind === "LogLine"
+        ? { ts: Date.now(), level: String(p.level ?? "info"), message: String(p.message ?? "") }
+        : kind === "Starting"
+          ? { ts: Date.now(), level: "info", message: "starting…" }
+          : kind === "Ready"
+            ? { ts: Date.now(), level: "ok", message: "ready" }
+            : kind === "Exit"
+              ? { ts: Date.now(), level: "error", message: `exited with code ${p.code ?? "?"}` }
+              : null;
+    const prevLogs = s.sidecarLogs?.[name] ?? [];
+    const sidecarLogs =
+      seed !== null
+        ? { ...s.sidecarLogs, [name]: [...prevLogs, seed].slice(-MAX_SIDECAR_LOG_LINES) }
+        : s.sidecarLogs;
     const sidecars = (s.sidecars ?? []).map((sc) => {
       if (sc.name !== name) return sc;
       if (kind === "Starting") return { ...sc, status: "starting" };
@@ -499,7 +529,7 @@ function handleSidecarEvent(
       }
       return sc;
     });
-    return { sidecars };
+    return { sidecars, sidecarLogs };
   });
 }
 
