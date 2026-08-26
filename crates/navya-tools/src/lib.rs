@@ -205,7 +205,7 @@ pub async fn get_project_state(ctx: &ToolContext) -> anyhow::Result<ProjectState
     Ok(ProjectState {
         project_id: first,
         name,
-        harness: ctx.config.enabled_harnesses.first().cloned().unwrap_or("aaa-coder-cli".to_string()),
+        harness: ctx.config.enabled_harnesses.first().cloned().unwrap_or("a-coder-cli".to_string()),
         model: ctx.config.default_model.clone(),
         source: "cloud".to_string(), // default per A.3
         compositions_count: 0,       // mock

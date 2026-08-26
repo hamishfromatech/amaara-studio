@@ -135,6 +135,18 @@ impl RenderQueue {
             false
         }
     }
+
+    /// Mark a job done and record where its output landed (the queue entry
+    /// previously stayed `output_path: None` even after a successful render).
+    pub fn complete(&mut self, job_id: &str, output_path: &str) -> bool {
+        let Some(job) = self.jobs.get_mut(job_id) else {
+            return false;
+        };
+        job.status = RenderStatus::Done;
+        job.output_path = Some(PathBuf::from(output_path));
+        job.finished_at_ms = Some(current_time_ms());
+        true
+    }
 }
 
 fn current_time_ms() -> i64 {

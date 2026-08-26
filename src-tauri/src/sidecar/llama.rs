@@ -1,81 +1,219 @@
-//! Local LLM (llama.cpp) provider + model picker (Phase 9).
-//!
-//! A local llama.cpp server as an OpenAI-compatible provider so the agent
-//! itself can run fully offline, surfaced in the Models list grouped Cloud/Local.
+//! Local LLM sidecar via llama.cpp `llama-server` (Phase 9).
+use serde::Deserialize;
+use std::{
+    path::PathBuf,
+    process::{Child, Command, Stdio},
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+use tokio::time::timeout;
+use tracing::{info, warn};
 
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use crate::errors::{ErrorCode, StudioError};
 
-/// Llama.cpp server state (user-configured URL from config).
-#[derive(Debug, Clone)]
-pub struct LlamaServerState {
-    pub url: String,
-    pub status: LlamaStatus,
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LlamaConfig {
+    pub binary_path: Option<PathBuf>,
+    pub model_path: Option<PathBuf>,
+    pub host: String,
+    pub port: u16,
+    pub context_size: i32,
+    pub gpu_layers: i32,
+    pub threads: i32,
+    pub use_jinja: bool,
+    pub extra_args: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LlamaStatus {
-    Stopped,
-    Starting,
-    Running,
-    Error(String),
-}
-
-impl Default for LlamaServerState {
-    fn default() -> Self {
-        LlamaServerState {
-            url: "http://localhost:8080".to_string(),
-            status: LlamaStatus::Stopped,
-        }
+impl LlamaConfig {
+    #[must_use]
+    pub fn base_url(&self) -> String {
+        format!("http://{}:{}", self.host, self.port)
     }
 }
 
-/// Supervisor for user-configured llama-server (llama.cpp OpenAI-compatible server).
-#[derive(Default)]
-pub struct LlamaServerSupervisor {
-    state: Arc<Mutex<LlamaServerState>>,
+#[derive(Clone, Debug, Default)]
+pub struct LlamaServer {
+    inner: Arc<Mutex<Inner>>,
 }
 
-impl LlamaServerSupervisor {
-    pub fn new() -> Self {
-        LlamaServerSupervisor {
-            state: Arc::new(Mutex::new(LlamaServerState::default())),
+#[derive(Debug, Default)]
+struct Inner {
+    config: LlamaConfig,
+    child: Option<Child>,
+    supports_tools: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct PropsResponse {
+    #[serde(default)]
+    chat_template_caps: ChatTemplateCaps,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct ChatTemplateCaps {
+    #[serde(default)]
+    supports_tools: bool,
+    #[serde(default)]
+    supports_tool_calls: bool,
+}
+
+impl LlamaServer {
+    #[must_use]
+    pub fn new(config: LlamaConfig) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(Inner {
+                config,
+                child: None,
+                supports_tools: None,
+            })),
         }
     }
 
-    /// Start the llama.cpp server at the URL in config.
-    pub async fn start(&self, url: &str) -> Result<(), String> {
-        let mut state = self.state.lock().await;
-        if matches!(state.status, LlamaStatus::Running | LlamaStatus::Starting) {
+    pub async fn ensure_running(&self, config: &LlamaConfig) -> Result<(), StudioError> {
+        {
+            let mut inner = self.inner.lock().unwrap();
+            if inner.child.is_some() && inner.config != *config {
+                info!("llama-server config changed; restarting");
+                let _ = Self::stop_locked(&mut inner);
+            }
+            inner.config = config.clone();
+        }
+        if self.is_healthy().await {
             return Ok(());
         }
+        self.start(config).await
+    }
 
-        // Honest binary detection.
-        if crate::sidecar::which_path("llama-server").is_none() {
-            let msg = "llama-server not on PATH. Install llama.cpp to enable local LLM inference.".to_string();
-            state.status = LlamaStatus::Error(msg.clone());
-            return Err(msg);
+    pub async fn start(&self, config: &LlamaConfig) -> Result<(), StudioError> {
+        let binary = config.binary_path.as_ref().ok_or_else(|| {
+            StudioError::retryable(ErrorCode::SidecarCrash, "llama-server binary path not set".into())
+        })?;
+        let model = config.model_path.as_ref().ok_or_else(|| {
+            StudioError::retryable(ErrorCode::SidecarCrash, "llama.cpp model path not set".into())
+        })?;
+        if !binary.exists() {
+            return Err(StudioError::retryable(
+                ErrorCode::SidecarCrash,
+                format!("llama-server binary not found: {}", binary.display()),
+            ));
+        }
+        if !model.exists() {
+            return Err(StudioError::retryable(
+                ErrorCode::SidecarCrash,
+                format!("llama.cpp model not found: {}", model.display()),
+            ));
         }
 
-        state.status = LlamaStatus::Starting;
-        state.url = url.to_string();
-        // TODO: real spawn once model path is configurable.
-        state.status = LlamaStatus::Running;
+        let mut args = vec![
+            "--model".to_string(), model.to_string_lossy().to_string(),
+            "--host".to_string(), config.host.clone(),
+            "--port".to_string(), config.port.to_string(),
+            "--ctx-size".to_string(), config.context_size.to_string(),
+            "--n-gpu-layers".to_string(), config.gpu_layers.to_string(),
+            "--threads".to_string(), config.threads.to_string(),
+            "--metrics".to_string(),
+            "--props".to_string(),
+            "--no-webui".to_string(),
+        ];
+        if config.use_jinja { args.push("--jinja".to_string()); }
+        for extra in &config.extra_args { args.push(extra.clone()); }
+
+        let child = Command::new(binary)
+            .args(&args)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| StudioError::retryable(ErrorCode::SidecarCrash, format!("failed to spawn llama-server: {e}")))?;
+
+        {
+            let mut inner = self.inner.lock().unwrap();
+            inner.child = Some(child);
+        }
+
+        let health_url = format!("{}/health", config.base_url());
+        match timeout(Duration::from_secs(60), Self::wait_health(&health_url)).await {
+            Ok(Ok(())) => {
+                info!("llama-server healthy at {}", config.base_url());
+                self.probe_tool_support(config).await;
+                Ok(())
+            }
+            Ok(Err(e)) => Err(e),
+            Err(_) => {
+                let _ = self.stop();
+                Err(StudioError::retryable(
+                    ErrorCode::SidecarCrash,
+                    "llama-server did not become healthy within 60s".into(),
+                ))
+            }
+        }
+    }
+
+    pub fn stop(&self) -> Result<(), StudioError> {
+        let mut inner = self.inner.lock().unwrap();
+        Self::stop_locked(&mut inner)
+    }
+
+    fn stop_locked(inner: &mut Inner) -> Result<(), StudioError> {
+        if let Some(mut child) = inner.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        inner.supports_tools = None;
         Ok(())
     }
 
-    /// Get current status.
-    pub async fn status(&self) -> LlamaStatus {
-        let state = self.state.lock().await;
-        state.status.clone()
+    #[must_use]
+    pub async fn is_healthy(&self) -> bool {
+        let url = {
+            let inner = self.inner.lock().unwrap();
+            if inner.child.is_none() { return false; }
+            format!("{}/health", inner.config.base_url())
+        };
+        Self::ping(&url).await
     }
 
-    /// Check if server supports tool calls (llama.cpp /v1/chat/completions with tools).
-    pub async fn supports_tool_calls(&self, url: &str) -> bool {
-        // In a real impl, query llama-server's /models endpoint and check for tool-calling models.
-        // Recommend a tool-capable model for docs (e.g., Qwen3-32B-TEE, Mistral-7B-Instruct).
-        url.starts_with("http://")
+    #[must_use]
+    pub fn supports_tools(&self) -> Option<bool> {
+        let inner = self.inner.lock().unwrap();
+        inner.supports_tools
+    }
+
+    async fn wait_health(url: &str) -> Result<(), StudioError> {
+        for _ in 0..600 {
+            if Self::ping(url).await { return Ok(()); }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        Err(StudioError::retryable(ErrorCode::SidecarCrash, "llama-server health check timed out".into()))
+    }
+
+    async fn ping(url: &str) -> bool {
+        reqwest::get(url).await.map(|r| r.status().is_success()).unwrap_or(false)
+    }
+
+    async fn probe_tool_support(&self, config: &LlamaConfig) {
+        let url = format!("{}/props", config.base_url());
+        let supports = match reqwest::get(&url).await {
+            Ok(resp) => match resp.json::<PropsResponse>().await {
+                Ok(props) => Some(props.chat_template_caps.supports_tools || props.chat_template_caps.supports_tool_calls),
+                Err(_) => None,
+            },
+            Err(_) => None,
+        };
+        {
+            let mut inner = self.inner.lock().unwrap();
+            inner.supports_tools = supports;
+        }
+        match supports {
+            Some(false) => warn!("llama-server loaded model does not report tool-call support; local agent may fail"),
+            Some(true) => info!("llama-server model reports tool-call support"),
+            None => warn!("could not determine llama-server tool-call support from /props"),
+        }
+    }
+}
+
+impl Drop for LlamaServer {
+    fn drop(&mut self) {
+        let _ = self.stop();
     }
 }
 
@@ -83,24 +221,17 @@ impl LlamaServerSupervisor {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn llama_server_starts() {
-        let sup = LlamaServerSupervisor::new();
-        match sup.start("http://localhost:8080").await {
-            Ok(()) => {
-                let status = sup.status().await;
-                assert!(matches!(status, LlamaStatus::Running));
-            }
-            Err(msg) => {
-                assert!(msg.contains("not on PATH"), "unexpected error: {msg}");
-            }
-        }
+    #[test]
+    fn llama_config_base_url() {
+        let cfg = LlamaConfig { host: "127.0.0.1".into(), port: 8080, ..Default::default() };
+        assert_eq!(cfg.base_url(), "http://127.0.0.1:8080");
     }
 
-    #[tokio::test]
-    async fn supports_tool_calls_checks_url() {
-        let sup = LlamaServerSupervisor::new();
-        assert!(sup.supports_tool_calls("http://localhost:8080").await);
-        assert!(!sup.supports_tool_calls("invalid-url").await);
+    #[test]
+    fn props_response_parses() {
+        let json = serde_json::json!({"chat_template_caps": {"supports_tools": true, "supports_tool_calls": true}});
+        let props: PropsResponse = serde_json::from_value(json).unwrap();
+        assert!(props.chat_template_caps.supports_tools);
+        assert!(props.chat_template_caps.supports_tool_calls);
     }
 }

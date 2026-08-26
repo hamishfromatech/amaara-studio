@@ -204,9 +204,9 @@ mod tests {
 
     #[tokio::test]
     async fn api_key_errors_when_unset() {
-        // No keyring fake set → real keyring likely empty in CI; either way it
-        // returns an Err (no key) rather than panicking.
-        std::env::remove_var("NAVYA_KEYRING_FAKE");
+        // Force the fake backend so this test doesn't depend on a real keyring
+        // (which may already contain a Navya key on the developer's machine).
+        crate::config::set_fake_keyring(true);
         let c = NavyaClient::new("http://localhost:8000".to_string(), true, false);
         let res = c.api_key();
         assert!(res.is_err());

@@ -5,24 +5,16 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::events;
 
+pub mod llama;
+
 pub mod spec {
     //! The three sidecars the app supervises (harness / render / sd-server).
     use super::*;
-
-    pub fn registry() -> HashMap<&'static str, &'static str> {
-        // Real binary names looked up on PATH. If not present, the UI shows
-        // "not installed" with installation instructions.
-        let mut m = HashMap::new();
-        m.insert("llama-server", "llama-server");
-        m.insert("sd-server", "sd-server");
-        m
-    }
 
     /// A supervised child process definition. `bin` may be an absolute path or a
     /// name resolved via env override / PATH (BUILD-GAPS risk #34).
@@ -46,14 +38,10 @@ pub mod spec {
             spec
         }
 
-        /// Resolve the binary path from an explicit override, then a `NAVYA_<NAME>_BIN`
+        /// Resolve the binary path from a per-name `NAVYA_SIDECAR_<NAME>_BIN`
         /// env var, then PATH via `which`. Returns the resolved name even if not
         /// found on PATH — validation happens later in `validate()`.
         pub fn resolve_bin(&mut self) {
-            if let Some(p) = std::env::var_os("SIDECAR_BIN") {
-                self.bin = p.to_string_lossy().to_string();
-                return;
-            }
             if let Ok(p) = std::env::var(format!("NAVYA_SIDECAR_{}_BIN", self.name.to_uppercase().replace("-", "_"))) {
                 self.bin = p;
                 return;
@@ -130,25 +118,6 @@ fn now_ms() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
-/// Run a sidecar to completion and capture its output. Blocking; used by tests
-/// and as the non-Tauri fallback for spawning. The lifecycle state machine
-/// (`Supervisor`) is what drives restart/stop decisions from these outcomes.
-pub fn run_command(spec: &spec::SidecarSpec) -> Result<CommandOutcome, SidecarError> {
-    let mut cmd = Command::new(&spec.bin);
-    cmd.args(&spec.args).env_clear();
-    for (k, v) in &spec.env {
-        cmd.env(k, v);
-    }
-    // No TTY: prevents a flashing console window on Windows (design.md status strip).
-    cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let output = cmd.output()?;
-    Ok(CommandOutcome {
-        exit_code: output.status.code(),
-        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-    })
-}
-
 /// The supervised-process state machine. Thread-safe; shared across the app via
 /// `Arc`. Runtime spawning feeds [`CommandOutcome`]s here so restart/stop logic
 /// stays identical whether launched through Tauri or std::process.
@@ -165,6 +134,9 @@ struct SupEntry {
     spec: spec::SidecarSpec,
     status: SidecarStatus,
     started_at_ms: i64,
+    /// Set after the first restart so a crash loop can't spin forever
+    /// (restart-on-exit is documented as "restart once", Gate 2).
+    restarted: bool,
     #[allow(dead_code)]
     log_lines: Vec<(i64, String)>, // (ts_ms, line)
 }
@@ -190,6 +162,7 @@ impl Supervisor {
                 spec,
                 status: SidecarStatus::Starting,
                 started_at_ms: now_ms(),
+                restarted: false,
                 log_lines: Vec::new(),
             },
         );
@@ -222,23 +195,24 @@ impl Supervisor {
     }
 
     /// Fold a child's terminal outcome into the supervisor state. Implements
-    /// restart-on-exit and records the exit code for status-strip display.
+    /// restart-on-exit (at most once per entry) and records the exit code for
+    /// status-strip display.
     pub fn on_exit(&mut self, name: &str, outcome: CommandOutcome) {
         let Some(entry) = self.entries.get_mut(name) else {
             return;
         };
         entry.log_lines.push((now_ms(), format!("exit={}", outcome.exit_code.unwrap_or(-1))));
-        match (self.restart_on_exit, matches!(entry.status, SidecarStatus::Exited(_))) {
-            (true, false) => {
-                // Restart: clear and go Starting again.
-                entry.log_lines.clear();
-                let started = now_ms();
-                entry.status = SidecarStatus::Starting;
-                entry.started_at_ms = started;
-            }
-            _ => {
-                entry.status = SidecarStatus::Exited(outcome.exit_code.unwrap_or(-1));
-            }
+        let code = outcome.exit_code.unwrap_or(-1);
+        let first_exit = !matches!(entry.status, SidecarStatus::Exited(_));
+        if self.restart_on_exit && !entry.restarted && first_exit {
+            // First exit: restart once.
+            entry.restarted = true;
+            entry.log_lines.clear();
+            entry.status = SidecarStatus::Starting;
+            entry.started_at_ms = now_ms();
+        } else {
+            // Disabled, already restarted, or already terminal → stay Exited.
+            entry.status = SidecarStatus::Exited(code);
         }
     }
 
@@ -320,7 +294,7 @@ mod tests {
         sup.start(s.clone()).unwrap();
         assert_eq!(sup.status("harness"), Some(SidecarStatus::Starting));
         // Starting again is a no-op (still the same entry).
-        sup.start(s);
+        let _ = sup.start(s);
         assert_eq!(sup.status("harness"), Some(SidecarStatus::Starting));
     }
 
@@ -339,13 +313,16 @@ mod tests {
     }
 
     #[test]
-    fn restart_on_exit_cycles_status() {
+    fn restart_on_exit_cycles_status_once() {
         let mut sup = Supervisor::new();
         let s = stub_spec("sd-server", "navya-sd-stub");
         sup.start(s).unwrap();
-        // Exit with a nonzero code; supervisor should cycle back to Starting.
+        // First exit with a nonzero code: supervisor cycles back to Starting.
         sup.on_exit("sd-server", CommandOutcome { exit_code: Some(1), stdout: String::new(), stderr: String::new() });
         assert_eq!(sup.status("sd-server"), Some(SidecarStatus::Starting));
+        // Second exit: terminal (restart-once, no crash loop).
+        sup.on_exit("sd-server", CommandOutcome { exit_code: Some(1), stdout: String::new(), stderr: String::new() });
+        assert_eq!(sup.status("sd-server"), Some(SidecarStatus::Exited(1)));
     }
 
     #[test]
