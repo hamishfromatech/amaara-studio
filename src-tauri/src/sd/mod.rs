@@ -2,8 +2,10 @@
 //!
 //! Local image generation through stable-diffusion.cpp `sd-server`, started lazily,
 //! with the Cloud/Local Source toggle from design.md routed to set_generation_source.
+//!
+//! **Scaffold** — wired into AppState and the control server in Phase 9.
+#![allow(dead_code)]
 
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
