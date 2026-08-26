@@ -13,6 +13,7 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../lib/store";
 import { harnessHint } from "../lib/invoke";
+import { userActionLabel } from "../lib/events";
 import { ApprovalDialog } from "./ApprovalDialog";
 import { Inspector } from "./Inspector";
 import { RendersTab } from "../renders/RendersTab";
@@ -284,6 +285,8 @@ function RenderDot({ status }: { status: string }) {
 function StatusStrip() {
   const sidecars = useStore((s) => s.sidecars) ?? [];
   const error = useStore((s) => s.error);
+  const studioError = useStore((s) => s.studioError);
+  const dismissError = useStore((s) => s.dismissError);
   // Live render count from the renders array (updated by events), not the
   // one-shot snapshot value which is stale after the initial load.
   const renderCount = useStore((s) => s.renders?.length ?? 0);
@@ -302,6 +305,22 @@ function StatusStrip() {
         </span>
       ))}
       <span className="numeric ml-auto text-ink-muted">{renderCount} render(s)</span>
+      {studioError && (
+        <span
+          className="flex items-center gap-2 rounded border border-danger-border bg-danger-bg px-2 py-0.5 text-danger"
+          title={studioError.code}
+        >
+          <span className="max-w-xs truncate">⚠ {studioError.message}</span>
+          <span className="text-ink-faint">— {userActionLabel(studioError.user_action)}</span>
+          <button
+            className="icon-btn h-4 w-4 shrink-0 text-danger"
+            title="Dismiss"
+            onClick={() => dismissError()}
+          >
+            ×
+          </button>
+        </span>
+      )}
       {error && <span className="max-w-xs truncate text-danger">⚠ {error}</span>}
     </footer>
   );

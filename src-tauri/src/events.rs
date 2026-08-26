@@ -13,6 +13,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::errors::StudioError;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum StudioEvent {
@@ -21,6 +23,10 @@ pub enum StudioEvent {
     Sidecar(SidecarEvent),
     Project(ProjectEvent),
     Preview(PreviewEvent),
+    /// A studio operation failed (sidecar/harness/render/network). Carries a
+    /// typed error with a suggested user action so the UI can offer a concrete
+    /// next step instead of hanging silently (Phase 15 error model).
+    Error(StudioError),
 }
 
 // --- Harness ---------------------------------------------------------------
@@ -111,6 +117,7 @@ impl StudioEvent {
             StudioEvent::Sidecar(e) => format!("sidecar: {}", e.describe()),
             StudioEvent::Project(e) => e.describe(),
             StudioEvent::Preview(e) => format!("preview: {}", e.describe()),
+            StudioEvent::Error(e) => format!("error:{}:{}", e.code.code_name(), e.message),
         }
     }
 }
@@ -212,5 +219,18 @@ mod tests {
         );
         assert_eq!(RenderEvent::Progress { job_id: "j".to_string(), stage: "s".into(), frame: 5, total_frames: Some(10) }.describe(),
             "render:progress5/10");
+    }
+
+    #[test]
+    fn error_event_round_trips_through_json() {
+        let ev = StudioEvent::Error(crate::errors::StudioError {
+            code: crate::errors::ErrorCode::SidecarCrash,
+            message: "llama-server crashed".into(),
+            user_action: crate::errors::UserAction::OpenLogs,
+        });
+        let json = serde_json::to_string(&ev).unwrap();
+        let back: StudioEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(json, serde_json::to_string(&back).unwrap());
+        assert!(back.describe().starts_with("error:SidecarCrash:"));
     }
 }

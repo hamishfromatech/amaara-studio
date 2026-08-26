@@ -15,7 +15,13 @@ import {
   type TimelineState,
   type Asset,
 } from "./invoke";
-import { subscribeStudioEvents, type StudioEvent, type HarnessEvent, type PreviewEvent } from "./events";
+import {
+  subscribeStudioEvents,
+  type StudioEvent,
+  type StudioError,
+  type HarnessEvent,
+  type PreviewEvent,
+} from "./events";
 
 interface ChatMessage {
   id: string;
@@ -32,6 +38,10 @@ interface AppState extends Partial<StateSnapshot> {
   initialized: boolean;
   /** Pending approval request from the harness (shown as a modal). */
   pendingApproval: { id: string; kind: string; payload: unknown } | null;
+
+  /** Most recent typed studio error (Phase 15). Carries a suggested user
+   * action; shown in the status strip with an action button. */
+  studioError: StudioError | null;
 
   /** Live HyperFrames preview server (Timeline tab). */
   preview: {
@@ -76,6 +86,7 @@ interface AppState extends Partial<StateSnapshot> {
   stopPreview: () => Promise<void>;
   loadTimeline: (projectId: string, compositionId: string) => Promise<void>;
   selectClip: (clipId: string | null) => void;
+  dismissError: () => void;
 }
 
 let unsubEvents: (() => void) | null = null;
@@ -89,6 +100,7 @@ function applyTheme(theme: string) {
 export const useStore = create<AppState>((set, get) => ({
   loading: true,
   error: null,
+  studioError: null,
   chat: [],
   renders: [],
   initialized: false,
@@ -307,6 +319,9 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   selectClip: (clipId) => set({ selectedClipId: clipId }),
+
+  // Dismiss the most recent typed studio error (Phase 15).
+  dismissError: () => set({ studioError: null }),
 }));
 
 /** Reduce a StudioEvent into store mutations. */
@@ -331,6 +346,10 @@ function handleEvent(
     handleSidecarEvent(ev.payload, set);
   } else if (ev.type === "Preview") {
     handlePreviewEvent(ev.payload, set);
+  } else if (ev.type === "Error") {
+    // Most recent typed studio error (Phase 15). Shows in the status strip
+    // with a concrete user-action button; never a silent hang.
+    set(() => ({ studioError: ev.payload as StudioError }));
   }
 }
 

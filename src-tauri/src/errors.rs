@@ -24,6 +24,34 @@ pub enum ErrorCode {
     NavyaApiError,
 }
 
+impl ErrorCode {
+    /// Machine-readable identifier for the error channel / logs.
+    pub fn code_name(&self) -> &'static str {
+        match self {
+            ErrorCode::SidecarCrash => "SidecarCrash",
+            ErrorCode::HarnessTimeout => "HarnessTimeout",
+            ErrorCode::ControlServerError => "ControlServerError",
+            ErrorCode::RenderFailed => "RenderFailed",
+            ErrorCode::SdServerUnavailable => "SdServerUnavailable",
+            ErrorCode::LlamaServerUnavailable => "LlamaServerUnavailable",
+            ErrorCode::NavyaApiError => "NavyaApiError",
+        }
+    }
+
+    /// Human-readable description for status strips / debug output.
+    pub fn label(&self) -> &'static str {
+        match self {
+            ErrorCode::SidecarCrash => "sidecar crashed",
+            ErrorCode::HarnessTimeout => "harness timed out",
+            ErrorCode::ControlServerError => "control server error",
+            ErrorCode::RenderFailed => "render failed",
+            ErrorCode::SdServerUnavailable => "sd-server unavailable",
+            ErrorCode::LlamaServerUnavailable => "llama-server unavailable",
+            ErrorCode::NavyaApiError => "navya api error",
+        }
+    }
+}
+
 impl From<String> for StudioError {
     fn from(message: String) -> Self {
         StudioError {
@@ -46,7 +74,7 @@ pub struct StudioError {
     pub user_action: UserAction,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UserAction {
     Retry,
     OpenLogs,
@@ -88,5 +116,29 @@ mod tests {
     fn with_logs_error_has_open_logs_action() {
         let err = StudioError::with_logs(ErrorCode::SidecarCrash, "Process crashed".to_string());
         assert!(matches!(err.user_action, UserAction::OpenLogs));
+    }
+
+    #[test]
+    fn error_codes_have_stable_identifiers() {
+        assert_eq!(ErrorCode::SidecarCrash.code_name(), "SidecarCrash");
+        assert_eq!(ErrorCode::NavyaApiError.label(), "navya api error");
+    }
+
+    #[test]
+    fn from_string_defaults_to_sidecar_crash() {
+        let err: StudioError = "boom".into();
+        assert_eq!(err.code, ErrorCode::SidecarCrash);
+        assert_eq!(err.message, "boom");
+    }
+
+    #[test]
+    fn studio_error_serializes_with_code_and_action() {
+        let err = StudioError::retryable(ErrorCode::HarnessTimeout, "no answer".to_string());
+        let json = serde_json::to_string(&err).unwrap();
+        assert!(json.contains("HarnessTimeout"));
+        assert!(json.contains("Retry"));
+        let back: StudioError = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.code, ErrorCode::HarnessTimeout);
+        assert_eq!(back.user_action, UserAction::Retry);
     }
 }

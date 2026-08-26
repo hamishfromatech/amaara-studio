@@ -10,12 +10,19 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 // Mirror of src-tauri/src/events.rs StudioEvent (externally-tagged enum).
+export type StudioError = {
+  code: string;
+  message: string;
+  user_action: "Retry" | "OpenLogs" | "CheckSettings" | "ContactSupport";
+};
+
 export type StudioEvent =
   | { type: "Harness"; payload: HarnessEvent }
   | { type: "Render"; payload: RenderEvent }
   | { type: "Sidecar"; payload: SidecarEvent }
   | { type: "Project"; payload: ProjectEvent }
-  | { type: "Preview"; payload: PreviewEvent };
+  | { type: "Preview"; payload: PreviewEvent }
+  | { type: "Error"; payload: StudioError };
 
 export type HarnessEvent =
   | { AgentStart: { model: string } }
@@ -60,6 +67,20 @@ export type PreviewEvent =
   | { Failed: { error: string } };
 
 export type StudioEventListener = (event: StudioEvent) => void;
+
+/** Human label for a user action on a studio error (Phase 15). */
+export function userActionLabel(action: StudioError["user_action"]): string {
+  switch (action) {
+    case "Retry":
+      return "Retry";
+    case "OpenLogs":
+      return "Open logs";
+    case "CheckSettings":
+      return "Check settings";
+    case "ContactSupport":
+      return "Contact support";
+  }
+}
 
 /**
  * Subscribe to the studio event channel. Returns an unsubscribe function.

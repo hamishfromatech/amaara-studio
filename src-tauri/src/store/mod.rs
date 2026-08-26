@@ -248,7 +248,9 @@ mod tests {
     fn project_round_trip() {
         let store = ProjectStore::memory().unwrap();
         let row = store.create_project("p1", "black-holes-explainer", "/proj/abc", "a-coder-cli", "navya/auto", "cloud").unwrap();
-        assert_eq!(row.created_at_ms, now_ms());
+        // The row was created at "now"; the clock can tick forward between the
+        // insert and this assertion, so assert monotonicity, not strict ==.
+        assert!(row.created_at_ms <= now_ms(), "created_at_ms should be now or earlier");
 
         let list = store.list_projects().unwrap();
         assert_eq!(list.len(), 1);
