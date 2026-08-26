@@ -90,11 +90,11 @@ function QueueRow({
   return (
     <div
       onClick={onSelect}
-      className={`flex cursor-pointer items-center justify-between gap-2 rounded-lg border px-2.5 py-2 transition-colors ${
+      className={`queue-row flex cursor-pointer items-center justify-between gap-2 rounded-lg border px-2.5 py-2 transition-colors ${
         selected
           ? "border-line-selected bg-panel"
           : "border-line-soft bg-panel hover:border-line"
-      }`}
+      } ${job.status === "done" ? "render-done-flash" : ""}`}
     >
       <div className="flex min-w-0 items-center gap-2">
         <span className="text-xs">{statusIcon(job)}</span>
@@ -180,8 +180,8 @@ function JobDetail({ job, onCancel }: { job: RenderJob; onCancel: () => void }) 
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-fill-secondary">
               <div
-                className="h-full rounded-full bg-info transition-all"
-                style={{ width: `${pct ?? 0}%` }}
+                className="h-full rounded-full bg-info"
+                style={{ width: `${pct ?? 0}%`, transition: "width var(--dur-quick) var(--ease-out)" }}
               />
             </div>
           </div>

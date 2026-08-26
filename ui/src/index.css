@@ -239,6 +239,40 @@ html[data-density="compact"] .list-card__row {
   padding: 5px 10px;
 }
 
+/* Motion (design.md §9): tool cards / list rows fade + slide in on mount;
+   completed renders flash green once. 100–150ms ease-out, width-only
+   progress. prefers-reduced-motion (above) neutralizes all of it. */
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes flash-ok {
+  0% {
+    background-color: color-mix(in srgb, var(--brand) 18%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+/* New chat history entries and list rows animate in on mount. React keeps
+   the element across re-renders, so only genuinely new items animate. */
+.home-hero__history-msg,
+.list-card__row,
+.queue-row {
+  animation: card-in var(--dur-quick) var(--ease-out);
+}
+/* One-shot green flash when a render completes (class added on the
+   running → done transition; stays applied without replaying). */
+.render-done-flash {
+  animation: flash-ok 900ms var(--ease-out);
+}
+
 /* -------- Tailwind v4 theme bridge -----------------------------------
    `inline` keeps utilities referencing the runtime var(), so every class
    (bg-panel, text-ink-muted, border-line) flips with the active theme. */
