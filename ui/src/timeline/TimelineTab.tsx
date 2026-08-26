@@ -22,11 +22,14 @@ export function TimelineTab() {
   const startPreview = useStore((s) => s.startPreview);
   const stopPreview = useStore((s) => s.stopPreview);
   const selectClip = useStore((s) => s.selectClip);
+  const transport = useStore((s) => s.timelineTransport);
+  const setPlayheadMs = useStore((s) => s.setPlayheadMs);
+  const togglePlay = useStore((s) => s.togglePlay);
 
-  const [playheadMs, setPlayheadMs] = useState(0);
-  const [playing, setPlaying] = useState(false);
   const [pinnedAt, setPinnedAt] = useState<number | null>(null);
   const timer = useRef<number | null>(null);
+
+  const { playheadMs, playing } = transport;
 
   const projectId = session?.current_project_id ?? null;
   const compositionId = session?.current_composition_id ?? "main";
@@ -36,8 +39,10 @@ export function TimelineTab() {
   // (Re)load the timeline + preview whenever the project or composition changes.
   useEffect(() => {
     if (!projectId) return;
-    setPlaying(false);
-    setPlayheadMs(0);
+    // Reset the transport (playhead to 0, playback stopped).
+    const st = useStore.getState();
+    if (st.timelineTransport.playing) st.togglePlay();
+    st.setPlayheadMs(0);
     void loadTimeline(projectId, compositionId);
     void startPreview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -54,10 +59,12 @@ export function TimelineTab() {
   useEffect(() => {
     if (!playing) return;
     timer.current = window.setInterval(() => {
-      setPlayheadMs((t) => {
-        if (durationMs <= 0) return t;
-        return t >= durationMs ? 0 : t + 250;
-      });
+      const cur = useStore.getState().timelineTransport.playheadMs;
+      if (durationMs > 0 && cur >= durationMs) {
+        setPlayheadMs(0);
+      } else {
+        setPlayheadMs(cur + 250);
+      }
     }, 250);
     return () => {
       if (timer.current) clearInterval(timer.current);
@@ -88,7 +95,7 @@ export function TimelineTab() {
           durationMs={durationMs}
           playing={playing}
           pinnedAt={pinnedAt}
-          onTogglePlay={() => setPlaying((p) => !p)}
+          onTogglePlay={togglePlay}
           onSeek={setPlayheadMs}
           onSnapshot={() => void pinSnapshot(projectId, playheadMs, setPinnedAt)}
         />

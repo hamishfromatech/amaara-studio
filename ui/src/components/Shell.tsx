@@ -10,12 +10,15 @@
  * real sidecar health. No hardcoded mock content.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useStore } from "../lib/store";
+import { useKeyboardShortcuts } from "../lib/shortcuts";
 import { harnessHint } from "../lib/invoke";
 import { userActionLabel } from "../lib/events";
 import { ApprovalDialog } from "./ApprovalDialog";
 import { Inspector } from "./Inspector";
+import { CommandPalette } from "./CommandPalette";
+import { ShortcutsHelp } from "./ShortcutsHelp";
 import { RendersTab } from "../renders/RendersTab";
 import { TimelineTab } from "../timeline/TimelineTab";
 import { EntryNavRail, type NavId } from "./EntryNavRail";
@@ -328,10 +331,16 @@ function StatusStrip() {
 
 // --- StudioShell (top-level) ---
 export function StudioShell() {
-  const [navId, setNavId] = useState<NavId>("home");
+  const navId = useStore((s) => s.navId);
+  const setNavId = useStore((s) => s.setNavId);
+  const railsHidden = useStore((s) => s.railsHidden);
   const refreshRenders = useStore((s) => s.refreshRenders);
   const pendingApproval = useStore((s) => s.pendingApproval);
   const approve = useStore((s) => s.approve);
+
+  // Global keyboard shortcuts (Phase 16): ⌘K palette, tab/rail toggles,
+  // timeline shuttle, etc. Attaches one window keydown listener.
+  useKeyboardShortcuts();
 
   useEffect(() => {
     void refreshRenders();
@@ -343,7 +352,7 @@ export function StudioShell() {
     <div className="flex h-screen flex-col bg-canvas text-ink">
       <TopBar />
       <div className="flex flex-1 overflow-hidden">
-        <EntryNavRail navId={navId} onChange={setNavId} />
+        {!railsHidden.left && <EntryNavRail navId={navId} onChange={setNavId} />}
         <main className="entry-main">
           <div className="entry-main__scroll">
             {navId === "home" && <HomeView onNavigate={navigate} />}
@@ -356,7 +365,7 @@ export function StudioShell() {
             {navId === "settings" && <SettingsView />}
           </div>
         </main>
-        <RightRail />
+        {!railsHidden.right && <RightRail />}
       </div>
       <StatusStrip />
       {pendingApproval && (
@@ -367,6 +376,8 @@ export function StudioShell() {
           }}
         />
       )}
+      <CommandPalette />
+      <ShortcutsHelp />
     </div>
   );
 }

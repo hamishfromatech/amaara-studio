@@ -22,6 +22,7 @@ import {
   type HarnessEvent,
   type PreviewEvent,
 } from "./events";
+import type { NavId } from "./nav";
 
 interface ChatMessage {
   id: string;
@@ -87,6 +88,33 @@ interface AppState extends Partial<StateSnapshot> {
   loadTimeline: (projectId: string, compositionId: string) => Promise<void>;
   selectClip: (clipId: string | null) => void;
   dismissError: () => void;
+
+  // --- Layout / keyboard shortcuts (Phase 16) ----------------------------
+  /** Active center pane (single source of truth; the global shortcuts hook
+   *  reads this to scope tab- and timeline-specific hotkeys). */
+  navId: NavId;
+  setNavId: (id: NavId) => void;
+  /** Which rails are collapsed (⌘\ left, ⌘/ right). */
+  railsHidden: { left: boolean; right: boolean };
+  toggleLeftRail: () => void;
+  toggleRightRail: () => void;
+  // --- Timeline transport (Phase 16) -------------------------------------
+  // Lifted out of TimelineTab so the global hotkeys (Space / J / K / L) can
+  // drive the playhead without TimelineTab owning the only copy of state.
+  timelineTransport: {
+    playheadMs: number;
+    playing: boolean;
+  };
+  setPlayheadMs: (ms: number) => void;
+  togglePlay: () => void;
+  shuttle: (deltaMs: number) => void;
+
+  /** Command palette (⌘K) open flag. */
+  paletteOpen: boolean;
+  setPaletteOpen: (open: boolean) => void;
+  /** Keyboard-shortcuts help overlay (?) open flag. */
+  shortcutsOpen: boolean;
+  setShortcutsOpen: (open: boolean) => void;
 }
 
 let unsubEvents: (() => void) | null = null;
@@ -110,6 +138,31 @@ export const useStore = create<AppState>((set, get) => ({
   timeline: null,
   selectedClipId: null,
   assets: [],
+
+  // Layout / keyboard shortcuts (Phase 16).
+  navId: "home",
+  setNavId: (id) => set({ navId: id }),
+  railsHidden: { left: false, right: false },
+  toggleLeftRail: () =>
+    set((s) => ({ railsHidden: { ...s.railsHidden, left: !s.railsHidden.left } })),
+  toggleRightRail: () =>
+    set((s) => ({ railsHidden: { ...s.railsHidden, right: !s.railsHidden.right } })),
+  paletteOpen: false,
+  setPaletteOpen: (open) => set({ paletteOpen: open }),
+  shortcutsOpen: false,
+  setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
+
+  timelineTransport: { playheadMs: 0, playing: false },
+  setPlayheadMs: (ms) => set((s) => ({ timelineTransport: { ...s.timelineTransport, playheadMs: ms } })),
+  togglePlay: () =>
+    set((s) => ({ timelineTransport: { ...s.timelineTransport, playing: !s.timelineTransport.playing } })),
+  // Move the playhead by deltaMs, clamped to [0, duration]. duration is read
+  // lazily so a negative delta never needs the composition length to be known.
+  shuttle: (deltaMs) =>
+    set((s) => {
+      const next = Math.max(0, Math.min(s.timelineTransport.playheadMs + deltaMs, s.timeline?.duration_ms ?? Infinity));
+      return { timelineTransport: { ...s.timelineTransport, playheadMs: next } };
+    }),
 
   loadState: async () => {
     try {

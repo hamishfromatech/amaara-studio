@@ -67,13 +67,13 @@ export function HomeView({ onNavigate }: { onNavigate: (id: "projects" | "models
     requestAnimationFrame(() => taRef.current?.focus());
   };
 
-  const send = (mode: "normal" | "steer") => {
+  const send = (mode: "normal" | "steer" | "follow_up") => {
     const msg = text.trim();
     if (!msg) return;
     if (mode === "steer") {
       void steer(msg);
     } else {
-      void sendPrompt(msg, "normal");
+      void sendPrompt(msg, mode === "follow_up" ? "follow_up" : "normal");
     }
     setText("");
     setActivePill(null);
@@ -180,8 +180,10 @@ export function HomeView({ onNavigate }: { onNavigate: (id: "projects" | "models
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
+              // ⌘Enter send · ⇧⌘Enter steer · ⌘⌥Enter queue follow-up.
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                send(e.shiftKey ? "steer" : "normal");
+                if (e.altKey) send("follow_up");
+                else send(e.shiftKey ? "steer" : "normal");
               }
             }}
             rows={3}
@@ -205,7 +207,7 @@ export function HomeView({ onNavigate }: { onNavigate: (id: "projects" | "models
               Steer
             </button>
             <span className="home-hero__send-bar-spacer" />
-            <span className="home-hero__hint">⌘↵ send · ⇧⌘↵ steer</span>
+            <span className="home-hero__hint">⌘↵ send · ⇧⌘↵ steer · ⌘⌥↵ follow-up</span>
           </div>
         </div>
       </div>

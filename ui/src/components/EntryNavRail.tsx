@@ -11,16 +11,9 @@
  */
 
 import { useStore } from "../lib/store";
+import type { NavId } from "../lib/nav";
 
-export type NavId =
-  | "home"
-  | "projects"
-  | "timeline"
-  | "renders"
-  | "models"
-  | "sources"
-  | "tools"
-  | "settings";
+export type { NavId } from "../lib/nav";
 
 interface NavItem {
   id: NavId;
