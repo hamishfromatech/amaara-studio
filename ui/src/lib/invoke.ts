@@ -27,6 +27,7 @@ export interface NavyaConfig {
   byok: boolean;
   enabled_harnesses: string[];
   local_llama_url: string;
+  engine_url: string;
   sd_server_url: string | null;
   sd_binary_path: string;
   sd_models_dir: string;

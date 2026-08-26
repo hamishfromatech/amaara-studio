@@ -9,7 +9,7 @@
 
 import { useState } from "react";
 import { useStore } from "../lib/store";
-import { harnessHint } from "../lib/invoke";
+
 
 export function OnboardingScreen() {
   const saveApiKey = useStore((s) => s.saveApiKey);

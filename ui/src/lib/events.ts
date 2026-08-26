@@ -59,7 +59,3 @@ export async function subscribeStudioEvents(listener: StudioEventListener): Prom
   });
 }
 
-/** Normalize an internally-tagged HarnessEvent variant into a flat shape. */
-export function harnessEventKind(ev: HarnessEvent): string {
-  return Object.keys(ev)[0];
-}

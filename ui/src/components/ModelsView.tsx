@@ -14,6 +14,7 @@ export function ModelsView() {
 
   const cloud = models.filter((m) => m.source === "cloud");
   const local = models.filter((m) => m.source === "local");
+  const engine = models.filter((m) => m.source === "engine");
 
   return (
     <div className="entry-main__scroll-inner entry-main__scroll-inner--narrow">
@@ -55,6 +56,41 @@ export function ModelsView() {
         </div>
       </section>
 
+      {engine.length > 0 && (
+        <section className="entry-section">
+          <div className="entry-section__head">
+            <h2 className="entry-section__title">Engine (local proxy)</h2>
+            <div className="entry-section__actions">
+              <span style={{ color: "var(--text-faint)", fontFamily: "var(--mono)", fontSize: 10 }}>
+                {engine.length} available
+              </span>
+            </div>
+          </div>
+          <div className="list-card">
+            <div className="list-card__body">
+              {engine.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className={`row ${m.active ? "is-active" : ""}`}
+                  onClick={() => void setModel(m.id)}
+                >
+                  <span
+                    aria-hidden
+                    className={m.active ? "text-ok" : "text-ink-faint"}
+                    style={{ fontSize: 10 }}
+                  >
+                    ●
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0 }} className="truncate">{m.name}</span>
+                  <span className="list-card__row-meta">{m.kind}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       <section className="entry-section">
         <div className="entry-section__head">
           <h2 className="entry-section__title">Local Models</h2>
@@ -66,9 +102,9 @@ export function ModelsView() {
         </div>
         <div className="list-card">
           <div className="list-card__body">
-            {local.length === 0 && (
+            {local.length === 0 && engine.length === 0 && (
               <div style={{ padding: "14px 18px", color: "var(--text-faint)", fontSize: 12 }}>
-                No local models detected. Start the SD sidecar to register one.
+                No local models detected. Start the SD sidecar or Navya Engine to register one.
               </div>
             )}
             {local.map((m) => (

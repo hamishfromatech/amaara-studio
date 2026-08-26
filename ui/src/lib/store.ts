@@ -29,6 +29,7 @@ interface AppState extends Partial<StateSnapshot> {
   loadState: () => Promise<void>;
   refreshProjects: () => Promise<void>;
   refreshRenders: () => Promise<void>;
+  refreshModels: () => Promise<void>;
 
   setModel: (model: string) => Promise<void>;
   setSource: (source: string) => Promise<void>;
@@ -72,6 +73,8 @@ export const useStore = create<AppState>((set, get) => ({
       set({ ...snap, loading: false, initialized: true, error: null });
       // Apply the persisted theme to the DOM (light/dark tokens).
       if (snap.config?.theme) applyTheme(snap.config.theme);
+      // Refresh engine models (discovered via the Navya Engine proxy).
+      void get().refreshModels();
       // Subscribe once to the event stream.
       if (!unsubEvents) {
         const un = await subscribeStudioEvents((ev) => handleEvent(ev, set, get));
@@ -95,6 +98,15 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const renders = await Commands.listRenders();
       set({ renders });
+    } catch (e) {
+      /* non-fatal */
+    }
+  },
+
+  refreshModels: async () => {
+    try {
+      const models = await Commands.listModels();
+      set({ models });
     } catch (e) {
       /* non-fatal */
     }
@@ -240,7 +252,31 @@ function handleEvent(
   } else if (ev.type === "Project") {
     // Refresh the project list on create/switch.
     void useStore.getState().refreshProjects();
+  } else if (ev.type === "Sidecar") {
+    handleSidecarEvent(ev.payload, set);
   }
+}
+
+function handleSidecarEvent(
+  ev: Record<string, unknown>,
+  set: (fn: (s: AppState) => Partial<AppState>) => void
+) {
+  const kind = Object.keys(ev)[0];
+  const p = (ev as Record<string, unknown>)[kind] as Record<string, unknown>;
+  const name = String(p.name ?? "");
+  set((s) => {
+    const sidecars = (s.sidecars ?? []).map((sc) => {
+      if (sc.name !== name) return sc;
+      if (kind === "Starting") return { ...sc, status: "starting" };
+      if (kind === "Ready") return { ...sc, status: "running" };
+      if (kind === "Exit") {
+        const code = Number(p.code ?? -1);
+        return { ...sc, status: "exited", detail: `exit code ${code}` };
+      }
+      return sc;
+    });
+    return { sidecars };
+  });
 }
 
 function handleHarnessEvent(
@@ -261,35 +297,54 @@ function handleHarnessEvent(
       }
       case "TextDelta": {
         if (lastAgent) {
-          lastAgent.content += String(payload);
-          lastAgent.status = "tool-calling";
+          const idx = chat.findIndex((m) => m.id === lastAgent.id);
+          if (idx >= 0) {
+            chat[idx] = { ...chat[idx], content: chat[idx].content + String(payload), status: "tool-calling" };
+          }
         }
         break;
       }
       case "ToolStart": {
         const p = payload as { name: string };
         if (lastAgent) {
-          lastAgent.status = "tool-calling";
-          lastAgent.content += (lastAgent.content ? "\n" : "") + `\u2699 ${p.name} …`;
+          const idx = chat.findIndex((m) => m.id === lastAgent.id);
+          if (idx >= 0) {
+            const existing = chat[idx].content;
+            chat[idx] = {
+              ...chat[idx],
+              status: "tool-calling",
+              content: existing + (existing ? "\n" : "") + `\u2699 ${p.name} …`,
+            };
+          }
         }
         break;
       }
       case "ToolEnd": {
         const p = payload as { is_error: boolean; result: string | null };
         if (lastAgent && p.is_error) {
-          lastAgent.content += `\n\u2716 tool failed${p.result ? `: ${p.result}` : ""}`;
+          const idx = chat.findIndex((m) => m.id === lastAgent.id);
+          if (idx >= 0) {
+            const existing = chat[idx].content;
+            chat[idx] = {
+              ...chat[idx],
+              content: existing + `\n\u2716 tool failed${p.result ? `: ${p.result}` : ""}`,
+            };
+          }
         }
         break;
       }
       case "AgentEnd": {
         const p = payload as { success: boolean; message: string | null };
-        if (lastAgent) lastAgent.status = p.success ? "done" : "error";
+        if (lastAgent) {
+          const idx = chat.findIndex((m) => m.id === lastAgent.id);
+          if (idx >= 0) chat[idx] = { ...chat[idx], status: p.success ? "done" : "error" };
+        }
         break;
       }
       case "Error": {
         if (lastAgent) {
-          lastAgent.status = "error";
-          lastAgent.content = String(payload);
+          const idx = chat.findIndex((m) => m.id === lastAgent.id);
+          if (idx >= 0) chat[idx] = { ...chat[idx], status: "error", content: String(payload) };
         } else {
           chat.push({ id: `e${Date.now()}`, role: "system", content: String(payload) });
         }
@@ -297,7 +352,10 @@ function handleHarnessEvent(
       }
       case "AgentStart": {
         // mark the trailing agent message as thinking
-        if (lastAgent && lastAgent.status === undefined) lastAgent.status = "thinking";
+        if (lastAgent && lastAgent.status === undefined) {
+          const idx = chat.findIndex((m) => m.id === lastAgent.id);
+          if (idx >= 0) chat[idx] = { ...chat[idx], status: "thinking" };
+        }
         break;
       }
       default:

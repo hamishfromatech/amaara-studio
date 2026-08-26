@@ -272,7 +272,9 @@ function RenderDot({ status }: { status: string }) {
 function StatusStrip() {
   const sidecars = useStore((s) => s.sidecars) ?? [];
   const error = useStore((s) => s.error);
-  const renderCount = useStore((s) => s.render_count);
+  // Live render count from the renders array (updated by events), not the
+  // one-shot snapshot value which is stale after the initial load.
+  const renderCount = useStore((s) => s.renders?.length ?? 0);
 
   const dot = (status: string) =>
     status === "running" ? "text-info" : status === "exited" ? "text-danger" : "text-ink-faint";

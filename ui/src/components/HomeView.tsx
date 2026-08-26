@@ -180,7 +180,9 @@ export function HomeView({ onNavigate }: { onNavigate: (id: "projects" | "models
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send("normal");
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                send(e.shiftKey ? "steer" : "normal");
+              }
             }}
             rows={3}
             disabled={!current}
