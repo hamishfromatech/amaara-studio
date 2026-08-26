@@ -861,6 +861,38 @@ pub fn get_sidecar_status(state: State<'_, std::sync::Arc<AppState>>) -> Result<
     Ok(snap.sidecars)
 }
 
+/// "Send feedback" packager (Phase 15): bundle redacted recent logs + a
+/// minimal session summary into a zip under the app-data dir. Returns the
+/// zip path so the UI can reveal it. Config contains no secrets (they live
+/// in the keyring — enforced by the leak test in config.rs).
+#[tauri::command]
+pub fn package_feedback(app: tauri::AppHandle, state: State<'_, std::sync::Arc<AppState>>) -> Result<String, String> {
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("cannot resolve app-data dir: {e}"))?;
+    let cfg = state.config.lock().clone();
+    let session = state.session.lock().clone();
+    let summary = serde_json::json!({
+        "config": {
+            "theme": format!("{:?}", cfg.theme).to_lowercase(),
+            "density": format!("{:?}", cfg.density).to_lowercase(),
+            "share_analytics": cfg.share_analytics,
+        },
+        "session": {
+            "project_id": session.current_project_id,
+            "composition_id": session.current_composition_id,
+            "harness": session.harness,
+            "model": session.model,
+            "source": session.source,
+        },
+        "version": env!("CARGO_PKG_VERSION"),
+    });
+    let path = crate::feedback::package(&data_dir, &data_dir.join("feedback"), Some(&summary))?;
+    tracing::info!("feedback package written: {}", path.display());
+    Ok(path.to_string_lossy().to_string())
+}
+
 #[tauri::command]
 pub fn reveal_in_folder(path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);

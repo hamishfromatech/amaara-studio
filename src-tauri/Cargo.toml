@@ -77,6 +77,9 @@ regex = "1"
 
 # navya-tools shared crate (Phase 3)
 navya-tools = { path = "../crates/navya-tools" }
+
+# "Send feedback" packager (Phase 15): zip redacted logs + session summary.
+zip = { version = "2", default-features = false, features = ["deflate"] }
 tracing-appender = "0.2.5"
 
 [dev-dependencies]

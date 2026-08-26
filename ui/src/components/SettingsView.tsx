@@ -10,7 +10,7 @@
 
 import { useState } from "react";
 import { useStore } from "../lib/store";
-import { harnessHint } from "../lib/invoke";
+import { harnessHint, Commands } from "../lib/invoke";
 
 export function SettingsView() {
   const config = useStore((s) => s.config);
@@ -24,6 +24,8 @@ export function SettingsView() {
   const setShareAnalytics = useStore((s) => s.setShareAnalytics);
 
   const [keyInput, setKeyInput] = useState("");
+  const [packaging, setPackaging] = useState(false);
+  const [feedbackPath, setFeedbackPath] = useState<string | null>(null);
 
   const hasApiKey = useStore((s) => s.has_api_key) ?? false;
 
@@ -262,6 +264,42 @@ export function SettingsView() {
               <span className="list-card__row-title">Default agent</span>
               <span className="list-card__row-meta">{session?.harness ?? "—"}</span>
             </div>
+            <div className="list-card__row">
+              <span className="list-card__row-title">Feedback</span>
+              <button
+                type="button"
+                className="btn btn-sm"
+                disabled={packaging}
+                onClick={async () => {
+                  setPackaging(true);
+                  try {
+                    const p = await Commands.packageFeedback();
+                    setFeedbackPath(p);
+                  } catch (e) {
+                    setFeedbackPath(`failed: ${String(e)}`);
+                  } finally {
+                    setPackaging(false);
+                  }
+                }}
+              >
+                {packaging ? "Packaging…" : "Package logs"}
+              </button>
+            </div>
+            {feedbackPath && (
+              <div style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-faint)" }}>
+                {feedbackPath.startsWith("failed:") ? (
+                  feedbackPath
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => void Commands.revealInFolder(feedbackPath)}
+                  >
+                    Reveal {feedbackPath.split(/[\\/]/).pop()}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </section>
