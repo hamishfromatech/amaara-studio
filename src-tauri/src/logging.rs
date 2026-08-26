@@ -57,6 +57,7 @@ fn env_filter() -> EnvFilter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn init_falls_back_to_stderr_when_dir_unwritable() {
