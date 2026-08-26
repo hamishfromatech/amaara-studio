@@ -205,14 +205,13 @@ async fn shutdown_signal() {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Generate a unique-enough token for development.
+/// Generate a control-server bearer token: 32 random bytes, hex-encoded.
+/// (The previous time-based token was guessable by anything that knew the
+/// app's launch time.)
 fn generate_token() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    format!("navya-{:x}", now)
+    let bytes: [u8; 32] = rand::random();
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    format!("navya-{hex}")
 }
 
 #[cfg(test)]
@@ -225,6 +224,9 @@ mod tests {
     use axum::http::{Method, Request, StatusCode};
     use tower::ServiceExt;
 
+    /// The token the "harness" presents in tests.
+    const TEST_TOKEN: &str = "navya-test-token";
+
     fn test_state() -> ServerState {
         let store = ProjectStore::memory().expect("in-memory store");
         let app = AppState::new(
@@ -232,11 +234,23 @@ mod tests {
             std::path::PathBuf::from(":memory:"),
             store,
         );
+        *app.control_token.lock() = Some(TEST_TOKEN.to_string());
         let (tx, _rx) = broadcast::channel(16);
         ServerState {
             app: Arc::new(app),
             events: tx,
         }
+    }
+
+    /// POST /tool/:name with a valid bearer token.
+    fn tool_request(name: &str, body: &str) -> Request<Body> {
+        Request::builder()
+            .method(Method::POST)
+            .uri(format!("/tool/{name}"))
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {TEST_TOKEN}"))
+            .body(Body::from(body.to_owned()))
+            .unwrap()
     }
 
     fn router(state: ServerState) -> Router<()> {
@@ -249,12 +263,7 @@ mod tests {
     #[tokio::test]
     async fn dispatch_list_models_round_trip() {
         let state = test_state();
-        let req = Request::builder()
-            .method(Method::POST)
-            .uri("/tool/list_local_models")
-            .header("content-type", "application/json")
-            .body(Body::from("{}"))
-            .unwrap();
+        let req = tool_request("list_local_models", "{}");
         let res = router(state).oneshot(req).await.unwrap();
         assert_eq!(res.status(), StatusCode::OK);
         let bytes = to_bytes(res.into_body(), usize::MAX).await.unwrap();
@@ -266,12 +275,7 @@ mod tests {
     #[tokio::test]
     async fn dispatch_unknown_tool_is_error() {
         let state = test_state();
-        let req = Request::builder()
-            .method(Method::POST)
-            .uri("/tool/nope")
-            .header("content-type", "application/json")
-            .body(Body::from("{}"))
-            .unwrap();
+        let req = tool_request("nope", "{}");
         let res = router(state).oneshot(req).await.unwrap();
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
         let bytes = to_bytes(res.into_body(), usize::MAX).await.unwrap();
@@ -284,14 +288,10 @@ mod tests {
     async fn dispatch_generate_image_inserts_asset() {
         let state = test_state();
         let app = state.app.clone();
-        let req = Request::builder()
-            .method(Method::POST)
-            .uri("/tool/generate_image")
-            .header("content-type", "application/json")
-            .body(Body::from(
-                r#"{"project_id":"p1","prompt":"a black hole","composition_id":null,"model":null,"size":null}"#,
-            ))
-            .unwrap();
+        let req = tool_request(
+            "generate_image",
+            r#"{"project_id":"p1","prompt":"a black hole","composition_id":null,"model":null,"size":null}"#,
+        );
         let res = router(state).oneshot(req).await.unwrap();
         assert_eq!(res.status(), StatusCode::OK);
         let bytes = to_bytes(res.into_body(), usize::MAX).await.unwrap();
@@ -299,5 +299,32 @@ mod tests {
         assert_eq!(json["ok"], serde_json::json!(true));
         // The asset row should now exist in the store (real insert, not a stub).
         assert_eq!(app.store.lock().count("assets").unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn dispatch_without_token_is_unauthorized() {
+        let state = test_state();
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/tool/list_local_models")
+            .header("content-type", "application/json")
+            .body(Body::from("{}"))
+            .unwrap();
+        let res = router(state).oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn dispatch_with_wrong_token_is_unauthorized() {
+        let state = test_state();
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri("/tool/list_local_models")
+            .header("content-type", "application/json")
+            .header("authorization", "Bearer navya-wrong-token")
+            .body(Body::from("{}"))
+            .unwrap();
+        let res = router(state).oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
     }
 }

@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{header::AUTHORIZATION, HeaderMap},
     response::IntoResponse,
     Json,
 };
@@ -128,11 +128,24 @@ pub fn make_tool_ctx(state: &Arc<AppState>) -> ToolContext {
 // ---------------------------------------------------------------------------
 
 /// POST /tool/:name — dispatch a tool call to the navya-tools backend.
+///
+/// Bearer-token authenticated: the harness extension sends the token the
+/// adapter passed to it via `NAVYA_CONTROL_TOKEN`. The server is loopback-
+/// only, but the token is the documented contract and stops any other local
+/// process from driving the studio's tools.
 pub async fn dispatch_tool(
     State(state): State<ServerState>,
+    headers: HeaderMap,
     Path(name): Path<String>,
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
+    let expected = state.app.control_token.lock().clone();
+    if !token_matches(&headers, expected.as_deref()) {
+        return (axum::http::StatusCode::UNAUTHORIZED, Json(serde_json::json!({
+            "ok": false,
+            "error": "unauthorized: missing or invalid bearer token",
+        })));
+    }
     let ctx = make_tool_ctx(&state.app);
 
     let out: Result<serde_json::Value, String> = match name.as_str() {
@@ -147,11 +160,11 @@ pub async fn dispatch_tool(
 
     match out {
         Ok(result) => (
-            StatusCode::OK,
+            axum::http::StatusCode::OK,
             Json(serde_json::json!({ "ok": true, "result": result })),
         ),
         Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "ok": false, "error": error })),
         ),
     }
@@ -214,4 +227,32 @@ async fn dispatch_snapshot(
         .ok_or_else(|| "missing or invalid `timecode_ms` field".to_string())?;
     let out = navya_tools::snapshot(ctx, t_ms).await.map_err(|e| e.to_string())?;
     serde_json::to_value(out).map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Auth helpers
+// ---------------------------------------------------------------------------
+
+/// Constant-time comparison of the `Authorization: Bearer <token>` header
+/// against the server's token. Missing token or missing server token → reject.
+fn token_matches(headers: &HeaderMap, expected: Option<&str>) -> bool {
+    let Some(expected) = expected else { return false };
+    let Some(auth) = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok()) else {
+        return false;
+    };
+    let provided = match auth.strip_prefix("Bearer ") {
+        Some(rest) => rest,
+        None => match auth.strip_prefix("bearer ") {
+            Some(rest) => rest,
+            None => return false,
+        },
+    };
+    constant_time_eq(provided.as_bytes(), expected.as_bytes())
+}
+
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
