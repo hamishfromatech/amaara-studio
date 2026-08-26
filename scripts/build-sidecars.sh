@@ -59,8 +59,8 @@ else
     src="$root/third_party/stable-diffusion.cpp"
     if [ -d "$src" ]; then
       echo "[build-sidecars] building stable-diffusion.cpp (SD_BUILD_SERVER=ON)…"
-      cmake -B "$src/build" -S "$src" -DSD_BUILD_SERVER=ON
-      cmake --build "$src/build" --config Release --target server
+      cmake -B "$src/build" -S "$src" -DSD_BUILD_SERVER=ON -DSD_SERVER_BUILD_FRONTEND=OFF
+      cmake --build "$src/build" --config Release --target sd-server
       built="$src/build/bin/Release/sd-server"
       [ -f "$built" ] || built="$src/build/bin/sd-server"
       [ -f "$built" ] || { echo "built but sd-server not found under $src/build" >&2; exit 1; }

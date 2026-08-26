@@ -78,9 +78,9 @@ else {
       Write-Host "[build-sidecars] building stable-diffusion.cpp (SD_BUILD_SERVER=ON)…"
       Push-Location $src
       try {
-        cmake -B build -DSD_BUILD_SERVER=ON
+        cmake -B build -DSD_BUILD_SERVER=ON -DSD_SERVER_BUILD_FRONTEND=OFF
         if ($LASTEXITCODE -ne 0) { throw "cmake configure failed" }
-        cmake --build build --config Release --target server
+        cmake --build build --config Release --target sd-server
         if ($LASTEXITCODE -ne 0) { throw "cmake build failed" }
       } finally { Pop-Location }
       $built = Join-Path $src "build\bin\Release\sd-server.exe"
