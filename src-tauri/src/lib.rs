@@ -10,6 +10,7 @@ pub mod errors;
 pub mod events;
 pub(crate) mod harness;
 pub(crate) mod navya;
+pub mod preview;
 pub(crate) mod render;
 pub(crate) mod sd;
 pub(crate) mod sidecar;
@@ -113,6 +114,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             commands::render_to_video,
             commands::list_renders,
             commands::cancel_render,
+            commands::preview_start,
+            commands::preview_stop,
+            commands::preview_status,
             commands::get_sidecar_status,
             commands::timeline::get_timeline,
             commands::timeline::snapshot,

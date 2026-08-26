@@ -15,8 +15,9 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 use crate::config::{self, NavyaConfig, SERVICE_NAVYA};
-use crate::events::{ProjectEvent, StudioEvent};
+use crate::events::{ProjectEvent, PreviewEvent, StudioEvent};
 use crate::render::{RenderJob, RenderQuality, RenderStatus, RenderTarget};
+use crate::preview::{poll_ready, spawn_preview};
 use crate::state::{AppState, ModelEntry, Session, StateSnapshot, cloud_models};
 
 // ---------------------------------------------------------------------------
@@ -659,6 +660,94 @@ pub async fn list_renders(state: State<'_, std::sync::Arc<AppState>>) -> Result<
 #[tauri::command]
 pub async fn cancel_render(state: State<'_, std::sync::Arc<AppState>>, job_id: String) -> Result<bool, String> {
     Ok((*state).render_queue.lock().update_status(&job_id, RenderStatus::Cancelled))
+}
+
+
+// ---------------------------------------------------------------------------
+// Preview server — live HyperFrames preview for the Timeline tab (Phase 10).
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn preview_start(
+    app: AppHandle,
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<(), String> {
+    // No-op if already running (avoids spawning a second server on a port).
+    if state.preview.lock().is_running() {
+        return Ok(());
+    }
+
+    let project_dir = {
+        let session = (*state).session.lock().clone();
+        current_project_dir(&*state, &session)
+    };
+    if !project_dir.is_dir() {
+        return Err("no project open. Open or create a project first.".to_string());
+    }
+
+    const PORT: u16 = crate::preview::DEFAULT_PREVIEW_PORT;
+
+    // Spawn the preview server, then wait for it to answer on its port.
+    let mut child = spawn_preview(&project_dir, PORT).await?;
+    match poll_ready(PORT, std::time::Duration::from_secs(30)).await {
+        Ok(url) => {
+            let mut guard = state.preview.lock();
+            guard.child = Some(child);
+            guard.port = Some(PORT);
+            guard.running = true;
+            drop(guard);
+            let _ = app.emit(
+                "studio://event",
+                StudioEvent::Preview(PreviewEvent::Started {
+                    url,
+                    port: PORT,
+                }),
+            );
+            Ok(())
+        }
+        Err(err) => {
+            // Spawned but never became ready — tear it down and report.
+            let _ = child.kill().await;
+            let _ = app.emit(
+                "studio://event",
+                StudioEvent::Preview(PreviewEvent::Failed { error: err.clone() }),
+            );
+            Err(err)
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn preview_stop(state: State<'_, std::sync::Arc<AppState>>) -> Result<(), String> {
+    // Take the child out before awaiting so we never hold the MutexGuard
+    // (which is not Send) across an await — the future must be Send.
+    let child = {
+        let mut server = state.preview.lock();
+        let child = server.child.take();
+        server.running = false;
+        server.port = None;
+        child
+    };
+    if let Some(mut c) = child {
+        let _ = c.kill().await;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn preview_status(state: State<'_, std::sync::Arc<AppState>>) -> Result<PreviewStatus, String> {
+    let server = state.preview.lock();
+    Ok(PreviewStatus {
+        running: server.is_running(),
+        port: server.port,
+    })
+}
+
+/// Preview-server health reported to the UI (iframe source + status).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreviewStatus {
+    pub running: bool,
+    pub port: Option<u16>,
 }
 
 // ---------------------------------------------------------------------------

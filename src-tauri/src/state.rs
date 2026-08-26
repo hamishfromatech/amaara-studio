@@ -17,6 +17,7 @@ use crate::engine::EngineClient;
 use crate::harness::{Capabilities, HarnessRegistry};
 use crate::navya::NavyaClient;
 use crate::render::RenderQueue;
+use crate::preview::{preview_state, PreviewState};
 use crate::sidecar::{SidecarStatus, Supervisor};
 use crate::store::{ProjectRow, ProjectStore};
 
@@ -112,6 +113,8 @@ pub struct AppState {
     pub engine: PMutex<EngineClient>,
     pub supervisor: Arc<Supervisor>,
     pub harness_registry: PMutex<HarnessRegistry>,
+    /// Running HyperFrames preview server (Timeline tab). `None` when stopped.
+    pub preview: PreviewState,
     /// Harness id that currently has an event pump subscribed (one pump per
     /// harness; re-subscribes when the user switches harness).
     pub pump_harness: PMutex<Option<String>>,
@@ -150,6 +153,7 @@ impl AppState {
             engine: PMutex::new(engine),
             supervisor: Arc::new(Supervisor::new()),
             harness_registry: PMutex::new(registry),
+        preview: preview_state(),
             pump_harness: PMutex::new(None),
             control_url: Arc::new(PMutex::new(None)),
             control_token: Arc::new(PMutex::new(None)),

@@ -7,6 +7,7 @@
 //!   Render  — render-queue lifecycle + progress
 //!   Sidecar — harness/render/sd sidecar status + logs
 //!   Project — project create/switch/update
+//!   Preview — HyperFrames preview server lifecycle (Timeline tab)
 //!
 //! See `ARCHITECTURE.md` §4 for the concrete request loop.
 
@@ -19,6 +20,7 @@ pub enum StudioEvent {
     Render(RenderEvent),
     Sidecar(SidecarEvent),
     Project(ProjectEvent),
+    Preview(PreviewEvent),
 }
 
 // --- Harness ---------------------------------------------------------------
@@ -77,6 +79,29 @@ pub enum ProjectEvent {
     AssetAdded { project_id: String, asset_id: String, path: String },
 }
 
+/// HyperFrames preview-server lifecycle (Timeline tab, Phase 10). The server
+/// is `npx hyperframes preview --background` bound to a loopback port; the UI
+/// embeds its URL in an iframe.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PreviewEvent {
+    /// Server is up; `url` is the iframe source, `port` the bound port.
+    Started { url: String, port: u16 },
+    /// Server was stopped (project switch / tab leave / stop button).
+    Stopped,
+    /// Server failed to start (missing Node/npx/hyperframes, port in use, …).
+    Failed { error: String },
+}
+
+impl PreviewEvent {
+    fn describe(&self) -> String {
+        match self {
+            PreviewEvent::Started { port, .. } => format!("up port={port}"),
+            PreviewEvent::Stopped => "stopped".into(),
+            PreviewEvent::Failed { error } => format!("fail:{error}"),
+        }
+    }
+}
+
 impl StudioEvent {
     /// A short human label for the status strip / debug output.
     pub fn describe(&self) -> String {
@@ -85,6 +110,7 @@ impl StudioEvent {
             StudioEvent::Render(e) => e.describe(),
             StudioEvent::Sidecar(e) => format!("sidecar: {}", e.describe()),
             StudioEvent::Project(e) => e.describe(),
+            StudioEvent::Preview(e) => format!("preview: {}", e.describe()),
         }
     }
 }
@@ -172,6 +198,10 @@ mod tests {
         let _ = StudioEvent::Render(RenderEvent::Failed { job_id: "r1".into(), error: "e".into() });
         let _ = StudioEvent::Sidecar(SidecarEvent::Exit { name: "h".into(), code: 1 });
         let _ = StudioEvent::Project(ProjectEvent::Created { project_id: "p".into(), name: "n".into() });
+        let _ = StudioEvent::Preview(PreviewEvent::Started {
+            url: "http://127.0.0.1:3002/".to_string(),
+            port: 3002,
+        });
     }
 
     #[test]
