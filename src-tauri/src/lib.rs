@@ -8,6 +8,7 @@ pub mod control;
 pub mod engine;
 pub mod errors;
 pub mod events;
+pub mod logging;
 pub(crate) mod harness;
 pub(crate) mod navya;
 pub mod preview;
@@ -42,6 +43,14 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         .plugin(tauri_plugin_store::Builder::new().build())
         .setup(|app| {
             let handle = app.handle().clone();
+
+            // Structured logging (Phase 15): JSON lines to a daily-rotating
+            // file under app-data/logs/, falling back to stderr if unwritable.
+            let data_dir = handle
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| PathBuf::from("."));
+            logging::init(&data_dir.join("logs"));
 
             // Config: load from app-data JSON (or default + persist).
             let cfg_path = config_path(&handle);

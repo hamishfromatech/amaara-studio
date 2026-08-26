@@ -748,8 +748,11 @@ Build M0 first and stop. Re-evaluate with the user before M1+.
   tests pass.
 - **Phase 14** — Cross-platform bundles (`msi`, `nsis`, `dmg`, `app`, `appimage`, `deb`),
   `externalBin` entries, sidecar bootstrap/downloader, first-run dependency fetch.
-- **Phase 15** — Error handling polish, structured logging, telemetry opt-in, headless e2e,
-  plaintext-key leak test.
+- **Phase 15** — Error handling polish ✅ (typed `StudioEvent::Error` + UI strip,
+  committed), structured logging ✅ (`src-tauri/src/logging.rs`: daily-rotating
+  JSON logs to app-data/logs/, stderr fallback; wired into `lib.rs` setup,
+  2 tests). Remaining: telemetry opt-in flag, per-sidecar log drawer, "send
+  feedback" packager, headless e2e, plaintext-key leak test, CI matrix.
 - **Phase 16** — Onboarding flow, keyboard shortcuts, full theming/density, empty states.
 
 ### Research artifacts
