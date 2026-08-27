@@ -741,11 +741,15 @@ Build M0 first and stop. Re-evaluate with the user before M1+.
 - **Phase 12–13** — All six harness adapters implemented; `navya-mcp` FastMCP server updated to v4 API.
 
 ### Pending phases
-- **Phase 14** — Cross-platform bundles (`msi`, `nsis`, `dmg`, `app`, `appimage`, `deb`),
-  `externalBin` entries, sidecar bootstrap/downloader, first-run dependency fetch.
-  Code-level pieces (tauri.conf bundle config, `scripts/build-sidecars.*`,
-  real `bootstrap.rs` download-on-first-run) in progress; Gate 14 clean-VM
-  smoke tests remain manual.
+- **Phase 14 — code-complete for Windows (2026-08-27)**: sd-server built from
+  source (CPU flavor), staged via `scripts/build-sidecars.ps1` with `.sha256`,
+  runtime wired (bootstrap → model discovery → spawn → img_gen), and a
+  release build with the `tauri.release.conf.json` overlay **embeds the
+  53MB sd-server via externalBin**:
+  `Navya Studio_0.1.0_x64_en-US.msi` (31MB) +
+  `Navya Studio_0.1.0_x64-setup.exe` (20MB) in `target/release/bundle/`.
+  Remaining Gate 14: clean-VM smoke test (no Node/FFmpeg), macOS/Linux
+  bundles, CUDA/Vulkan flavor validation — all manual/host-dependent.
 
 ### Completed since 2026-08-26 (2026-08-27 session)
 - **Phase 10 finish** — Timeline tab committed: preview iframe, scrubable
