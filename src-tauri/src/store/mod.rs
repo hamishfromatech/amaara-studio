@@ -4,6 +4,8 @@
 //! observes results through `studio://event` (see `events.rs`). This module is
 //! fully unit-tested against an in-memory connection.
 
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 
 pub mod schema {
@@ -230,6 +232,140 @@ impl ProjectStore {
         let n = self.conn.query_row(&sql, [], |r| r.get::<_, i64>(0))?;
         Ok(n)
     }
+
+    // --- Render-queue persistence (Phase 14 hardening) ---------------------
+
+    /// Upsert a render job row (source of truth for the queue across
+    /// restarts). Called by the render pipeline on every queue mutation.
+    pub fn upsert_render(&self, job: &crate::render::RenderJob) -> Result<(), StoreError> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO renders
+             (id, project_id, composition_id, target, quality, width, height, fps,
+              status, started_at, finished_at, output_path, error)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            rusqlite::params![
+                job.job_id,
+                job.project_id,
+                job.composition_id,
+                format!("{:?}", job.target).to_lowercase(),
+                format!("{:?}", job.quality).to_lowercase(),
+                job.width,
+                job.height,
+                job.fps,
+                format!("{:?}", job.status).to_lowercase(),
+                job.started_at_ms,
+                job.finished_at_ms,
+                job.output_path.as_ref().map(|p| p.to_string_lossy().to_string()),
+                job.error,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// All render rows, oldest-start first (queue order). The SQLite table is
+    /// the durable source of truth for the render queue.
+    pub fn list_renders(&self) -> Result<Vec<crate::render::RenderJob>, StoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, project_id, composition_id, target, quality, width, height, fps,
+                    status, started_at, finished_at, output_path, error
+             FROM renders ORDER BY COALESCE(started_at, 0) ASC",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(RenderRow {
+                    id: r.get(0)?,
+                    project_id: r.get(1)?,
+                    composition_id: r.get(2)?,
+                    target: r.get(3)?,
+                    quality: r.get(4)?,
+                    width: r.get(5)?,
+                    height: r.get(6)?,
+                    fps: r.get(7)?,
+                    status: r.get(8)?,
+                    started_at: r.get(9)?,
+                    finished_at: r.get(10)?,
+                    output_path: r.get(11)?,
+                    error: r.get(12)?,
+                })
+            })?
+            .filter_map(Result::ok)
+            .map(|row| row.into_job())
+            .collect();
+        Ok(rows)
+    }
+
+    /// Mark renders still "running" (from a crashed previous session) as
+    /// failed, returning the reconciled jobs so callers can persist them.
+    pub fn reconcile_stale_renders(&self) -> Result<Vec<crate::render::RenderJob>, StoreError> {
+        let mut jobs = self.list_renders()?;
+        let mut changed = Vec::new();
+        for job in jobs.iter_mut() {
+            if job.status == crate::render::RenderStatus::Running {
+                job.status = crate::render::RenderStatus::Failed;
+                job.error = Some("app restarted while this render was running".to_string());
+                job.finished_at_ms = Some(now_ms());
+                self.upsert_render(job)?;
+                changed.push(job.clone());
+            }
+        }
+        Ok(changed)
+    }
+}
+
+/// Raw renders-table row, mapped to/from `render::RenderJob`.
+struct RenderRow {
+    id: String,
+    project_id: String,
+    composition_id: String,
+    target: String,
+    quality: String,
+    width: i64,
+    height: i64,
+    fps: i64,
+    status: String,
+    started_at: Option<i64>,
+    finished_at: Option<i64>,
+    output_path: Option<String>,
+    error: Option<String>,
+}
+
+impl RenderRow {
+    fn into_job(self) -> crate::render::RenderJob {
+        use crate::render::{RenderJob, RenderQuality, RenderStatus, RenderTarget};
+        let target = match self.target.as_str() {
+            "docker" => RenderTarget::Docker,
+            "cloud" => RenderTarget::Cloud,
+            "lambda" => RenderTarget::Lambda,
+            "cloudrun" => RenderTarget::CloudRun,
+            _ => RenderTarget::Local,
+        };
+        let quality = match self.quality.as_str() {
+            "high" => RenderQuality::High,
+            _ => RenderQuality::Draft,
+        };
+        let status = match self.status.as_str() {
+            "running" => RenderStatus::Running,
+            "done" => RenderStatus::Done,
+            "failed" => RenderStatus::Failed,
+            "cancelled" => RenderStatus::Cancelled,
+            _ => RenderStatus::Queued,
+        };
+        RenderJob {
+            job_id: self.id,
+            project_id: self.project_id,
+            composition_id: self.composition_id,
+            target,
+            quality,
+            width: self.width.max(1) as u32,
+            height: self.height.max(1) as u32,
+            fps: self.fps.max(1) as u32,
+            status,
+            started_at_ms: self.started_at,
+            finished_at_ms: self.finished_at,
+            output_path: self.output_path.map(PathBuf::from),
+            error: self.error,
+        }
+    }
 }
 
 fn now_ms() -> i64 {
@@ -249,6 +385,46 @@ fn hash_str(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn render_persistence_roundtrip_and_reconcile() {
+        use crate::render::{RenderJob, RenderStatus, RenderTarget};
+        let store = ProjectStore::memory().unwrap();
+
+        let job = RenderJob {
+            job_id: "j1".into(),
+            project_id: "p1".into(),
+            composition_id: "c1".into(),
+            target: RenderTarget::Cloud,
+            status: RenderStatus::Running,
+            started_at_ms: Some(1000),
+            ..RenderJob::default()
+        };
+        store.upsert_render(&job).unwrap();
+
+        let rows = store.list_renders().unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].target, RenderTarget::Cloud);
+        assert_eq!(rows[0].status, RenderStatus::Running);
+        assert_eq!(rows[0].started_at_ms, Some(1000));
+
+        // A running job from a crashed previous session reconciles to failed.
+        let changed = store.reconcile_stale_renders().unwrap();
+        assert_eq!(changed.len(), 1);
+        assert_eq!(changed[0].status, RenderStatus::Failed);
+        assert!(changed[0].error.clone().unwrap_or_default().contains("restarted"));
+        // Second reconcile is a no-op.
+        assert!(store.reconcile_stale_renders().unwrap().is_empty());
+
+        // Terminal rows survive a re-upsert with new fields.
+        let mut done = changed[0].clone();
+        done.status = RenderStatus::Done;
+        done.output_path = Some(std::path::PathBuf::from("renders/out.mp4"));
+        store.upsert_render(&done).unwrap();
+        let rows = store.list_renders().unwrap();
+        assert_eq!(rows[0].status, RenderStatus::Done);
+        assert_eq!(rows[0].output_path.as_deref(), Some(std::path::Path::new("renders/out.mp4")));
+    }
 
     #[test]
     fn pragmas_are_set_for_runtime_concurrency() {

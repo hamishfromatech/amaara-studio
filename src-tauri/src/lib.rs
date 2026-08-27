@@ -79,6 +79,32 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             // Build + manage the shared state (wrapped in Arc for sharing).
             let state = AppState::new(config, cfg_path, store);
+
+            // Hydrate the render queue from SQLite and reconcile jobs that were
+            // still "running" when the previous session died (Phase 14 hardening).
+            {
+                let store = state.store.lock();
+                match store.reconcile_stale_renders() {
+                    Ok(reconciled) if !reconciled.is_empty() => {
+                        tracing::info!(
+                            "reconciled {} stale running render(s) from the previous session",
+                            reconciled.len()
+                        );
+                    }
+                    Err(e) => tracing::warn!("render reconcile failed: {e}"),
+                    _ => {}
+                }
+                match store.list_renders() {
+                    Ok(rows) => {
+                        let mut q = state.render_queue.lock();
+                        for job in rows {
+                            q.add(job);
+                        }
+                    }
+                    Err(e) => tracing::warn!("render queue hydration failed: {e}"),
+                }
+            }
+
             app.manage(std::sync::Arc::new(state));
 
             // Create the event broadcast channel for the control server.

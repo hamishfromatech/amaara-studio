@@ -457,6 +457,7 @@ pub async fn render_to_video(
         error: None,
     };
     (*state).render_queue.lock().add(job.clone());
+    persist_render_job(&state, &job);
 
     let _ = app.emit(
         "studio://event",
@@ -535,6 +536,9 @@ async fn run_render(app: AppHandle, job: RenderJob) {
     {
         let mut q = (*state).render_queue.lock();
         q.update_status(&job.job_id, RenderStatus::Running);
+        if let Some(j) = q.get(&job.job_id) {
+            persist_render_job(&state, j);
+        }
     }
     let _ = app.emit(
         "studio://event",
@@ -615,7 +619,13 @@ async fn run_render(app: AppHandle, job: RenderJob) {
             }
             "completed" => {
                 let out = parsed.get("output_path").and_then(|v| v.as_str()).unwrap_or("renders/out.mp4").to_string();
-                { let mut q = (*state).render_queue.lock(); q.complete(&job_id_for_stdout, &out); }
+                {
+                    let mut q = (*state).render_queue.lock();
+                    q.complete(&job_id_for_stdout, &out);
+                    if let Some(j) = q.get(&job_id_for_stdout) {
+                        persist_render_job(&state, j);
+                    }
+                }
                 let _ = app_for_stdout.emit(
                     "studio://event",
                     StudioEvent::Render(crate::events::RenderEvent::Completed {
@@ -627,7 +637,13 @@ async fn run_render(app: AppHandle, job: RenderJob) {
             }
             "failed" => {
                 let err = parsed.get("error").and_then(|v| v.as_str()).unwrap_or("render failed").to_string();
-                { let mut q = (*state).render_queue.lock(); q.update_status(&job_id_for_stdout, RenderStatus::Failed); }
+                {
+                    let mut q = (*state).render_queue.lock();
+                    q.update_status(&job_id_for_stdout, RenderStatus::Failed);
+                    if let Some(j) = q.get(&job_id_for_stdout) {
+                        persist_render_job(&state, j);
+                    }
+                }
                 let _ = app_for_stdout.emit(
                     "studio://event",
                     StudioEvent::Render(crate::events::RenderEvent::Failed {
@@ -669,6 +685,9 @@ async fn run_render(app: AppHandle, job: RenderJob) {
         {
             let mut q = (*state).render_queue.lock();
             q.update_status(&job_id, RenderStatus::Failed);
+            if let Some(j) = q.get(&job_id) {
+                persist_render_job(&state, j);
+            }
         }
         let _ = app.emit(
             "studio://event",
@@ -682,12 +701,27 @@ async fn run_render(app: AppHandle, job: RenderJob) {
 
 #[tauri::command]
 pub async fn list_renders(state: State<'_, std::sync::Arc<AppState>>) -> Result<Vec<RenderJob>, String> {
-    Ok((*state).render_queue.lock().list())
+    // SQLite is the durable source of truth (survives restarts); fall back to
+    // the in-memory queue only if the store read fails.
+    match state.store.lock().list_renders() {
+        Ok(rows) if !rows.is_empty() => Ok(rows),
+        Ok(_) => Ok((*state).render_queue.lock().list()),
+        Err(e) => {
+            tracing::warn!("reading persisted renders failed: {e}");
+            Ok((*state).render_queue.lock().list())
+        }
+    }
 }
 
 #[tauri::command]
 pub async fn cancel_render(state: State<'_, std::sync::Arc<AppState>>, job_id: String) -> Result<bool, String> {
-    Ok((*state).render_queue.lock().update_status(&job_id, RenderStatus::Cancelled))
+    let ok = (*state).render_queue.lock().update_status(&job_id, RenderStatus::Cancelled);
+    if ok {
+        if let Some(j) = (*state).render_queue.lock().get(&job_id) {
+            persist_render_job(&state, j);
+        }
+    }
+    Ok(ok)
 }
 
 
@@ -853,6 +887,15 @@ pub async fn detect_engine(state: State<'_, std::sync::Arc<AppState>>) -> Result
         return Ok(Vec::new());
     }
     Ok(engine.list_models().await)
+}
+
+/// Persist a render-queue mutation to the renders table (Phase 14 hardening:
+/// queue state survives restarts). Failures are logged, never surfaced — the
+/// in-memory queue keeps working.
+fn persist_render_job(state: &std::sync::Arc<AppState>, job: &crate::render::RenderJob) {
+    if let Err(e) = state.store.lock().upsert_render(job) {
+        tracing::warn!("render row upsert failed for {}: {e}", job.job_id);
+    }
 }
 
 #[tauri::command]
