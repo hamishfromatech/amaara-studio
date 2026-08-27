@@ -92,7 +92,7 @@ pub async fn download_to(
     dest: &Path,
     url: &str,
     expected_hex: Option<&str>,
-    on_progress: &mut dyn FnMut(&str),
+    on_progress: &mut (dyn FnMut(&str) + Send),
 ) -> Result<(), String> {
     on_progress(&format!("downloading {url}"));
     let client = reqwest::Client::builder()
@@ -148,7 +148,7 @@ pub async fn download_to(
 pub async fn ensure_sd_server_binary(
     bin_path: &Path,
     flavor: &str,
-    on_progress: &mut dyn FnMut(&str),
+    on_progress: &mut (dyn FnMut(&str) + Send),
 ) -> Result<(), String> {
     if bin_path.exists() {
         on_progress(&format!("sd-server found at {}", bin_path.display()));

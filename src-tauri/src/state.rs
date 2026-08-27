@@ -115,6 +115,8 @@ pub struct AppState {
     pub harness_registry: PMutex<HarnessRegistry>,
     /// Running HyperFrames preview server (Timeline tab). `None` when stopped.
     pub preview: PreviewState,
+    /// Lazy sd-server supervisor (local image generation, Phase 8/14).
+    pub sd: Arc<crate::sd::SdServerSupervisor>,
     /// Harness id that currently has an event pump subscribed (one pump per
     /// harness; re-subscribes when the user switches harness).
     pub pump_harness: PMutex<Option<String>>,
@@ -154,6 +156,7 @@ impl AppState {
             supervisor: Arc::new(Supervisor::new()),
             harness_registry: PMutex::new(registry),
         preview: preview_state(),
+        sd: Arc::new(crate::sd::SdServerSupervisor::new()),
             pump_harness: PMutex::new(None),
             control_url: Arc::new(PMutex::new(None)),
             control_token: Arc::new(PMutex::new(None)),

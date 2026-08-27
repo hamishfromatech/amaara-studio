@@ -877,6 +877,7 @@ pub struct GeneratedImageResult {
 
 #[tauri::command]
 pub async fn generate_image(
+    app: tauri::AppHandle,
     state: State<'_, std::sync::Arc<AppState>>,
     args: GenerateImageArgs,
 ) -> Result<GeneratedImageResult, String> {
@@ -900,13 +901,61 @@ pub async fn generate_image(
             }),
         }
     } else {
-        // Local path: sd-server sidecar. Not yet spawned — surface honestly.
-        Ok(GeneratedImageResult {
-            source: "local".to_string(),
-            url: None,
-            revised_prompt: None,
-            error: Some("Local image generation (sd-server) is not running. Start it in Settings.".to_string()),
-        })
+        // Local path: lazily start the sd-server sidecar (download-on-first-
+        // run + checksum via sidecar::bootstrap), then generate. Child output
+        // and bootstrap progress stream into the sidecar log drawer.
+        let cfg = state.config.lock().clone();
+        let sup = state.sd.clone();
+        let bin = cfg.sd_binary_path.clone();
+        let models_dir = cfg.sd_models_dir.clone();
+        let progress_app = app.clone();
+        let mut on_progress = move |m: &str| {
+            let _ = progress_app.emit(
+                "studio://event",
+                StudioEvent::Sidecar(crate::events::SidecarEvent::LogLine {
+                    name: "sd-server".to_string(),
+                    level: "info".to_string(),
+                    message: m.to_string(),
+                }),
+            );
+        };
+        let app_for_attach = app.clone();
+        let attach = move |stream: &str, stream_io: Box<dyn tokio::io::AsyncRead + Send + Unpin>| {
+            let level = if stream == "error" { "error" } else { "info" };
+            crate::sidecar::spawn_log_forwarder("sd-server", stream_io, level, app_for_attach.clone());
+        };
+        let sup_ref: &crate::sd::OutputForwarder = &attach;
+        match sup
+            .ensure_running(
+                &bin,
+                Path::new(&models_dir),
+                crate::sd::SdGpuBackend::default(),
+                Some(sup_ref),
+                &mut on_progress,
+            )
+            .await
+        {
+            Ok(_) => match sup.generate(&args.prompt).await {
+                Ok(data_url) => Ok(GeneratedImageResult {
+                    source: "local".to_string(),
+                    url: Some(data_url),
+                    revised_prompt: None,
+                    error: None,
+                }),
+                Err(e) => Ok(GeneratedImageResult {
+                    source: "local".to_string(),
+                    url: None,
+                    revised_prompt: None,
+                    error: Some(e),
+                }),
+            },
+            Err(e) => Ok(GeneratedImageResult {
+                source: "local".to_string(),
+                url: None,
+                revised_prompt: None,
+                error: Some(e),
+            }),
+        }
     }
 }
 
