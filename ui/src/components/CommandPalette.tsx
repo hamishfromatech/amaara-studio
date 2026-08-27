@@ -184,6 +184,7 @@ export function CommandPalette() {
   if (!open) return null;
 
   const handleKey = (e: React.KeyboardEvent) => {
+    if (e.nativeEvent.isComposing) return; // IME guard (CJK composition)
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setActive((a) => (a + 1) % Math.max(1, visible.length));

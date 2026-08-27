@@ -29,6 +29,8 @@ interface ChatMessage {
   role: "you" | "agent" | "system";
   content: string;
   status?: "thinking" | "tool-calling" | "done" | "error";
+  /** Set on failed agent messages: the prompt to offer as a retry. */
+  failedPrompt?: string;
 }
 
 interface AppState extends Partial<StateSnapshot> {
@@ -80,6 +82,10 @@ interface AppState extends Partial<StateSnapshot> {
   setShareAnalytics: (share: boolean) => Promise<void>;
 
   sendPrompt: (msg: string, mode?: string) => Promise<void>;
+  /** Prompts typed while a run is in flight (open-design QueuedSendStrip). */
+  queuedPrompts: string[];
+  removeQueuedPrompt: (index: number) => void;
+  sendQueuedNow: (index: number) => void;
   steer: (msg: string) => Promise<void>;
   abort: () => Promise<void>;
   render: (quality?: string) => Promise<void>;
@@ -314,7 +320,30 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  // Prompts typed while a run is in flight — flushed FIFO as turns end
+  // (open-design QueuedSendStrip).
+  queuedPrompts: [],
+  removeQueuedPrompt: (index) =>
+    set((s) => ({ queuedPrompts: s.queuedPrompts.filter((_, i) => i !== index) })),
+  sendQueuedNow: (index) => {
+    const queue = get().queuedPrompts;
+    const msg = queue[index];
+    if (msg === undefined) return;
+    set({ queuedPrompts: queue.filter((_, i) => i !== index) });
+    void get().sendPrompt(msg, "normal");
+  },
+
   sendPrompt: async (msg, mode = "normal") => {
+    // Queue while a run is in flight: the prompt stays visible/removable in
+    // the strip and auto-sends when the current turn ends.
+    const lastAgentNow = [...get().chat].reverse().find((m) => m.role === "agent");
+    if (
+      mode === "normal" &&
+      (lastAgentNow?.status === "thinking" || lastAgentNow?.status === "tool-calling")
+    ) {
+      set((s) => ({ queuedPrompts: [...s.queuedPrompts, msg] }));
+      return;
+    }
     set((s) => ({
       chat: [
         ...s.chat,
@@ -328,7 +357,7 @@ export const useStore = create<AppState>((set, get) => ({
       set((s) => ({
         chat: s.chat.map((m) =>
           m.role === "agent" && m.status === "thinking"
-            ? { ...m, status: "error", content: String(e) }
+            ? { ...m, status: "error", content: String(e), failedPrompt: msg }
             : m
         ),
         error: String(e),
@@ -639,9 +668,26 @@ function handleHarnessEvent(
         const p = payload as { success: boolean; message: string | null };
         if (lastAgent) {
           const idx = chat.findIndex((m) => m.id === lastAgent.id);
-          if (idx >= 0) chat[idx] = { ...chat[idx], status: p.success ? "done" : "error" };
+          if (idx >= 0) {
+            chat[idx] = { ...chat[idx], status: p.success ? "done" : "error" };
+            // Failure recovery (open-design): persist the prompt that failed
+            // so the message card can offer a one-click retry.
+            if (!p.success) {
+              const lastYou = [...chat].reverse().find((m) => m.role === "you");
+              chat[idx] = { ...chat[idx], failedPrompt: lastYou?.content };
+            }
+          }
         }
-        break;
+        // Turn over — hand the next queued prompt (FIFO) to the store; the
+        // actual send happens after this reducer returns (no side effects in
+        // the updater).
+        const queue = (s.queuedPrompts ?? []).slice();
+        const next = queue.shift();
+        if (next !== undefined) {
+          const prompt = next;
+          queueMicrotask(() => void useStore.getState().sendPrompt(prompt, "normal"));
+        }
+        return { chat, queuedPrompts: next !== undefined ? queue : s.queuedPrompts };
       }
       case "Error": {
         if (lastAgent) {

@@ -273,6 +273,41 @@ html[data-density="compact"] .list-card__row {
   animation: flash-ok 900ms var(--ease-out);
 }
 
+/* Queued sends strip (open-design QueuedSendStrip): chips above the home
+   composer showing prompts held while a run is in flight. */
+.queued-sends {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px 0;
+}
+.queued-sends__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+}
+.queued-sends__next {
+  color: var(--brand);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.queued-sends__text {
+  overflow: hidden;
+  max-width: 32ch;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-hero__history-msg-recover {
+  margin-top: 6px;
+}
+
 /* -------- Tailwind v4 theme bridge -----------------------------------
    `inline` keeps utilities referencing the runtime var(), so every class
    (bg-panel, text-ink-muted, border-line) flips with the active theme. */

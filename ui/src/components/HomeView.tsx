@@ -44,6 +44,9 @@ export function HomeView({ onNavigate }: { onNavigate: (id: "projects" | "models
   const sidecars = useStore((s) => s.sidecars) ?? [];
   const chat = useStore((s) => s.chat);
   const sendPrompt = useStore((s) => s.sendPrompt);
+  const queuedPrompts = useStore((s) => s.queuedPrompts);
+  const removeQueuedPrompt = useStore((s) => s.removeQueuedPrompt);
+  const sendQueuedNow = useStore((s) => s.sendQueuedNow);
   const steer = useStore((s) => s.steer);
   const openProject = useStore((s) => s.openProject);
   const refreshRenders = useStore((s) => s.refreshRenders);
@@ -145,12 +148,55 @@ export function HomeView({ onNavigate }: { onNavigate: (id: "projects" | "models
                 <div className="home-hero__history-msg-body">
                   {m.content || (m.status === "thinking" ? "…" : "")}
                 </div>
+                {/* Failure recovery (open-design): one-click retry of the
+                    prompt this failed turn was answering. */}
+                {m.role === "agent" && m.status === "error" && m.failedPrompt && (
+                  <div className="home-hero__history-msg-recover">
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() => void sendPrompt(m.failedPrompt!, "normal")}
+                    >
+                      ↻ Retry
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
 
         <div className="home-hero__composer-card">
+          {/* Queued sends (open-design QueuedSendStrip): prompts typed while a
+              run is in flight — visible, removable, send-now, FIFO on turn end. */}
+          {queuedPrompts.length > 0 && (
+            <div className="queued-sends" role="list" aria-label="Queued prompts">
+              {queuedPrompts.map((q, i) => (
+                <span key={`${i}-${q.slice(0, 8)}`} className="queued-sends__item" role="listitem">
+                  {i === 0 && <span className="queued-sends__next" title="sends when the current turn ends">● next</span>}
+                  <span className="queued-sends__text" title={q}>{q}</span>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title="Send now"
+                    aria-label="Send now"
+                    onClick={() => sendQueuedNow(i)}
+                  >
+                    ▶
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title="Remove"
+                    aria-label="Remove queued prompt"
+                    onClick={() => removeQueuedPrompt(i)}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
           <div className="home-hero__active-row">
             {current ? (
               <span className="home-active-chip" title={`harness ${current.harness} · model ${current.model}`}>

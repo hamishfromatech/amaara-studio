@@ -57,6 +57,9 @@ export function useKeyboardShortcuts() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // IME guard (open-design QuickSwitcher): CJK composition input sends
+      // synthetic keydowns (keyCode 229) mid-conversion — never hijack those.
+      if (e.isComposing || e.keyCode === 229) return;
       const key = e.key;
       const mod = e.metaKey || e.ctrlKey;
       const typing = isTypingTarget(e.target);
