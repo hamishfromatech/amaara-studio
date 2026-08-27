@@ -18,7 +18,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../lib/store";
-import { formatRelative, swatchFor } from "../lib/format";
+import { elapsedLabel, formatRelative, swatchFor } from "../lib/format";
 
 interface ScenarioPill {
   id: string;
@@ -61,13 +61,6 @@ function CopyButton({ text }: { text: string }) {
       {copied ? "✓" : "⧉"}
     </button>
   );
-}
-
-/** Compact elapsed label (open-design: m:ss under an hour, m:ss otherwise). */
-function elapsedLabel(startedAtMs: number, nowMs: number): string {
-  const s = Math.max(0, Math.floor((nowMs - startedAtMs) / 1000));
-  if (s < 60) return `${s}s`;
-  return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}s`;
 }
 
 export function HomeView({ onNavigate }: { onNavigate: (id: "projects" | "models" | "sources" | "tools" | "renders" | "settings") => void }) {

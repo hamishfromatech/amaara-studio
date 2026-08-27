@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../lib/store";
 import { Commands, type RenderJob } from "../lib/invoke";
+import { elapsedLabel } from "../lib/format";
 
 export function RendersTab() {
   const renders = useStore((s) => s.renders);
@@ -167,6 +168,11 @@ function JobDetail({ job, onCancel }: { job: RenderJob; onCancel: () => void }) 
         <div className="numeric text-ink-muted">
           {job.started_at_ms ? new Date(job.started_at_ms).toLocaleTimeString() : "—"}
         </div>
+        {(job.status === "running" || job.status === "done") && job.started_at_ms && (
+          <div className="numeric text-ink-muted col-span-2">
+            elapsed {elapsedLabel(job.started_at_ms, job.finished_at_ms ?? Date.now())}
+          </div>
+        )}
       </div>
 
       {(job.status === "running" || job.status === "queued") && (

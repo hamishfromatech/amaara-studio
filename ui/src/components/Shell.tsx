@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../lib/store";
 import { useKeyboardShortcuts } from "../lib/shortcuts";
-import { harnessHint } from "../lib/invoke";
+import { harnessHint, Commands } from "../lib/invoke";
 import { userActionLabel } from "../lib/events";
 import { ApprovalDialog } from "./ApprovalDialog";
 import { Inspector } from "./Inspector";
@@ -219,12 +219,14 @@ function RightRail() {
           {renders.slice(0, 5).map((r) => (
             <div
               key={r.job_id}
-              className="flex items-center justify-between gap-2 rounded-lg border border-line-soft bg-canvas px-2.5 py-2"
+              className={`flex items-center justify-between gap-2 rounded-lg border border-line-soft bg-canvas px-2.5 py-2 ${
+                r.status === "done" ? "render-done-flash" : ""
+              }`}
             >
               <span className="flex min-w-0 items-center gap-2 text-[13px]">
                 <RenderDot status={r.status} />
                 <span className="truncate">
-                  <span className="mono text-xs">{r.job_id.slice(0, 8)}</span>
+                  <span className="mono text-xs">{r.composition_id || r.job_id.slice(0, 8)}</span>
                   <span className="text-ink-muted"> · {r.quality}</span>
                 </span>
               </span>
@@ -236,6 +238,15 @@ function RightRail() {
                     onClick={() => void cancelRender(r.job_id)}
                   >
                     ✕
+                  </button>
+                )}
+                {r.status === "done" && r.output_path && (
+                  <button
+                    className="icon-btn h-6 w-6"
+                    title="Reveal file"
+                    onClick={() => void Commands.revealInFolder(r.output_path!)}
+                  >
+                    ↗
                   </button>
                 )}
               </div>

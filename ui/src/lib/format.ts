@@ -54,3 +54,10 @@ export function swatchFor(seed: string): string {
   ];
   return palette[hashString(seed) % palette.length];
 }
+
+/** Compact elapsed label: "42s", then "3m07s" (open-design's run clock). */
+export function elapsedLabel(startedAtMs: number, nowMs: number): string {
+  const s = Math.max(0, Math.floor((nowMs - startedAtMs) / 1000));
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}s`;
+}
