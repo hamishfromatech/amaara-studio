@@ -38,3 +38,4 @@ harness-pack/*/node_modules
 # Phase 14: stable-diffusion.cpp checkout (built locally for sd-server staging;
 # never committed — see scripts/build-sidecars.*)
 third_party/
+binaries/sd-server-*

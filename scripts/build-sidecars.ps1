@@ -62,9 +62,10 @@ else {
     (Join-Path $root "third_party\stable-diffusion.cpp\build\bin\sd-server.exe"),
     (Join-Path $root "third_party\stable-diffusion.cpp\build\sd-server.exe")
   ) | Where-Object { Test-Path $_ }
-  if ($candidates) {
-    Copy-Item $candidates[0] $sdDest -Force
-    Write-Host "[build-sidecars] copied sd-server from $($candidates[0])"
+  if (@($candidates).Count -gt 0) {
+    $src = @($candidates)[0]
+    Copy-Item $src $sdDest -Force
+    Write-Host "[build-sidecars] copied sd-server from $src"
   }
   elseif ($env:NAVYA_SD_RELEASE_URL) {
     # c) direct download (e.g. a known-good release asset URL)
