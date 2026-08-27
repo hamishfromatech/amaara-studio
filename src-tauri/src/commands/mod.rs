@@ -534,7 +534,7 @@ async fn run_render(app: AppHandle, job: RenderJob) {
 
     // Mark the job running.
     {
-        let mut q = (*state).render_queue.lock();
+        let mut q = state.render_queue.lock();
         q.update_status(&job.job_id, RenderStatus::Running);
         if let Some(j) = q.get(&job.job_id) {
             persist_render_job(&state, j);
@@ -683,7 +683,7 @@ async fn run_render(app: AppHandle, job: RenderJob) {
         .unwrap_or(false);
     if still_running {
         {
-            let mut q = (*state).render_queue.lock();
+            let mut q = state.render_queue.lock();
             q.update_status(&job_id, RenderStatus::Failed);
             if let Some(j) = q.get(&job_id) {
                 persist_render_job(&state, j);
@@ -715,9 +715,9 @@ pub async fn list_renders(state: State<'_, std::sync::Arc<AppState>>) -> Result<
 
 #[tauri::command]
 pub async fn cancel_render(state: State<'_, std::sync::Arc<AppState>>, job_id: String) -> Result<bool, String> {
-    let ok = (*state).render_queue.lock().update_status(&job_id, RenderStatus::Cancelled);
+    let ok = state.render_queue.lock().update_status(&job_id, RenderStatus::Cancelled);
     if ok {
-        if let Some(j) = (*state).render_queue.lock().get(&job_id) {
+        if let Some(j) = state.render_queue.lock().get(&job_id) {
             persist_render_job(&state, j);
         }
     }
@@ -892,7 +892,7 @@ pub async fn detect_engine(state: State<'_, std::sync::Arc<AppState>>) -> Result
 /// Persist a render-queue mutation to the renders table (Phase 14 hardening:
 /// queue state survives restarts). Failures are logged, never surfaced — the
 /// in-memory queue keeps working.
-fn persist_render_job(state: &std::sync::Arc<AppState>, job: &crate::render::RenderJob) {
+fn persist_render_job(state: &AppState, job: &crate::render::RenderJob) {
     if let Err(e) = state.store.lock().upsert_render(job) {
         tracing::warn!("render row upsert failed for {}: {e}", job.job_id);
     }
