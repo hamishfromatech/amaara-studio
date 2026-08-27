@@ -174,8 +174,21 @@ same way (currently per-call prepares).
 
 ## Adopted already / not applicable
 
-- Tailwind + Zustand split vs their CSS Modules + tokens.css: keep Tailwind;
-  adopt token *structure* (triples, aliases) only.
-- Lexical rich composer: overkill for v1 — plain textarea + slash-lite.
-- SSE keepalive: Navya uses in-app Tauri events, not HTTP SSE — adopt the
-  single-write/coalescing idea only.
+**Adopted (2026-08-27 commits):**
+- WAL + foreign_keys + NORMAL sync + busy timeout in `store/mod.rs` (B3)
+- Pure retry-backoff with equal jitter — `src/retry.rs` (B2)
+- 50ms TextDelta coalescing on the `studio://event` bridge (B1)
+- QueuedSendStrip + failure recovery card + IME guards (findings 1, 3)
+- Preparing→Working distinction + persisted elapsed clock (finding 4)
+
+**Deferred (large or blocked):**
+- Chat virtualization (>80-message threshold pattern) — sessions still short
+- Iframe keep-alive pool — needs the timeline preview under real tab-switching
+  load first
+- Refcounted project file watchers (B4) — pairs with live composition reload
+- Persisting render-queue state across restarts — needs a queue-snapshot
+  table + startup reconcile
+- Lexical rich composer — plain textarea is enough for v1
+
+**Not applicable:** SSE keepalive (in-app Tauri events, not HTTP SSE);
+codex reasoning-suffix dedup (adapter exists but untested against live codex).
