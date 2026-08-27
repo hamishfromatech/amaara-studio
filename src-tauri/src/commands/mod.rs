@@ -166,12 +166,26 @@ pub async fn open_project(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn set_model(state: State<'_, std::sync::Arc<AppState>>, model: String) -> Result<Session, String> {
+pub async fn set_model(state: State<'_, std::sync::Arc<AppState>>, model: String) -> Result<Session, String> {
     {
         let mut s = (*state).session.lock();
         s.model = model.clone();
     }
-    Ok((*state).session.lock().clone())
+    // Forward mid-session to the running harness process (a-coder-cli: the
+    // set_model RPC switches models without ending the session). A
+    // not-yet-started harness picks the model up from the session context on
+    // its next start, so failures here are logged, never fatal.
+    let session = (*state).session.lock().clone();
+    let harness = {
+        let registry = (*state).harness_registry.lock();
+        registry.get(&session.harness)
+    };
+    if let Some(harness) = harness {
+        if let Err(e) = harness.set_model(&model).await {
+            tracing::debug!("set_model not forwarded to {}: {e}", session.harness);
+        }
+    }
+    Ok(session)
 }
 
 #[tauri::command]
@@ -198,7 +212,57 @@ pub fn set_harness(state: State<'_, std::sync::Arc<AppState>>, harness: String) 
 #[tauri::command]
 pub async fn list_models(state: State<'_, std::sync::Arc<AppState>>) -> Result<Vec<ModelEntry>, String> {
     let session = (*state).session.lock().clone();
-    let mut models = cloud_models(&session.model);
+    let mut models: Vec<ModelEntry> = Vec::new();
+
+    // 1. The ACTIVE harness's models lead the picker: the prompt runs through
+    //    that harness, so its catalog is what "set model" actually controls.
+    //    a-coder-cli answers with a live RPC (get_available_models) once its
+    //    process is up; the other adapters expose static descriptor catalogs.
+    //    If the harness process isn't started yet, start it lazily (idempotent)
+    //    so a-coder-cli can answer live; on failure fall back to the static
+    //    catalog so the picker is never empty.
+    let harness = {
+        let registry = (*state).harness_registry.lock();
+        registry.get(&session.harness)
+    };
+    if let Some(harness) = harness {
+        let mut infos = match harness.available_models().await {
+            Ok(list) => list,
+            Err(_) => {
+                // Not started (or harness has no listing yet) — lazy-start
+                // with the current session context, then ask again.
+                let ctx = crate::harness::HarnessCtx {
+                    project_dir: current_project_dir(&state, &session),
+                    model: session.model.clone(),
+                    source: session.source.clone(),
+                    control_url: (*state).control_url.lock().clone(),
+                    control_token: (*state).control_token.lock().clone(),
+                };
+                match harness.start(&ctx).await {
+                    Ok(()) => harness.available_models().await.unwrap_or_default(),
+                    Err(_) => vec![],
+                }
+            }
+        };
+        if infos.is_empty() {
+            // Static descriptor catalog — still the selected harness's models,
+            // just not live.
+            infos = crate::harness::registry::fallback_models(&session.harness);
+        }
+        for m in infos {
+            let active = session.model == m.id;
+            models.push(ModelEntry {
+                id: m.id.clone(),
+                name: m.name.unwrap_or_else(|| m.id.clone()),
+                kind: m.kind,
+                source: "harness".to_string(),
+                active,
+            });
+        }
+    }
+
+    // 2. Cloud (image generation) + Engine + local models — unchanged.
+    let mut cloud = cloud_models(&session.model);
 
     // Try to discover Navya Engine and list its models.
     let engine = (*state).engine.lock().clone();
@@ -206,7 +270,7 @@ pub async fn list_models(state: State<'_, std::sync::Arc<AppState>>) -> Result<V
         let engine_models = engine.list_models().await;
         for em in engine_models {
             let model_id = crate::engine::EngineClient::format_model_id(&em.id);
-            models.push(ModelEntry {
+            cloud.push(ModelEntry {
                 id: model_id.clone(),
                 name: em.name,
                 kind: "chat".to_string(),
@@ -224,6 +288,15 @@ pub async fn list_models(state: State<'_, std::sync::Arc<AppState>>) -> Result<V
         source: "local".to_string(),
         active: session.model == "llama3-8b",
     });
+
+    // Dedupe: a harness model id shadowing a cloud/engine id wins (the
+    // harness is what actually runs).
+    let harness_ids: std::collections::HashSet<String> = models
+        .iter()
+        .filter(|m| m.source == "harness")
+        .map(|m| m.id.clone())
+        .collect();
+    models.retain(|m| m.source != "cloud" || !harness_ids.contains(&m.id));
 
     Ok(models)
 }

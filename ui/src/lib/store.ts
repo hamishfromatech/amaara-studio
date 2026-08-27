@@ -254,6 +254,9 @@ export const useStore = create<AppState>((set, get) => ({
   setHarness: async (harness) => {
     const session = await Commands.setHarness(harness);
     set({ session });
+    // The new harness has its own model catalog (live RPC for a-coder-cli,
+    // static catalog for the others) — refresh the picker for it.
+    await get().refreshModels();
   },
 
   newProject: async (name, dir) => {
