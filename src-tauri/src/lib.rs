@@ -13,6 +13,7 @@ pub mod logging;
 pub(crate) mod harness;
 pub(crate) mod navya;
 pub mod preview;
+pub mod retry;
 pub(crate) mod render;
 pub(crate) mod sd;
 pub(crate) mod sidecar;
