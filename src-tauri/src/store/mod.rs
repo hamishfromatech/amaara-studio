@@ -124,8 +124,25 @@ impl ProjectStore {
         Ok(())
     }
 
+    /// Connection tuning (open-design lesson B3): WAL so readers never block
+    /// the writer (the UI polls while renders write), `foreign_keys` on so
+    /// orphan rows are structurally impossible, NORMAL sync (safe under WAL),
+    /// and a busy timeout so a checkpoint/sidecar write never errors out.
+    fn configure(conn: &rusqlite::Connection) -> Result<(), StoreError> {
+        conn.pragma_update(None, "journal_mode", "WAL")
+            .map_err(StoreError::Sqlite)?;
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .map_err(StoreError::Sqlite)?;
+        conn.pragma_update(None, "synchronous", "NORMAL")
+            .map_err(StoreError::Sqlite)?;
+        conn.busy_timeout(std::time::Duration::from_secs(2))
+            .map_err(StoreError::Sqlite)?;
+        Ok(())
+    }
+
     pub fn new(path: impl AsRef<std::path::Path>) -> Result<Self, StoreError> {
         let conn = rusqlite::Connection::open(path)?;
+        Self::configure(&conn)?;
         Self::migrate(&conn)?;
         Ok(Self { conn })
     }
@@ -232,6 +249,42 @@ fn hash_str(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pragmas_are_set_for_runtime_concurrency() {
+        // WAL + foreign_keys + NORMAL sync — set by ProjectStore::new (lesson
+        // B3 from open-design). In-memory connections report journal_mode
+        // "memory", so verify via a real temp file DB.
+        let path = std::env::temp_dir().join(format!("navya-store-pragma-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let store = ProjectStore::new(&path).unwrap();
+        let journal: String = store
+            .conn
+            .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(journal, "wal");
+        let fk: i64 = store.conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
+        assert_eq!(fk, 1);
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn schema_columns_present_per_pragma_table_info() {
+        // PRAGMA-driven column check (open-design db.ts pattern): assert the
+        // columns newer migrations add are actually there, independent of the
+        // DDL text.
+        let store = ProjectStore::memory().unwrap();
+        let mut stmt = store.conn.prepare("PRAGMA table_info(projects)").unwrap();
+        let cols: Vec<String> = stmt
+            .query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        for expected in ["id", "name", "dir", "created_at", "harness", "model", "source"] {
+            assert!(cols.contains(&expected.to_string()), "projects missing {expected}: {cols:?}");
+        }
+    }
 
     #[test]
     fn migrations_are_idempotent() {
