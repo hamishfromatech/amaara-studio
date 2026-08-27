@@ -123,7 +123,7 @@ impl AaaCoderCliHarness {
         }
         let mut stdin = inner.stdin.lock().unwrap();
         let child_stdin = stdin.as_mut().ok_or(HarnessError::NotStarted)?;
-        write!(child_stdin, "{}\n", cmd)
+        writeln!(child_stdin, "{}", cmd)
             .map_err(|e| HarnessError::Process(format!("write to a-coder-cli stdin: {e}")))?;
         child_stdin
             .flush()
@@ -351,7 +351,7 @@ impl HarnessTrait for AaaCoderCliHarness {
         }
         let mut stdin = inner.stdin.lock().unwrap();
         let child_stdin = stdin.as_mut().ok_or(HarnessError::NotStarted)?;
-        write!(child_stdin, "{}\n", cmd)
+        writeln!(child_stdin, "{}", cmd)
             .map_err(|e| HarnessError::Process(format!("write approval answer: {e}")))?;
         Ok(())
     }

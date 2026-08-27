@@ -104,6 +104,7 @@ struct RawModel {
 }
 
 #[derive(Debug, Deserialize)]
+#[derive(Default)]
 struct ModelMeta {
     #[serde(default)]
     size: Option<u64>,
@@ -135,16 +136,6 @@ impl From<RawModel> for EngineModel {
     }
 }
 
-impl Default for ModelMeta {
-    fn default() -> Self {
-        ModelMeta {
-            size: None,
-            n_params: None,
-            n_ctx: None,
-            ftype: None,
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

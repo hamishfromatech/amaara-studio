@@ -11,38 +11,34 @@ use std::path::PathBuf;
 
 /// UI density: comfortable (default) or compact for laptops.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum Density {
     #[serde(alias = "comfortable")]
+    #[default]
     Comfortable,
     #[serde(alias = "compact")]
     Compact,
 }
 
-impl Default for Density {
-    fn default() -> Self {
-        Density::Comfortable
-    }
-}
 
 /// Theme mode. Dark is the studio default (design.md §11).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum ThemeMode {
     #[serde(alias = "dark")]
+    #[default]
     Dark,
     #[serde(alias = "light")]
     Light,
 }
 
-impl Default for ThemeMode {
-    fn default() -> Self {
-        ThemeMode::Dark
-    }
-}
 
 /// GPU build flavor selected at BUNDLE time (not runtime) — CUDA/Vulkan/CPU.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum SdGpuBackend {
     #[serde(alias = "cuda")]
+    #[default]
     Cuda,
     #[serde(alias = "vulkan")]
     Vulkan,
@@ -50,11 +46,6 @@ pub enum SdGpuBackend {
     Cpu,
 }
 
-impl Default for SdGpuBackend {
-    fn default() -> Self {
-        SdGpuBackend::Cuda
-    }
-}
 
 /// Non-secret studio settings persisted as JSON in the app data dir.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

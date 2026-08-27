@@ -142,7 +142,7 @@ impl HarnessTrait for OpenClawHarness {
             let writer = tokio::spawn(async move {
                 while let Some(msg) = rx.recv().await {
                     if let Ok(text) = serde_json::to_string(&msg) {
-                        if write.send(tokio_tungstenite::tungstenite::Message::Text(text.into())).await.is_err() {
+                        if write.send(tokio_tungstenite::tungstenite::Message::Text(text)).await.is_err() {
                             break;
                         }
                     }

@@ -9,23 +9,22 @@ use std::path::PathBuf;
 
 /// Render quality options.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Default)]
 pub enum RenderQuality {
     #[serde(alias = "draft")]
+    #[default]
     Draft,
     #[serde(alias = "high")]
     High,
 }
 
-impl Default for RenderQuality {
-    fn default() -> Self {
-        RenderQuality::Draft
-    }
-}
 
 /// Render target options.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Default)]
 pub enum RenderTarget {
     #[serde(alias = "local")]
+    #[default]
     Local,
     #[serde(alias = "docker")]
     Docker,
@@ -37,11 +36,6 @@ pub enum RenderTarget {
     CloudRun,
 }
 
-impl Default for RenderTarget {
-    fn default() -> Self {
-        RenderTarget::Local
-    }
-}
 
 /// A render job in the queue.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -32,31 +32,31 @@ pub async fn get_state(state: State<'_, std::sync::Arc<AppState>>) -> Result<Sta
         .is_some();
     let mut snap = (*state).snapshot(has_api_key);
     // Projects require the async store lock.
-    let store = (*state).store.lock();
+    let store = state.store.lock();
     snap.projects = store.list_projects().map_err(|e| e.to_string())?;
     Ok(snap)
 }
 
 #[tauri::command]
 pub fn get_config(state: State<'_, std::sync::Arc<AppState>>) -> Result<NavyaConfig, String> {
-    Ok((*state).config.lock().clone())
+    Ok(state.config.lock().clone())
 }
 
 /// Persist config to the app-data JSON file it was loaded from.
 #[tauri::command]
 pub fn save_config(state: State<'_, std::sync::Arc<AppState>>, config: NavyaConfig) -> Result<NavyaConfig, String> {
-    let path = (*state).config_path.clone();
+    let path = state.config_path.clone();
     let json = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| e.to_string())?;
-    *(*state).config.lock() = config.clone();
+    *state.config.lock() = config.clone();
     // Re-sync the Navya client with the new endpoint/router flags.
-    *(*state).navya.lock() = crate::navya::NavyaClient::new(
+    *state.navya.lock() = crate::navya::NavyaClient::new(
         config.navya_base_url.clone(),
         config.use_auto_router,
         config.byok,
     );
     // Re-sync the Engine client with the new local proxy URL.
-    *(*state).engine.lock() = crate::engine::EngineClient::new(&config.engine_url);
+    *state.engine.lock() = crate::engine::EngineClient::new(&config.engine_url);
     Ok(config)
 }
 
@@ -105,15 +105,15 @@ pub async fn new_project(
     // Normalize the requested dir to a real absolute path (onboarding passes
     // "." — a relative dir would make the harness spawn in the app's CWD).
     let dir = resolve_project_dir(&app, &id, &args.dir)?;
-    let session = (*state).session.lock().clone();
-    let store = (*state).store.lock();
+    let session = state.session.lock().clone();
+    let store = state.store.lock();
     let row = store
-        .create_project(&id, &args.name, &dir.to_string_lossy().as_ref(), &session.harness, &session.model, &session.source)
+        .create_project(&id, &args.name, dir.to_string_lossy().as_ref(), &session.harness, &session.model, &session.source)
         .map_err(|e| e.to_string())?;
 
     // Switch the session to the new project.
     {
-        let mut s = (*state).session.lock();
+        let mut s = state.session.lock();
         s.current_project_id = Some(row.id.clone());
     }
     let _ = app.emit(
@@ -128,7 +128,7 @@ pub async fn new_project(
 
 #[tauri::command]
 pub async fn list_projects(state: State<'_, std::sync::Arc<AppState>>) -> Result<Vec<crate::store::ProjectRow>, String> {
-    let store = (*state).store.lock();
+    let store = state.store.lock();
     store.list_projects().map_err(|e| e.to_string())
 }
 
@@ -138,14 +138,14 @@ pub async fn open_project(
     state: State<'_, std::sync::Arc<AppState>>,
     project_id: String,
 ) -> Result<(), String> {
-    let store = (*state).store.lock();
+    let store = state.store.lock();
     let projects = store.list_projects().map_err(|e| e.to_string())?;
     let proj = projects
         .into_iter()
         .find(|p| p.id == project_id)
         .ok_or_else(|| format!("project {project_id} not found"))?;
     {
-        let mut s = (*state).session.lock();
+        let mut s = state.session.lock();
         s.current_project_id = Some(proj.id.clone());
         s.harness = proj.harness.clone();
         s.model = proj.model.clone();
@@ -168,16 +168,16 @@ pub async fn open_project(
 #[tauri::command]
 pub async fn set_model(state: State<'_, std::sync::Arc<AppState>>, model: String) -> Result<Session, String> {
     {
-        let mut s = (*state).session.lock();
+        let mut s = state.session.lock();
         s.model = model.clone();
     }
     // Forward mid-session to the running harness process (a-coder-cli: the
     // set_model RPC switches models without ending the session). A
     // not-yet-started harness picks the model up from the session context on
     // its next start, so failures here are logged, never fatal.
-    let session = (*state).session.lock().clone();
+    let session = state.session.lock().clone();
     let harness = {
-        let registry = (*state).harness_registry.lock();
+        let registry = state.harness_registry.lock();
         registry.get(&session.harness)
     };
     if let Some(harness) = harness {
@@ -194,24 +194,24 @@ pub fn set_source(state: State<'_, std::sync::Arc<AppState>>, source: String) ->
         return Err("source must be 'cloud' or 'local'".to_string());
     }
     {
-        let mut s = (*state).session.lock();
+        let mut s = state.session.lock();
         s.source = source;
     }
-    Ok((*state).session.lock().clone())
+    Ok(state.session.lock().clone())
 }
 
 #[tauri::command]
 pub fn set_harness(state: State<'_, std::sync::Arc<AppState>>, harness: String) -> Result<Session, String> {
     {
-        let mut s = (*state).session.lock();
+        let mut s = state.session.lock();
         s.harness = harness;
     }
-    Ok((*state).session.lock().clone())
+    Ok(state.session.lock().clone())
 }
 
 #[tauri::command]
 pub async fn list_models(state: State<'_, std::sync::Arc<AppState>>) -> Result<Vec<ModelEntry>, String> {
-    let session = (*state).session.lock().clone();
+    let session = state.session.lock().clone();
     let mut models: Vec<ModelEntry> = Vec::new();
 
     // 1. The ACTIVE harness's models lead the picker: the prompt runs through
@@ -222,7 +222,7 @@ pub async fn list_models(state: State<'_, std::sync::Arc<AppState>>) -> Result<V
     //    so a-coder-cli can answer live; on failure fall back to the static
     //    catalog so the picker is never empty.
     let harness = {
-        let registry = (*state).harness_registry.lock();
+        let registry = state.harness_registry.lock();
         registry.get(&session.harness)
     };
     if let Some(harness) = harness {
@@ -235,8 +235,8 @@ pub async fn list_models(state: State<'_, std::sync::Arc<AppState>>) -> Result<V
                     project_dir: current_project_dir(&state, &session),
                     model: session.model.clone(),
                     source: session.source.clone(),
-                    control_url: (*state).control_url.lock().clone(),
-                    control_token: (*state).control_token.lock().clone(),
+                    control_url: state.control_url.lock().clone(),
+                    control_token: state.control_token.lock().clone(),
                 };
                 match harness.start(&ctx).await {
                     Ok(()) => harness.available_models().await.unwrap_or_default(),
@@ -265,7 +265,7 @@ pub async fn list_models(state: State<'_, std::sync::Arc<AppState>>) -> Result<V
     let mut cloud = cloud_models(&session.model);
 
     // Try to discover Navya Engine and list its models.
-    let engine = (*state).engine.lock().clone();
+    let engine = state.engine.lock().clone();
     if engine.health_check().await {
         let engine_models = engine.list_models().await;
         for em in engine_models {
@@ -312,9 +312,9 @@ pub async fn send_prompt(
     msg: String,
     mode: String,
 ) -> Result<(), String> {
-    let session = (*state).session.lock().clone();
+    let session = state.session.lock().clone();
     let harness = {
-        let registry = (*state).harness_registry.lock();
+        let registry = state.harness_registry.lock();
         registry
             .get(&session.harness)
             .ok_or_else(|| format!("harness '{}' is not registered", session.harness))?
@@ -348,8 +348,8 @@ pub async fn send_prompt(
         project_dir: current_project_dir(&state, &session),
         model: session.model.clone(),
         source: session.source.clone(),
-        control_url: (*state).control_url.lock().clone(),
-        control_token: (*state).control_token.lock().clone(),
+        control_url: state.control_url.lock().clone(),
+        control_token: state.control_token.lock().clone(),
     };
     let prompt_mode = match mode.as_str() {
         "steer" => crate::harness::PromptMode::Steer,
@@ -361,7 +361,7 @@ pub async fn send_prompt(
     // Ensure exactly one event pump per harness: subscribe to the harness event
     // stream and re-emit every event on the studio://event channel for the UI.
     let need_pump = {
-        let mut pump = (*state).pump_harness.lock();
+        let mut pump = state.pump_harness.lock();
         if pump.as_deref() != Some(session.harness.as_str()) {
             *pump = Some(session.harness.clone());
             true
@@ -407,9 +407,9 @@ pub async fn approve(
     approved: bool,
     always_allow: bool,
 ) -> Result<(), String> {
-    let session = (*state).session.lock().clone();
+    let session = state.session.lock().clone();
     let harness = {
-        let registry = (*state).harness_registry.lock();
+        let registry = state.harness_registry.lock();
         registry
             .get(&session.harness)
             .ok_or_else(|| format!("harness '{}' not registered", session.harness))?
@@ -444,9 +444,9 @@ pub async fn approve(
 
 #[tauri::command]
 pub async fn steer(app: AppHandle, state: State<'_, std::sync::Arc<AppState>>, msg: String) -> Result<(), String> {
-    let session = (*state).session.lock().clone();
+    let session = state.session.lock().clone();
     let harness = {
-        let registry = (*state).harness_registry.lock();
+        let registry = state.harness_registry.lock();
         registry
             .get(&session.harness)
             .ok_or_else(|| format!("harness '{}' not registered", session.harness))?
@@ -469,9 +469,9 @@ pub async fn steer(app: AppHandle, state: State<'_, std::sync::Arc<AppState>>, m
 
 #[tauri::command]
 pub async fn abort(state: State<'_, std::sync::Arc<AppState>>) -> Result<(), String> {
-    let session = (*state).session.lock().clone();
+    let session = state.session.lock().clone();
     let harness = {
-        let registry = (*state).harness_registry.lock();
+        let registry = state.harness_registry.lock();
         registry
             .get(&session.harness)
             .ok_or_else(|| format!("harness '{}' not registered", session.harness))?
@@ -529,7 +529,7 @@ pub async fn render_to_video(
         output_path: None,
         error: None,
     };
-    (*state).render_queue.lock().add(job.clone());
+    state.render_queue.lock().add(job.clone());
     persist_render_job(&state, &job);
 
     let _ = app.emit(
@@ -638,8 +638,8 @@ async fn run_render_attempt(app: AppHandle, job: RenderJob, attempt: u32) {
     // The worker shells out to `npx hyperframes render` with cwd = project_dir,
     // so the job must carry the real project directory (not the app's CWD).
     let project_dir = {
-        let session = (**state).session.lock().clone();
-        current_project_dir(&**state, &session)
+        let session = state.session.lock().clone();
+        current_project_dir(&state, &session)
     };
 
     // Telemetry is opt-in (Phase 15): only pass `--no-telemetry` to HyperFrames
@@ -701,7 +701,7 @@ async fn run_render_attempt(app: AppHandle, job: RenderJob, attempt: u32) {
             "completed" => {
                 let out = parsed.get("output_path").and_then(|v| v.as_str()).unwrap_or("renders/out.mp4").to_string();
                 {
-                    let mut q = (*state).render_queue.lock();
+                    let mut q = state.render_queue.lock();
                     q.complete(&job_id_for_stdout, &out);
                     if let Some(j) = q.get(&job_id_for_stdout) {
                         persist_render_job(&state, j);
@@ -719,7 +719,7 @@ async fn run_render_attempt(app: AppHandle, job: RenderJob, attempt: u32) {
             "failed" => {
                 let err = parsed.get("error").and_then(|v| v.as_str()).unwrap_or("render failed").to_string();
                 {
-                    let mut q = (*state).render_queue.lock();
+                    let mut q = state.render_queue.lock();
                     q.update_status(&job_id_for_stdout, RenderStatus::Failed);
                     if let Some(j) = q.get(&job_id_for_stdout) {
                         persist_render_job(&state, j);
@@ -814,10 +814,10 @@ pub async fn list_renders(state: State<'_, std::sync::Arc<AppState>>) -> Result<
     // the in-memory queue only if the store read fails.
     match state.store.lock().list_renders() {
         Ok(rows) if !rows.is_empty() => Ok(rows),
-        Ok(_) => Ok((*state).render_queue.lock().list()),
+        Ok(_) => Ok(state.render_queue.lock().list()),
         Err(e) => {
             tracing::warn!("reading persisted renders failed: {e}");
-            Ok((*state).render_queue.lock().list())
+            Ok(state.render_queue.lock().list())
         }
     }
 }
@@ -849,8 +849,8 @@ pub async fn preview_start(
     }
 
     let project_dir = {
-        let session = (*state).session.lock().clone();
-        current_project_dir(&*state, &session)
+        let session = state.session.lock().clone();
+        current_project_dir(&state, &session)
     };
     if !project_dir.is_dir() {
         return Err("no project open. Open or create a project first.".to_string());
@@ -954,11 +954,11 @@ pub async fn generate_image(
     state: State<'_, std::sync::Arc<AppState>>,
     args: GenerateImageArgs,
 ) -> Result<GeneratedImageResult, String> {
-    let session = (*state).session.lock().clone();
+    let session = state.session.lock().clone();
     let model = args.model.unwrap_or_else(|| if session.source == "local" { "sd-xl".to_string() } else { "dall-e-3".to_string() });
 
     if session.source == "cloud" {
-        let client = (*state).navya.lock().clone();
+        let client = state.navya.lock().clone();
         match client.generate_image(&args.prompt, &model, args.size.as_deref()).await {
             Ok(img) => Ok(GeneratedImageResult {
                 source: "cloud".to_string(),
@@ -1034,13 +1034,13 @@ pub async fn generate_image(
 
 #[tauri::command]
 pub async fn list_cloud_models(state: State<'_, std::sync::Arc<AppState>>) -> Result<Vec<crate::navya::ModelSummary>, String> {
-    let client = (*state).navya.lock().clone();
+    let client = state.navya.lock().clone();
     client.list_models().await
 }
 
 #[tauri::command]
 pub async fn detect_engine(state: State<'_, std::sync::Arc<AppState>>) -> Result<Vec<crate::engine::EngineModel>, String> {
-    let engine = (*state).engine.lock().clone();
+    let engine = state.engine.lock().clone();
     if !engine.health_check().await {
         return Ok(Vec::new());
     }

@@ -132,7 +132,7 @@ impl HarnessRegistry {
         }
     }
 
-    pub fn register(&mut self, harness: impl 'static + Send + Sync + Harness) {
+    pub fn register(&mut self, harness: impl 'static + Harness) {
         let id = harness.id().to_string();
         self.instances.insert(id, Arc::new(harness));
     }
