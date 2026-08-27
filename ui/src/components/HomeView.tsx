@@ -36,6 +36,13 @@ const SCENARIO_PILLS: ScenarioPill[] = [
   { id: "analyze", label: "Analyze", glyph: "◌", seed: "Analyze the current composition and suggest improvements: " },
 ];
 
+/** Compact elapsed label (open-design: m:ss under an hour, m:ss otherwise). */
+function elapsedLabel(startedAtMs: number, nowMs: number): string {
+  const s = Math.max(0, Math.floor((nowMs - startedAtMs) / 1000));
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}s`;
+}
+
 export function HomeView({ onNavigate }: { onNavigate: (id: "projects" | "models" | "sources" | "tools" | "renders" | "settings") => void }) {
   const session = useStore((s) => s.session);
   const projects = useStore((s) => s.projects) ?? [];
@@ -55,6 +62,18 @@ export function HomeView({ onNavigate }: { onNavigate: (id: "projects" | "models
 
   const [text, setText] = useState("");
   const [activePill, setActivePill] = useState<string | null>(null);
+  // 1s ticker for the in-flight run's elapsed clock (open-design: anchored to
+  // the persisted run start, not mount time). Only ticks while a run is live.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const runActive = (chat ?? []).some(
+    (m) => m.role === "agent" && (m.status === "thinking" || m.status === "tool-calling")
+  );
+  useEffect(() => {
+    if (!runActive) return;
+    setNowMs(Date.now());
+    const t = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [runActive]);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Keep renders fresh on Home view; the StatusStrip already calls this on
@@ -140,8 +159,16 @@ export function HomeView({ onNavigate }: { onNavigate: (id: "projects" | "models
                         ? `Agent${session?.harness ? ` · ${session.harness}` : ""}`
                         : "System"}
                   </span>
-                  {m.status === "thinking" && <span>· thinking…</span>}
-                  {m.status === "tool-calling" && <span>· tool…</span>}
+                  {/* open-design: preparing → working distinction, never an
+                      opaque spinner. Elapsed clock anchored to run start. */}
+                  {m.status === "thinking" &&
+                    (!m.content ? (
+                      <span className="shimmer-text">· preparing…</span>
+                    ) : (
+                      <span>· working {m.startedAtMs ? elapsedLabel(m.startedAtMs, nowMs) : "…"}</span>
+                    ))}
+                  {m.status === "tool-calling" &&
+                    <span>· working {m.startedAtMs ? elapsedLabel(m.startedAtMs, nowMs) : "…"}</span>}
                   {m.status === "done" && <span>· done</span>}
                   {m.status === "error" && <span>· error</span>}
                 </div>

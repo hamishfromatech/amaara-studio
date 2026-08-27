@@ -29,6 +29,8 @@ interface ChatMessage {
   role: "you" | "agent" | "system";
   content: string;
   status?: "thinking" | "tool-calling" | "done" | "error";
+  /** Wall-clock start of the run — anchors the elapsed clock across remounts. */
+  startedAtMs?: number;
   /** Set on failed agent messages: the prompt to offer as a retry. */
   failedPrompt?: string;
 }
@@ -348,7 +350,13 @@ export const useStore = create<AppState>((set, get) => ({
       chat: [
         ...s.chat,
         { id: `u${Date.now()}`, role: "you", content: msg },
-        { id: `a${Date.now()}`, role: "agent", content: "", status: "thinking" },
+        {
+          id: `a${Date.now()}`,
+          role: "agent",
+          content: "",
+          status: "thinking",
+          startedAtMs: Date.now(),
+        },
       ],
     }));
     try {

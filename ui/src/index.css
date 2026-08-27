@@ -260,6 +260,23 @@ html[data-density="compact"] .list-card__row {
     background-color: transparent;
   }
 }
+/* Shimmer label for pre-output states ("preparing…") — motion says
+   "working" without an opaque spinner (open-design shimmer-text). */
+@keyframes shimmer {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+.shimmer-text {
+  animation: shimmer 1.6s var(--ease-out) infinite;
+  color: var(--text-faint);
+}
 /* New chat history entries and list rows animate in on mount. React keeps
    the element across re-renders, so only genuinely new items animate. */
 .home-hero__history-msg,
