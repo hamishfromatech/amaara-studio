@@ -479,6 +479,14 @@ pub async fn render_to_video(
 }
 
 async fn run_render(app: AppHandle, job: RenderJob) {
+    run_render_attempt(app, job, 0).await;
+}
+
+/// One attempt of a render job. `attempt` counts automatic retries (0 = the
+/// initial run): a worker that exits without a completion event is retried
+/// once after equal-jitter backoff (`retry.rs`) — a transient worker failure
+/// shouldn't fail the user's render outright.
+async fn run_render_attempt(app: AppHandle, job: RenderJob, attempt: u32) {
     // The managed state is `Arc<AppState>` (see lib.rs) — looking up the bare
     // `AppState` type would panic with "state not found" on every render.
     let state = app.state::<std::sync::Arc<AppState>>();
@@ -682,6 +690,34 @@ async fn run_render(app: AppHandle, job: RenderJob) {
         .map(|j| j.status == RenderStatus::Running)
         .unwrap_or(false);
     if still_running {
+        if attempt < 1 {
+            // Transient retry (retry.rs, open-design B2): re-queue the job and
+            // rerun once after backoff. Progress surfaces via the log drawer.
+            let delay = crate::retry::compute_retry_backoff_ms(
+                1,
+                Some(crate::retry::FailureCategory::Transient),
+                rand::random::<f64>,
+            );
+            tracing::info!("render {job_id}: worker exited without completion; retrying in {delay}ms");
+            let _ = app.emit(
+                "studio://event",
+                StudioEvent::Sidecar(crate::events::SidecarEvent::LogLine {
+                    name: "render".to_string(),
+                    level: "info".to_string(),
+                    message: format!("worker exited without completion; retrying in {delay}ms"),
+                }),
+            );
+            {
+                let mut q = state.render_queue.lock();
+                q.update_status(&job_id, RenderStatus::Queued);
+                if let Some(j) = q.get(&job_id) {
+                    persist_render_job(&state, j);
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            Box::pin(run_render_attempt(app, job, attempt + 1)).await;
+            return;
+        }
         {
             let mut q = state.render_queue.lock();
             q.update_status(&job_id, RenderStatus::Failed);

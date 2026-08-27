@@ -48,7 +48,44 @@ impl NavyaClient {
 
     /// Generate an image via Navya `/v1/images/generations` (OpenAI shape).
     /// Returns the image URL or a saved local path (best-effort download).
+    /// Generate an image, retrying once on transient failures (network error,
+    /// 429, 5xx) with equal-jitter backoff (`retry.rs`, open-design B2). Client
+    /// errors (400/401/403) are surfaced immediately — retrying can't help.
     pub async fn generate_image(
+        &self,
+        prompt: &str,
+        model: &str,
+        size: Option<&str>,
+    ) -> Result<GeneratedImage, String> {
+        let mut rate_limited = false;
+        let mut last_err: Option<String> = None;
+        for attempt in 1..=2u32 {
+            if attempt > 1 {
+                let category = if rate_limited {
+                    Some(crate::retry::FailureCategory::RateLimit)
+                } else {
+                    Some(crate::retry::FailureCategory::Transient)
+                };
+                let delay = crate::retry::compute_retry_backoff_ms(attempt, category, rand::random::<f64>);
+                tracing::info!("Navya generate_image transient failure; retrying in {delay}ms");
+                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            }
+            match self.generate_image_once(prompt, model, size).await {
+                Ok(img) => return Ok(img),
+                Err(e) => {
+                    if !is_retryable_navya_error(&e) {
+                        return Err(e);
+                    }
+                    rate_limited = e.contains("Navya returned 429");
+                    last_err = Some(e);
+                }
+            }
+        }
+        Err(last_err.unwrap_or_else(|| "Navya request failed".to_string()))
+    }
+
+    /// One attempt of the generate call (no retry logic).
+    async fn generate_image_once(
         &self,
         prompt: &str,
         model: &str,
@@ -117,6 +154,21 @@ impl NavyaClient {
             _ => Ok(fallback_models()),
         }
     }
+}
+
+/// Transient failures are worth one backoff retry; client mistakes are not.
+fn is_retryable_navya_error(err: &str) -> bool {
+    // Network-level failure (reqwest error text from generate_image_once).
+    if err.contains("Navya request failed") {
+        return true;
+    }
+    // HTTP status failures: retry only 429 + 5xx.
+    for code in [429u16, 500, 502, 503, 504] {
+        if err.contains(&format!("Navya returned {code}")) {
+            return true;
+        }
+    }
+    false
 }
 
 /// What `generate_image` returns.
