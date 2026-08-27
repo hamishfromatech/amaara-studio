@@ -762,6 +762,14 @@ Build M0 first and stop. Re-evaluate with the user before M1+.
   through config → `data-density` CSS (§11), motion polish per §9 (card
   fade/slide, render-done green flash, width-only progress), all
   reduced-motion-safe. Onboarding verified production-wired.
+- **Loose ends resolved** (2026-08-27): `pnpm test` now exists
+  (typecheck + lint); retry-backoff wired into Navya cloud + render paths;
+  render queue persists across restarts (renders table + startup
+  reconcile); sd-server runtime wired end-to-end (bootstrap checksums,
+  model discovery, spawn + readiness poll, native async img_gen API).
+  NOTE: `live_rpc_models_round_trip` (--ignored) hangs against the real
+  a-coder-cli in a fresh temp dir — likely first-run trust/auth prompts
+  (stderr is nulled). Keep it as a manual gate with a configured CLI.
 - **Loose end**: Gate 15 references `pnpm test`, which does not exist in
   `ui/package.json` (typecheck + lint are the UI gates).
 
