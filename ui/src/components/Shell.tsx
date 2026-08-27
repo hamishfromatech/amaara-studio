@@ -36,6 +36,7 @@ function TopBar() {
   const projects = useStore((s) => s.projects) ?? [];
   const models = useStore((s) => s.models) ?? [];
   const harnesses = useStore((s) => s.harnesses) ?? [];
+  const chat = useStore((s) => s.chat);
   const setModel = useStore((s) => s.setModel);
   const setSource = useStore((s) => s.setSource);
   const setHarness = useStore((s) => s.setHarness);
@@ -46,6 +47,19 @@ function TopBar() {
 
   if (!session || !config) return null;
   const current = projects.find((p) => p.id === session.current_project_id);
+
+  // Honest button states: Render needs a project; Stop needs a live run.
+  const runActive = chat.some(
+    (m) => m.role === "agent" && (m.status === "thinking" || m.status === "tool-calling")
+  );
+  // Grouped model options (harness first — it's what the prompt runs through).
+  const bySource = (src: string) => models.filter((m) => m.source === src);
+  const groups: [string, typeof models][] = [
+    [`Harness — ${session.harness}`, bySource("harness")],
+    ["Cloud (image)", bySource("cloud")],
+    ["Engine", bySource("engine")],
+    ["Local", bySource("local")],
+  ];
 
   return (
     <header className="flex h-11 shrink-0 select-none items-center justify-between gap-3 border-b border-line-soft bg-canvas px-3 text-ink">
@@ -70,10 +84,20 @@ function TopBar() {
       </div>
 
       <div className="flex items-center gap-2 text-[13px]">
-        <button className="btn btn-primary btn-sm" onClick={() => void render("high")}>
+        <button
+          className="btn btn-primary btn-sm"
+          disabled={!session.current_project_id}
+          title={session.current_project_id ? "Render the current composition (⌘R)" : "Open a project first"}
+          onClick={() => void render("high")}
+        >
           Render
         </button>
-        <button className="btn btn-sm" onClick={() => void abort()}>
+        <button
+          className="btn btn-sm"
+          disabled={!runActive}
+          title={runActive ? "Abort the current agent run (⌘.)" : "No agent run in progress"}
+          onClick={() => void abort()}
+        >
           Stop
         </button>
 
@@ -94,16 +118,23 @@ function TopBar() {
         </select>
 
         <select
-          className="input input-sm w-auto"
+          className="input input-sm w-auto max-w-52"
           value={session.model}
           onChange={(e) => void setModel(e.target.value)}
           title="Model"
         >
-          {models.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name} {m.kind !== "chat" ? `(${m.kind})` : ""}
-            </option>
-          ))}
+          {groups.map(
+            ([label, group]) =>
+              group.length > 0 && (
+                <optgroup key={label} label={label}>
+                  {group.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} {m.kind !== "chat" ? `(${m.kind})` : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              ),
+          )}
         </select>
 
         <div className="seg" title="Model source">

@@ -36,6 +36,33 @@ const SCENARIO_PILLS: ScenarioPill[] = [
   { id: "analyze", label: "Analyze", glyph: "◌", seed: "Analyze the current composition and suggest improvements: " },
 ];
 
+/** Copy-to-clipboard affordance on settled agent messages (open-design:
+    copy-markdown on every settled message). Flash confirms the copy. */
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1200);
+    return () => clearTimeout(t);
+  }, [copied]);
+  return (
+    <button
+      type="button"
+      className="icon-btn"
+      title={copied ? "Copied" : "Copy message"}
+      aria-label="Copy message"
+      onClick={() => {
+        navigator.clipboard?.writeText(text).then(
+          () => setCopied(true),
+          () => setCopied(false),
+        );
+      }}
+    >
+      {copied ? "✓" : "⧉"}
+    </button>
+  );
+}
+
 /** Compact elapsed label (open-design: m:ss under an hour, m:ss otherwise). */
 function elapsedLabel(startedAtMs: number, nowMs: number): string {
   const s = Math.max(0, Math.floor((nowMs - startedAtMs) / 1000));
@@ -159,6 +186,9 @@ export function HomeView({ onNavigate }: { onNavigate: (id: "projects" | "models
                         ? `Agent${session?.harness ? ` · ${session.harness}` : ""}`
                         : "System"}
                   </span>
+                  {m.role === "agent" && m.status === "done" && m.content && (
+                    <CopyButton text={m.content} />
+                  )}
                   {/* open-design: preparing → working distinction, never an
                       opaque spinner. Elapsed clock anchored to run start. */}
                   {m.status === "thinking" &&

@@ -126,7 +126,9 @@ function QueueRow({
             </button>
           </>
         )}
-        {job.status === "queued" && <span className="text-ink-faint">queued</span>}
+        {job.status === "queued" && (
+          <span className="shimmer-text">queued — waiting for a worker</span>
+        )}
         {job.status === "done" && job.output_path && (
           <button
             onClick={(e) => {
