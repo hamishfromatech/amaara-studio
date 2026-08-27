@@ -196,7 +196,9 @@ export const useStore = create<AppState>((set, get) => ({
       void get().refreshModels();
       // Subscribe once to the event stream.
       if (!unsubEvents) {
-        const un = await subscribeStudioEvents((ev) => handleEvent(ev, set, get));
+        const un = await subscribeStudioEvents(
+          createEventCoalescer((ev) => handleEvent(ev, set, get))
+        );
         unsubEvents = un;
       }
     } catch (e) {
@@ -424,6 +426,52 @@ export const useStore = create<AppState>((set, get) => ({
   // Dismiss the most recent typed studio error (Phase 15).
   dismissError: () => set({ studioError: null }),
 }));
+
+/**
+ * Coalesce high-frequency events (open-design lesson B1): buffer incoming
+ * events and flush every ~50ms (design.md's token-streaming budget), merging
+ * runs of adjacent TextDelta events into one so the store re-renders at most
+ * ~20x/s per stream instead of per token. Buffer order is FIFO — merging only
+ * collapses adjacent deltas, so all other event semantics are preserved.
+ */
+const EVENT_BATCH_MS = 50;
+function createEventCoalescer(sink: (ev: StudioEvent) => void): (ev: StudioEvent) => void {
+  let buffer: StudioEvent[] = [];
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const flush = () => {
+    timer = null;
+    const batch = buffer;
+    buffer = [];
+    let i = 0;
+    while (i < batch.length) {
+      const ev = batch[i];
+      if (ev.type === "Harness" && Object.keys(ev.payload)[0] === "TextDelta") {
+        // Merge the run of adjacent TextDelta events into one.
+        let text = String((ev.payload as Record<string, unknown>).TextDelta ?? "");
+        i++;
+        while (
+          i < batch.length &&
+          ev.type === "Harness" &&
+          batch[i].type === "Harness" &&
+          Object.keys(batch[i].payload)[0] === "TextDelta"
+        ) {
+          text += String((batch[i].payload as Record<string, unknown>).TextDelta ?? "");
+          i++;
+        }
+        sink({ type: "Harness", payload: { TextDelta: text } } as StudioEvent);
+        continue;
+      }
+      sink(ev);
+      i++;
+    }
+  };
+  return (ev: StudioEvent) => {
+    buffer.push(ev);
+    if (timer === null) {
+      timer = setTimeout(flush, EVENT_BATCH_MS);
+    }
+  };
+}
 
 /** Reduce a StudioEvent into store mutations. */
 function handleEvent(
