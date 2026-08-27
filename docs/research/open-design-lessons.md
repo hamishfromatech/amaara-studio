@@ -180,15 +180,20 @@ same way (currently per-call prepares).
 - 50ms TextDelta coalescing on the `studio://event` bridge (B1)
 - QueuedSendStrip + failure recovery card + IME guards (findings 1, 3)
 - Preparing→Working distinction + persisted elapsed clock (finding 4)
+- **Retry wiring**: generate_image retries once on network/429/5xx; the
+  render worker re-queues once after backoff when it exits without a
+  completion event (B2 wired)
+- **Render-queue persistence**: the renders table is the durable source of
+  truth; startup hydrates + reconciles jobs left "running" by a crashed
+  session (backend finding 5)
 
 **Deferred (large or blocked):**
 - Chat virtualization (>80-message threshold pattern) — sessions still short
 - Iframe keep-alive pool — needs the timeline preview under real tab-switching
   load first
 - Refcounted project file watchers (B4) — pairs with live composition reload
-- Persisting render-queue state across restarts — needs a queue-snapshot
-  table + startup reconcile
 - Lexical rich composer — plain textarea is enough for v1
+- Codex reasoning-suffix dedup — adapter exists but untested against live codex
 
 **Not applicable:** SSE keepalive (in-app Tauri events, not HTTP SSE);
 codex reasoning-suffix dedup (adapter exists but untested against live codex).
