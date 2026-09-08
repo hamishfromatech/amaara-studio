@@ -120,6 +120,15 @@ impl HarnessTrait for OpenClawHarness {
             self.stop().await?;
         }
 
+        // Already connected for this project — nothing to do (idempotent
+        // start; send_prompt calls start on every turn).
+        {
+            let inner = self.inner.lock().unwrap();
+            if inner.state.started && inner.state.project_dir == ctx.project_dir {
+                return Ok(());
+            }
+        }
+
         // OpenClaw gateway is assumed to be running. Connect via WS.
         let url = self.gateway_url.clone();
         let (ws_stream, _) = connect_async(&url)
@@ -220,7 +229,10 @@ impl HarnessTrait for OpenClawHarness {
         &self,
         request_id: &str,
         approved: bool,
+        _value: Option<String>,
     ) -> Result<(), HarnessError> {
+        // OpenClaw confirm protocol is boolean-only; an edited value is not
+        // representable, so it is ignored (the user can re-run after edit).
         {
             let mut inner = self.inner.lock().unwrap();
             inner.pending_approvals.remove(request_id);

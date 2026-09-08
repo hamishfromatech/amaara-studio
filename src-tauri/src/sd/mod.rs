@@ -165,7 +165,17 @@ impl SdServerSupervisor {
         // 4. Readiness: a 2xx on /sdcpp/v1/capabilities means the HTTP server
         //    is up; model load time is bounded by the generous timeout.
         on_progress("waiting for sd-server to load the model (this can take a while)");
-        poll_ready(&url, std::time::Duration::from_secs(180)).await?;
+        if let Err(err) = poll_ready(&url, std::time::Duration::from_secs(180)).await {
+            // Spawned but never became ready — kill the child and reset state
+            // so the next attempt starts clean (leaving the dead child in
+            // self.child leaked the process and stuck the status on Starting).
+            if let Some(mut c) = self.child.lock().await.take() {
+                let _ = c.kill().await;
+            }
+            let mut state = self.state.lock().await;
+            state.status = SdStatus::Error(err.clone());
+            return Err(err);
+        }
 
         {
             let mut state = self.state.lock().await;

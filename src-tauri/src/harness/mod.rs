@@ -71,8 +71,17 @@ pub trait Harness: Send + Sync {
 
     /// Answer an approval request from the harness. Adapters that don't support
     /// approvals return Err(NoApprovals) (the default impl).
-    async fn answer_approval(&self, request_id: &str, approved: bool) -> Result<(), HarnessError> {
-        let _ = (request_id, approved);
+    ///
+    /// `value` carries the user's edited input when the dialog's "Edit" flow
+    /// was used (a-coder-cli `input`/`editor` dialogs); boolean-only protocols
+    /// (Claude/Codex/Hermes/OpenClaw) ignore it.
+    async fn answer_approval(
+        &self,
+        request_id: &str,
+        approved: bool,
+        value: Option<String>,
+    ) -> Result<(), HarnessError> {
+        let _ = (request_id, approved, value);
         Err(HarnessError::NoApprovals)
     }
     

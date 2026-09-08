@@ -46,6 +46,30 @@ pub enum SdGpuBackend {
     Cpu,
 }
 
+/// One user-configured MCP server entry (Tools → MCP servers).
+///
+/// The built-in `navya-studio-tools` server (navya-mcp) is always present and
+/// managed by the harness adapters; these entries are *additional* servers the
+/// user wants exposed, persisted in the app-data config JSON.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct McpServerConfig {
+    /// Display name / key in the harness `mcpServers` map.
+    #[serde(default)]
+    pub name: String,
+    /// Executable to spawn (e.g. `uv`, `npx`, `python`).
+    #[serde(default)]
+    pub command: String,
+    /// Arguments passed to the command.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Environment variables for the server process.
+    #[serde(default)]
+    pub env: Vec<(String, String)>,
+    /// Whether the server is enabled (disabled servers are not advertised).
+    #[serde(default)]
+    pub enabled: bool,
+}
+
 
 /// Non-secret studio settings persisted as JSON in the app data dir.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -107,6 +131,11 @@ pub struct NavyaConfig {
     /// usage leaves the machine unless the user explicitly enables it (Phase 15).
     #[serde(default)]
     pub share_analytics: bool,
+
+    /// User-configured additional MCP servers (Tools → MCP servers). The
+    /// built-in navya-studio-tools server is separate and always managed.
+    #[serde(default)]
+    pub mcp_servers: Vec<McpServerConfig>,
 }
 
 fn default_base_url() -> String {
@@ -192,6 +221,15 @@ fn apply_patch(
                 "share_analytics" => {
                     out.share_analytics = bool_val(v);
                 }
+                "mcp_servers" => {
+                    if let Some(arr) = v.as_array() {
+                        let servers: Vec<McpServerConfig> = arr
+                            .iter()
+                            .filter_map(|s| serde_json::from_value(s.clone()).ok())
+                            .collect();
+                        out.mcp_servers = servers;
+                    }
+                }
                 other => return Err(ConfigError::UnknownField(other.to_string())),
             }
         }
@@ -227,6 +265,7 @@ pub fn default_config() -> NavyaConfig {
         density: Density::Comfortable,
         theme: ThemeMode::Dark,
         share_analytics: false,
+        mcp_servers: Vec::new(),
     }
 }
 
@@ -419,6 +458,27 @@ mod tests {
         assert!(!found, "secret leaked to app-data dir {dir:?}");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn mcp_servers_merge_round_trip() {
+        // A patch with one server replaces the list; an empty patch keeps it.
+        let merged = merge_config(
+            r#"{ "mcp_servers": [ { "name": "extra", "command": "uv", "args": ["run"], "env": [["K", "V"]], "enabled": true } ] }"#,
+            &default_config(),
+        )
+        .unwrap();
+        assert_eq!(merged.mcp_servers.len(), 1);
+        assert_eq!(merged.mcp_servers[0].name, "extra");
+        assert_eq!(merged.mcp_servers[0].env, vec![("K".to_string(), "V".to_string())]);
+        assert!(merged.mcp_servers[0].enabled);
+
+        let kept = merge_config(r#"{ "theme": "light" }"#, &merged).unwrap();
+        assert_eq!(kept.mcp_servers.len(), 1); // untouched by an unrelated patch
+
+        // Old configs without the key deserialize to an empty list.
+        let old: NavyaConfig = serde_json::from_str(r#"{ "theme": "dark" }"#).unwrap();
+        assert!(old.mcp_servers.is_empty());
     }
 
     #[test]

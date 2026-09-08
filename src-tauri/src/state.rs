@@ -6,6 +6,7 @@
 //! in SQLite, the session (current project/model/source/harness) is real, and
 //! sidecar status reflects the actual supervisor.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -120,14 +121,21 @@ pub struct AppState {
     /// Harness id that currently has an event pump subscribed (one pump per
     /// harness; re-subscribes when the user switches harness).
     pub pump_harness: PMutex<Option<String>>,
+    /// The pump task's JoinHandle — aborted when a new pump replaces it so
+    /// switching A→B→A never leaves two live pumps duplicating every event.
+    pub pump_handle: PMutex<Option<tokio::task::JoinHandle<()>>>,
+    /// Live render-worker child processes keyed by job id, so cancel_render
+    /// can actually kill the running `node render-worker.mjs` instead of only
+    /// flipping a status flag while the worker keeps going.
+    pub render_children: PMutex<HashMap<String, tokio::process::Child>>,
     /// Control server URL (set by the control server at launch).
     pub control_url: Arc<PMutex<Option<String>>>,
     /// Control server bearer token.
     pub control_token: Arc<PMutex<Option<String>>>,
+    pub app_handle: std::sync::OnceLock<tauri::AppHandle>,
 }
 
 impl AppState {
-    /// Construct from a resolved config + store. The config path is kept so
     /// `save_config` can persist back to the same file.
     pub fn new(config: NavyaConfig, config_path: PathBuf, store: ProjectStore) -> Self {
         let navya = NavyaClient::new(
@@ -158,8 +166,11 @@ impl AppState {
         preview: preview_state(),
         sd: Arc::new(crate::sd::SdServerSupervisor::new()),
             pump_harness: PMutex::new(None),
+            pump_handle: PMutex::new(None),
+            render_children: PMutex::new(HashMap::new()),
             control_url: Arc::new(PMutex::new(None)),
             control_token: Arc::new(PMutex::new(None)),
+            app_handle: std::sync::OnceLock::new(),
         }
     }
 

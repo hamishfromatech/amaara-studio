@@ -153,6 +153,15 @@ impl HarnessTrait for CodexHarness {
             self.stop().await?;
         }
 
+        // Already running in this project — nothing to do (idempotent start;
+        // send_prompt calls start on every turn).
+        {
+            let inner = self.inner.lock().unwrap();
+            if inner.state.started && inner.state.project_dir == ctx.project_dir {
+                return Ok(());
+            }
+        }
+
         let Some(binary) = registry::descriptor_for(&self.id).and_then(|d| registry::detect(d).path) else {
             return Err(HarnessError::Process("codex binary not found on PATH".into()));
         };
@@ -250,7 +259,14 @@ impl HarnessTrait for CodexHarness {
         Ok(registry::fallback_models(self.id()))
     }
 
-    async fn answer_approval(&self, request_id: &str, approved: bool) -> Result<(), HarnessError> {
+    async fn answer_approval(
+        &self,
+        request_id: &str,
+        approved: bool,
+        _value: Option<String>,
+    ) -> Result<(), HarnessError> {
+        // Codex approval RPC is boolean-only; an edited value is not
+        // representable, so it is ignored (the user can re-run after edit).
         {
             let mut inner = self.inner.lock().unwrap();
             inner.pending_approvals.remove(request_id);

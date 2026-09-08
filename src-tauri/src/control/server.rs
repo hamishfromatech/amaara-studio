@@ -14,14 +14,14 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         State,
     },
-    response::IntoResponse,
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Router,
 };
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use tower_http::cors::CorsLayer;
 use tauri::Manager;
 
 use crate::config::SERVICE_CONTROL;
@@ -81,13 +81,16 @@ pub async fn launch(
     };
 
     // Build the router with named handlers.
+    // NOTE: no CORS layer. The HTTP consumers (harness extension, MCP server)
+    // are non-browser clients that ignore CORS; a permissive layer would let
+    // any website the user visits READ responses from this server via
+    // CORS-enabled fetch (e.g. GET /config with its MCP env vars).
     let router = Router::new()
         .route("/tool/:name", post(crate::control::dispatch::dispatch_tool))
         .route("/events", get(events_ws))
         .route("/health", get(health))
         .route("/config", get(config_handler))
-        .with_state(server_state)
-        .layer(CorsLayer::permissive());
+        .with_state(server_state);
 
     // Bind to 127.0.0.1:0.
     let listener = match tokio::net::TcpListener::bind("127.0.0.1:0").await {
@@ -126,11 +129,42 @@ pub async fn launch(
 // ---------------------------------------------------------------------------
 
 /// WS /events — stream StudioEvents to all connected clients.
+///
+/// Browsers do NOT enforce CORS on WebSocket handshakes, so without an Origin
+/// check any website in the user's browser could connect and snoop on studio
+/// events (prompts, tool output, render paths) — cross-site WebSocket
+/// hijacking. Reject upgrade requests that carry a non-Tauri, non-loopback
+/// Origin (browsers always send Origin; non-browser clients usually don't).
 async fn events_ws(
     ws: WebSocketUpgrade,
+    headers: HeaderMap,
     State(state): State<ServerState>,
-) -> impl IntoResponse {
+) -> Response {
+    if let Some(origin) = headers.get("origin").and_then(|v| v.to_str().ok()) {
+        if !origin_allowed(origin) {
+            return (StatusCode::FORBIDDEN, "cross-origin websocket denied").into_response();
+        }
+    }
     ws.on_upgrade(move |socket: WebSocket| handle_ws(socket, state))
+}
+
+/// Allow the Tauri webview origins and dev-server loopback origins. A public
+/// website's origin never matches — that is the point.
+fn origin_allowed(origin: &str) -> bool {
+    const TAURI_ORIGINS: [&str; 3] = [
+        "tauri://localhost",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+    ];
+    if TAURI_ORIGINS.contains(&origin) {
+        return true;
+    }
+    // Dev servers (vite/webpack) are loopback — safe: a malicious website is
+    // never served from 127.0.0.1/localhost.
+    origin.starts_with("http://localhost:")
+        || origin.starts_with("http://127.0.0.1:")
+        || origin.starts_with("https://localhost:")
+        || origin.starts_with("https://127.0.0.1:")
 }
 
 async fn handle_ws(socket: WebSocket, state: ServerState) {
@@ -179,10 +213,17 @@ async fn health() -> axum::response::Response {
     "ok".into_response()
 }
 
-/// GET /config — return current config.
+/// GET /config — return current config. Bearer-token authenticated like the
+/// tool route: the config embeds user MCP server env vars, which may hold API
+/// keys. No current consumer lacks the token (the extension gets it via env).
 async fn config_handler(
     State(state): State<ServerState>,
-) -> axum::response::Response {
+    headers: HeaderMap,
+) -> Response {
+    let expected = state.app.control_token.lock().clone();
+    if !crate::control::dispatch::token_matches(&headers, expected.as_deref()) {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    }
     let config = state.app.config.lock().clone();
     serde_json::to_string_pretty(&config)
         .map(|s| s.into_response())
@@ -285,7 +326,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dispatch_generate_image_inserts_asset() {
+    async fn dispatch_generate_image_without_key_is_an_honest_error() {
+        // Fake keyring with NO key → the cloud path must fail fast and
+        // honestly (never attempt a real HTTP call in tests).
+        crate::config::set_fake_keyring(true);
         let state = test_state();
         let app = state.app.clone();
         let req = tool_request(
@@ -293,12 +337,19 @@ mod tests {
             r#"{"project_id":"p1","prompt":"a black hole","composition_id":null,"model":null,"size":null}"#,
         );
         let res = router(state).oneshot(req).await.unwrap();
-        assert_eq!(res.status(), StatusCode::OK);
+        // The tool path now runs the REAL generation (cloud, no API key in the
+        // fake keyring) — it must fail honestly, and the old stub's fabricated
+        // asset row must NOT appear.
+        assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
         let bytes = to_bytes(res.into_body(), usize::MAX).await.unwrap();
         let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(json["ok"], serde_json::json!(true));
-        // The asset row should now exist in the store (real insert, not a stub).
-        assert_eq!(app.store.lock().count("assets").unwrap(), 1);
+        assert_eq!(json["ok"], serde_json::json!(false));
+        let err = json["error"].as_str().unwrap_or("");
+        assert!(
+            err.contains("API key") || err.contains("keyring"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(app.store.lock().count("assets").unwrap(), 0);
     }
 
     #[tokio::test]
@@ -325,6 +376,42 @@ mod tests {
             .body(Body::from("{}"))
             .unwrap();
         let res = router(state).oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn origin_check_blocks_cross_site_websockets() {
+        // A website in the user's browser must NOT be able to open the event
+        // stream (cross-site WebSocket hijacking); Tauri + loopback dev
+        // origins are fine, and non-browser clients (no Origin) pass.
+        assert!(origin_allowed("tauri://localhost"));
+        assert!(origin_allowed("http://tauri.localhost"));
+        assert!(origin_allowed("https://tauri.localhost"));
+        assert!(origin_allowed("http://localhost:5173"));
+        assert!(origin_allowed("http://127.0.0.1:1420"));
+        assert!(!origin_allowed("https://evil.example.com"));
+        assert!(!origin_allowed("http://evil.example.com"));
+        assert!(!origin_allowed("null"));
+    }
+
+    #[tokio::test]
+    async fn config_requires_bearer_token() {
+        // /config embeds user MCP env vars (potentially API keys) — it must
+        // not be readable without the token.
+        let state = test_state();
+        let router = Router::new()
+            .route("/config", get(config_handler))
+            .with_state(state);
+        let res = router
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/config")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
     }
 }

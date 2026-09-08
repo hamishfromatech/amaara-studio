@@ -51,7 +51,7 @@ keyring = { version = ">=2" }
 
 # Async runtime + HTTP (control server Phase 3; Navya client Phase 8).
 tokio = { version = "1", features = ["full"] }
-axum = { version = "0.7", features = ["ws"] }
+axum = { version = "0.7", features = ["ws", "macros"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors"] }
 futures-util = "0.3"
@@ -83,6 +83,10 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 
 # SHA256 checksums for the Phase 14 sidecar bootstrap (download-on-first-run).
 sha2 = "0.10"
+
+# Composer attachment payloads arrive as base64 from the webview (no fs
+# plugin); decoded server-side before the file lands in the project assets dir.
+base64 = "0.22"
 tracing-appender = "0.2.5"
 
 [dev-dependencies]

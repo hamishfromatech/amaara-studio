@@ -7,23 +7,25 @@
  * from EntryNavRail.
  */
 export type NavId =
-  | "home"
-  | "projects"
-  | "timeline"
-  | "renders"
-  | "models"
-  | "sources"
-  | "tools"
-  | "settings";
+  | 'home'
+  | 'chat'
+  | 'projects'
+  | 'timeline'
+  | 'renders'
+  | 'models'
+  | 'sources'
+  | 'tools'
+  | 'settings'
 
 /** Human label for a center pane (palette / shortcuts help). */
 export const NAV_LABELS: Record<NavId, string> = {
-  home: "Chat",
-  projects: "Projects",
-  timeline: "Timeline",
-  renders: "Renders",
-  models: "Models",
-  sources: "Sources",
-  tools: "Tools",
-  settings: "Settings",
-};
+  home: 'Home',
+  chat: 'Chat',
+  projects: 'Projects',
+  timeline: 'Timeline',
+  renders: 'Renders',
+  models: 'Models',
+  sources: 'Sources',
+  tools: 'Tools',
+  settings: 'Settings',
+}

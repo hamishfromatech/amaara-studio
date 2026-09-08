@@ -1,0 +1,5 @@
+# Windows: test executables need the Common-Controls v6 manifest (see
+# tests-manifest-runner.ps1). The runner copies tests.manifest next to the
+# test binary on first run, then hands off to the real executable.
+[target.'cfg(windows)']
+runner = "powershell -NoProfile -ExecutionPolicy Bypass -File tests-manifest-runner.ps1"

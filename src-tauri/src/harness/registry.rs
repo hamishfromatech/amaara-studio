@@ -343,7 +343,7 @@ fn probe_dir(dir: &Path, name: &str) -> Option<PathBuf> {
 /// Run `<path> <version_args>` with a bounded wait and return the first
 /// stdout line. A timeout, non-zero exit, or empty stdout yields None — the
 /// binary still counts as available (open-design's "spawned" outcome).
-fn probe_version(path: &Path, args: &[&str]) -> Option<String> {
+pub(crate) fn probe_version(path: &Path, args: &[&str]) -> Option<String> {
     use std::io::Read;
 
     let mut cmd = std::process::Command::new(path);

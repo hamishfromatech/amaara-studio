@@ -169,6 +169,15 @@ impl HarnessTrait for ClaudeCodeHarness {
             self.stop().await?;
         }
 
+        // Already running in this project — nothing to do (idempotent start;
+        // send_prompt calls start on every turn).
+        {
+            let inner = self.inner.lock().unwrap();
+            if inner.state.started && inner.state.project_dir == ctx.project_dir {
+                return Ok(());
+            }
+        }
+
         let Some(binary) = registry::descriptor_for(&self.id).and_then(|d| registry::detect(d).path) else {
             return Err(HarnessError::Process("claude binary not found on PATH".into()));
         };
@@ -177,16 +186,16 @@ impl HarnessTrait for ClaudeCodeHarness {
             &ctx.project_dir, ctx.control_url.as_deref(), ctx.control_token.as_deref())?;
 
         // Spawn Claude in persistent bidirectional mode.
-        // `--dangerously-skip-permissions` is used so the first end-to-end pass
-        // doesn't hang waiting for approvals; Phase 11 can switch to
-        // `--permission-mode manual` and forward `permission_request` events.
+        // Permission requests come back as `permission_request` events and are
+        // surfaced through the studio's native ApprovalDialog (Phase 11) — we
+        // must NOT pass --dangerously-skip-permissions, which would bypass the
+        // approval flow entirely and let the agent run any command silently.
         let args = vec![
             "-p".to_string(),
             "--output-format".to_string(), "stream-json".to_string(),
             "--verbose".to_string(),
             "--include-partial-messages".to_string(),
             "--input-format".to_string(), "stream-json".to_string(),
-            "--dangerously-skip-permissions".to_string(),
         ];
 
         let (mut child, stdin) = common::spawn_command(
@@ -278,7 +287,14 @@ impl HarnessTrait for ClaudeCodeHarness {
         Ok(registry::fallback_models(self.id()))
     }
 
-    async fn answer_approval(&self, request_id: &str, approved: bool) -> Result<(), HarnessError> {
+    async fn answer_approval(
+        &self,
+        request_id: &str,
+        approved: bool,
+        _value: Option<String>,
+    ) -> Result<(), HarnessError> {
+        // Claude's permission protocol is boolean-only; an edited value is
+        // not representable, so it is ignored (the user can re-run after edit).
         let response = if approved { "allow" } else { "deny" };
         // Remove the pending request; if it's gone, still send the response.
         {

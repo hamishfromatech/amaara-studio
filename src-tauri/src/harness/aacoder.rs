@@ -161,6 +161,17 @@ impl HarnessTrait for AaaCoderCliHarness {
             self.stop().await?; // stop the old process before restarting
         }
 
+        // Already running in this project — nothing to do. Without this early
+        // return, every send_prompt (which calls start) spawned a second
+        // a-coder-cli process, leaked the previous child, and the old
+        // reader's EOF broadcast a spurious "process exited" error.
+        {
+            let inner = self.inner.lock().unwrap();
+            if inner.started && inner.project_dir == ctx.project_dir {
+                return Ok(());
+            }
+        }
+
         let binary = match which("a-coder-cli") {
             Some(b) => b,
             None => return Err(HarnessError::Process("a-coder-cli not found on PATH".into())),
@@ -298,12 +309,17 @@ impl HarnessTrait for AaaCoderCliHarness {
         }
     }
 
-    async fn answer_approval(&self, request_id: &str, approved: bool) -> Result<(), HarnessError> {
+    async fn answer_approval(
+        &self,
+        request_id: &str,
+        approved: bool,
+        value: Option<String>,
+    ) -> Result<(), HarnessError> {
         // Build the correct extension_ui_response for the dialog method that
         // issued the request (docs/rpc.md §Extension UI Responses):
         //   confirm      -> {"id", "confirmed": true}       / {"id", "cancelled": true}
         //   select       -> {"id", "value": first option}   / {"id", "cancelled": true}
-        //   input/editor -> {"id", "value": ""}              / {"id", "cancelled": true}
+        //   input/editor -> {"id", "value": edited text}    / {"id", "cancelled": true}
         let req = {
             let mut inner = self.inner.lock().unwrap();
             if !inner.started {
@@ -329,8 +345,10 @@ impl HarnessTrait for AaaCoderCliHarness {
                         serde_json::json!({ "type": "extension_ui_response", "id": request_id, "value": first })
                     }
                     _ => {
-                        // input / editor — approve with an empty value
-                        serde_json::json!({ "type": "extension_ui_response", "id": request_id, "value": "" })
+                        // input / editor — approve, carrying the user's edited
+                        // text when the dialog's Edit flow produced one.
+                        let v = value.unwrap_or_default();
+                        serde_json::json!({ "type": "extension_ui_response", "id": request_id, "value": v })
                     }
                 }
             }

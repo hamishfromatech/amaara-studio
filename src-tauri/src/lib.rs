@@ -105,6 +105,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
+            // Give non-command callers (control-server tool dispatch) access
+            // to the handle for event emission + path resolution.
+            let _ = state.app_handle.set(handle.clone());
             app.manage(std::sync::Arc::new(state));
 
             // Create the event broadcast channel for the control server.
@@ -162,6 +165,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             commands::list_cloud_models,
             commands::detect_engine,
             commands::approve,
+            commands::save_attachment,
+            commands::get_mcp_status,
             commands::package_feedback,
         ])
         .run(tauri::generate_context!())?;

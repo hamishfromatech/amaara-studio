@@ -155,6 +155,15 @@ impl HarnessTrait for HermesHarness {
             self.stop().await?;
         }
 
+        // Already running in this project — nothing to do (idempotent start;
+        // send_prompt calls start on every turn).
+        {
+            let inner = self.inner.lock().unwrap();
+            if inner.state.started && inner.state.project_dir == ctx.project_dir {
+                return Ok(());
+            }
+        }
+
         let Some(binary) = registry::descriptor_for(&self.id).and_then(|d| registry::detect(d).path) else {
             return Err(HarnessError::Process("hermes binary not found on PATH".into()));
         };
@@ -271,7 +280,10 @@ impl HarnessTrait for HermesHarness {
         &self,
         request_id: &str,
         approved: bool,
+        _value: Option<String>,
     ) -> Result<(), HarnessError> {
+        // Hermes approval RPC is boolean-only; an edited value is not
+        // representable, so it is ignored (the user can re-run after edit).
         {
             let mut inner = self.inner.lock().unwrap();
             inner.pending_approvals.remove(request_id);

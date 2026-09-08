@@ -7,19 +7,19 @@
  * parent can fall back to the project summary.
  */
 
-import type { Clip } from "../lib/invoke";
+import type {Clip} from '../lib/invoke'
 
 interface InspectorProps {
-  clip: Clip | null;
+  clip: Clip | null
   /** Called with a targeted instruction when the user hits "edit in chat". */
-  onEdit: (instruction: string) => void;
+  onEdit: (instruction: string) => void
 }
 
-export function Inspector({ clip, onEdit }: InspectorProps) {
-  if (!clip) return null;
-  const vars = parseVariables(clip.variables);
-  const start = clip.start_s;
-  const end = clip.start_s + clip.duration_s;
+export function Inspector({clip, onEdit}: InspectorProps) {
+  if (!clip) return null
+  const vars = parseVariables(clip.variables)
+  const start = clip.start_s
+  const end = clip.start_s + clip.duration_s
 
   return (
     <div>
@@ -59,29 +59,31 @@ export function Inspector({ clip, onEdit }: InspectorProps) {
       <button
         className="btn btn-ghost btn-sm mt-2 w-full text-xs"
         title="Send a targeted edit instruction to the agent"
-        onClick={() => onEdit(`Adjust clip "${clip.id}" (currently ${fmtSec(start)}–${fmtSec(end)}): `)}
+        onClick={() =>
+          onEdit(`Adjust clip "${clip.id}" (currently ${fmtSec(start)}–${fmtSec(end)}): `)
+        }
       >
         Edit in chat
       </button>
     </div>
-  );
+  )
 }
 
 /** Parse the raw `data-composition-variables` JSON into a plain object. */
 function parseVariables(raw: string | null): Record<string, unknown> {
-  if (!raw) return {};
+  if (!raw) return {}
   try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : {}
   } catch {
-    return {};
+    return {}
   }
 }
 
 function fmtSec(sec: number): string {
-  if (!Number.isFinite(sec) || sec < 0) return "0:00";
-  const total = Math.floor(sec);
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
+  if (!Number.isFinite(sec) || sec < 0) return '0:00'
+  const total = Math.floor(sec)
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${m}:${String(s).padStart(2, '0')}`
 }

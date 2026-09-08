@@ -90,22 +90,29 @@ pub async fn spawn_preview(project_dir: &Path, port: u16) -> Result<Child, Strin
 pub async fn poll_ready(port: u16, timeout: std::time::Duration) -> Result<String, String> {
     use std::time::Instant;
     let client = reqwest::Client::builder()
-        .timeout(timeout)
         .connect_timeout(std::time::Duration::from_secs(1))
         .build()
         .map_err(|e| e.to_string())?;
     let url = format!("http://127.0.0.1:{port}/");
-    let deadline = Instant::now() + std::time::Duration::from_secs(30);
+    // The timeout param bounds the overall wait (it used to only set the
+    // per-request timeout while the deadline stayed hardcoded at 30s).
+    let deadline = Instant::now() + timeout;
 
     loop {
-        match client.get(&url).send().await {
+        match client
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(2))
+            .send()
+            .await
+        {
             Ok(resp) if resp.status().is_success() => return Ok(url),
             Ok(_) => { /* server up but not 2xx — keep waiting */ }
             Err(_) => { /* not ready yet */ }
         }
         if Instant::now() >= deadline {
             return Err(format!(
-                "preview server did not become ready within 30s on port {port}. Is Node.js/hyperframes installed?"
+                "preview server did not become ready within {}s on port {port}. Is Node.js/hyperframes installed?",
+                timeout.as_secs()
             ));
         }
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;

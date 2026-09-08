@@ -5,36 +5,41 @@
  * image/video models, marks the active model with ✓.
  */
 
-import React from "react";
+import React from 'react'
 
 export interface ModelInfo {
-  id: string;
-  name?: string;
-  kind: "chat" | "image" | "video" | "audio";
-  is_active?: boolean;
+  id: string
+  name?: string
+  kind: 'chat' | 'image' | 'video' | 'audio'
+  is_active?: boolean
 }
 
 interface ModelsListProps {
-  cloudModels: ModelInfo[];
-  localModels: ModelInfo[];
-  activeModelId: string;
-  onModelSelect: (modelId: string) => void;
+  cloudModels: ModelInfo[]
+  localModels: ModelInfo[]
+  activeModelId: string
+  onModelSelect: (modelId: string) => void
 }
 
-export function ModelsList({ cloudModels, localModels, activeModelId, onModelSelect }: ModelsListProps) {
+export function ModelsList({
+  cloudModels,
+  localModels,
+  activeModelId,
+  onModelSelect,
+}: ModelsListProps) {
   const renderRow = (model: ModelInfo) => (
     <button
       key={model.id}
       onClick={() => onModelSelect(model.id)}
-      className={`row justify-between ${model.is_active ? "is-active" : ""}`}
+      className={`row justify-between ${model.is_active ? 'is-active' : ''}`}
     >
       <span className="flex min-w-0 items-center gap-2">
         {model.is_active && <span className="text-xs text-ok">✓</span>}
         <span className="truncate">{model.id}</span>
-        {model.kind !== "chat" && <span className="text-xs text-ink-faint">({model.kind})</span>}
+        {model.kind !== 'chat' && <span className="text-xs text-ink-faint">({model.kind})</span>}
       </span>
     </button>
-  );
+  )
 
   return (
     <div className="space-y-5">
@@ -50,5 +55,5 @@ export function ModelsList({ cloudModels, localModels, activeModelId, onModelSel
         <div className="space-y-0.5">{localModels.map(renderRow)}</div>
       </div>
     </div>
-  );
+  )
 }

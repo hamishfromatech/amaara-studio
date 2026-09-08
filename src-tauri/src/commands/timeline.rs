@@ -22,7 +22,7 @@ pub struct SnapshotResult {
 
 /// Look up a project's on-disk directory from the store.
 fn project_dir_for(
-    state: State<'_, std::sync::Arc<crate::state::AppState>>,
+    state: &std::sync::Arc<crate::state::AppState>,
     project_id: &str,
 ) -> Result<PathBuf, String> {
     let store = state.store.lock();
@@ -41,7 +41,7 @@ pub async fn get_timeline(
     project_id: String,
     composition_id: String,
 ) -> Result<crate::timeline::TimelineState, String> {
-    let dir = project_dir_for(state, &project_id)?;
+    let dir = project_dir_for(&state, &project_id)?;
     let mut parsed = crate::timeline::load_timeline(&dir, &composition_id)
         .map_err(|e| e.to_string())?;
     parsed.project_id = project_id;
@@ -59,7 +59,17 @@ pub async fn snapshot(
     project_id: String,
     t_ms: i64,
 ) -> Result<SnapshotResult, String> {
-    let dir = project_dir_for(state, &project_id)?;
+    snapshot_core(&app, &state, &project_id, t_ms).await
+}
+
+/// Core snapshot shared by the UI command and the control-server tool dispatch.
+pub async fn snapshot_core(
+    app: &AppHandle,
+    state: &std::sync::Arc<crate::state::AppState>,
+    project_id: &str,
+    t_ms: i64,
+) -> Result<SnapshotResult, String> {
+    let dir = project_dir_for(state, project_id)?;
 
     let secs = (t_ms as f64 / 1000.0).round();
     let output_dir = dir.join("snapshots");
@@ -107,7 +117,7 @@ pub async fn snapshot(
     let _ = app.emit(
         "studio://event",
         crate::events::StudioEvent::Project(crate::events::ProjectEvent::AssetAdded {
-            project_id: project_id.clone(),
+            project_id: project_id.to_string(),
             asset_id: asset_id.clone(),
             path: png.to_string_lossy().to_string(),
         }),

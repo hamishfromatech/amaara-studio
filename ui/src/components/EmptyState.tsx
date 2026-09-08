@@ -7,20 +7,20 @@
  * spinners hiding an absent state — the emptiness is the state.
  */
 
-import type { ReactNode } from "react";
+import type {ReactNode} from 'react'
 
 interface EmptyStateProps {
   /** Mono glyph/emoji shown above the title. */
-  glyph?: string;
+  glyph?: string
   /** Short heading for the empty surface. */
-  title: string;
+  title: string
   /** Optional supporting line (truncated to ~34ch via CSS). */
-  description?: string;
+  description?: string
   /** Optional action slot (e.g. a "New project" button). */
-  action?: ReactNode;
+  action?: ReactNode
 }
 
-export function EmptyState({ glyph = "○", title, description, action }: EmptyStateProps) {
+export function EmptyState({glyph = '○', title, description, action}: EmptyStateProps) {
   return (
     <div className="empty-state">
       <span className="empty-state__glyph" aria-hidden>
@@ -28,7 +28,7 @@ export function EmptyState({ glyph = "○", title, description, action }: EmptyS
       </span>
       <div className="empty-state__title">{title}</div>
       {description && <div className="empty-state__desc">{description}</div>}
-      {action && <div style={{ marginTop: 12 }}>{action}</div>}
+      {action && <div style={{marginTop: 12}}>{action}</div>}
     </div>
-  );
+  )
 }

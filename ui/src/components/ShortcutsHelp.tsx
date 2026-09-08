@@ -5,51 +5,57 @@
  * `shortcutsOpen` is set; the shortcuts hook toggles that flag on `?`.
  */
 
-import { useStore } from "../lib/store";
+import {useStore} from '../lib/store'
 
-const GROUPS: { title: string; rows: [string, string][] }[] = [
+const GROUPS: {title: string; rows: [string, string][]}[] = [
   {
-    title: "Palette & help",
+    title: 'Palette & help',
     rows: [
-      ["⌘K / Ctrl+K", "Command palette"],
-      ["?", "Show this overlay"],
+      ['⌘K / Ctrl+K', 'Command palette'],
+      ['?', 'Show this overlay'],
     ],
   },
   {
-    title: "Navigation",
+    title: 'Navigation',
     rows: [
-      ["⌘1 … ⌘4", "Chat · Timeline · Renders · Models"],
-      ["⌘N", "New project"],
-      ["⌘,", "Settings"],
-      ["⌘\\", "Toggle left rail"],
-      ["⌘/", "Toggle right rail"],
+      ['⌘1 … ⌘4', 'Chat · Timeline · Renders · Models'],
+      ['⌘N', 'New project'],
+      ['⌘,', 'Settings'],
+      ['⌘\\', 'Toggle left rail'],
+      ['⌘/', 'Toggle right rail'],
     ],
   },
   {
-    title: "Chat",
+    title: 'Chat',
     rows: [
-      ["⌘Enter", "Send (normal)"],
-      ["⌘⇧Enter", "Send as steer"],
-      ["⌘⌥Enter", "Send as follow-up"],
-      ["⌘.", "Stop current turn"],
-      ["⌘E", "Edit selected clip in chat"],
+      ['⌘Enter', 'Send (normal)'],
+      ['⌘⇧Enter', 'Send as steer'],
+      ['⌘⌥Enter', 'Send as follow-up'],
+      ['⌘.', 'Stop current turn'],
+      ['⌘E', 'Edit selected clip in chat'],
     ],
   },
   {
-    title: "Timeline",
+    title: 'Renders',
     rows: [
-      ["Space", "Play / pause"],
-      ["J · L", "Shuttle back / forward"],
-      ["⌘R", "Render current composition"],
+      ['⌘R', 'Render current composition'],
+      ['⌘⇧R', 'Render… (quality + target)'],
     ],
   },
-];
+  {
+    title: 'Timeline',
+    rows: [
+      ['Space', 'Play / pause'],
+      ['J · K · L', 'Shuttle / play / pause'],
+    ],
+  },
+]
 
 export function ShortcutsHelp() {
-  const open = useStore((s) => s.shortcutsOpen);
-  const setShortcutsOpen = useStore((s) => s.setShortcutsOpen);
+  const open = useStore((s) => s.shortcutsOpen)
+  const setShortcutsOpen = useStore((s) => s.setShortcutsOpen)
 
-  if (!open) return null;
+  if (!open) return null
 
   return (
     <div
@@ -85,5 +91,5 @@ export function ShortcutsHelp() {
         <div className="mt-4 text-center text-[11px] text-ink-faint">Press ? or Esc to close</div>
       </div>
     </div>
-  );
+  )
 }

@@ -780,3 +780,63 @@ Build M0 first and stop. Re-evaluate with the user before M1+.
 ### Research artifacts
 All open questions from `BUILD-GAPS.md` have been researched and written to
 `docs/research/*.md`.
+
+## Full audit pass (2026-09-08)
+
+Code-complete tree audited end to end; 12 issues found and fixed:
+
+- **All 5 harness adapters: `start()` was not idempotent** despite its doc
+  comment — `send_prompt` calls start every turn, so each prompt spawned a
+  second harness process, leaked the old child, and the old reader's EOF
+  broadcast a spurious "process exited" error. Added the missing early return
+  (aacoder, claude, codex, hermes, openclaw).
+- **Claude Code spawned with `--dangerously-skip-permissions`**, bypassing the
+  Phase 11 approval flow entirely. Removed; `permission_request` events now
+  reach the studio's ApprovalDialog.
+- **Control server hardening**: `CorsLayer::permissive()` removed (non-browser
+  consumers don't need CORS; a permissive layer let websites read responses),
+  `GET /config` now requires the bearer token (it embeds user MCP env vars),
+  and `WS /events` rejects cross-site Origin headers (browsers don't apply
+  CORS to WebSockets — this was a cross-site WebSocket hijacking vector).
+- **Harness-invoked tools were M0 stubs that faked success** (`generate_image`
+  wrote a nonexistent path, `render_to_video` returned a job that never ran,
+  `set_generation_source` was a no-op, `snapshot` inserted a fake row). The
+  control-server dispatch now routes every tool to the same real
+  implementations the UI uses (shared cores extracted in commands/), material
+  images into `<project>/assets/img/` + asset rows, and `get_project_state` /
+  `list_local_models` return real store/catalog data.
+- **Duplicate event pump**: switching harnesses A→B→A left the original A pump
+  alive alongside a new one, duplicating every event (and double-sending
+  queued prompts). The previous pump task is now aborted via its JoinHandle.
+- **cancel_render was cosmetic**: it flipped a status flag while the worker
+  kept running, and a late "completed" event could overwrite Cancelled. Live
+  worker children are now tracked per job, killed on cancel, terminal events
+  respect cancellation, and the retry path no longer resurrects a cancelled
+  job.
+- **"Always allow" was a silent no-op and a failed rule write could drop the
+  user's answer** (persistence ran before the relay, `?`-propagating). Answers
+  now relay first; rule persistence is best-effort and implemented for Claude
+  Code (appends the tool to the project `.claude/settings.json` allow list).
+- **`sd_gpu_backend` config was ignored** during local image generation
+  (always defaulted to Cpu → wrong download flavor on CUDA machines), and a
+  failed sd-server readiness poll leaked the child and stuck the supervisor
+  in Starting. Both fixed.
+- **`truncate()` in navya client panicked on multi-byte UTF-8** error bodies
+  (byte-index slicing); now char-boundary safe (+ regression test).
+- **preview `poll_ready` ignored its timeout param** (deadline hardcoded 30s);
+  now honors it.
+- **UI**: `loadState`'s subscribe guard raced under StrictMode double-mount
+  (both calls subscribed → every event delivered twice); fixed with a
+  synchronous subscribing flag. `refreshProjectContext` no longer wipes the
+  live model catalog with the static snapshot list.
+- **Windows test binaries failed to load** (STATUS_ENTRYPOINT_NOT_FOUND):
+  tauri-linked tests import comctl32 `TaskDialogIndirect` (v6-only) and
+  embed-resource links manifest resources into bins only. Fixed with a cargo
+  test runner (`.cargo/config.toml` + `tests-manifest-runner.ps1`) that copies
+  a v6 external manifest next to the test executable; plus a `tests/smoke.rs`
+  integration test.
+
+Note: the baseline `cargo test` at the start of the session ran a stale
+August binary; any fresh rebuild of the current tree would have failed to
+load. 131 tests green; clippy 24 warnings (pre-existing dead-code + docs,
+below the 79 historical baseline); tsc + eslint clean.

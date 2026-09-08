@@ -226,7 +226,13 @@ fn fallback_models() -> Vec<ModelSummary> {
 
 fn truncate(s: &str, n: usize) -> String {
     if s.len() > n {
-        format!("{}…", &s[..n])
+        // Slice on a char boundary — HTTP error bodies can be multi-byte
+        // UTF-8, and an arbitrary byte index would panic mid-codepoint.
+        let mut end = n;
+        while end > 0 && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}…", &s[..end])
     } else {
         s.to_string()
     }
@@ -240,6 +246,20 @@ mod tests {
     fn navya_client_trims_trailing_slash() {
         let c = NavyaClient::new("http://localhost:8000/".to_string(), true, false);
         assert_eq!(c.base_url, "http://localhost:8000");
+    }
+
+    #[test]
+    fn truncate_is_utf8_boundary_safe() {
+        // A multi-byte body sliced at an arbitrary byte index used to panic
+        // (byte-index slicing panics mid-codepoint).
+        let s = "错误：服务器错误 éèü 漢字";
+        let out = truncate(s, 7);
+        assert!(out.ends_with('…'));
+        assert!(s.starts_with(out.trim_end_matches('…')));
+        // Long ASCII still truncates at the limit.
+        assert_eq!(truncate("abcdefghij", 4), "abcd…");
+        // Short strings pass through untouched.
+        assert_eq!(truncate("ok", 200), "ok");
     }
 
     #[test]

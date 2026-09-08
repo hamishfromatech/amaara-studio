@@ -360,6 +360,9 @@ pub async fn send_prompt(
 
     // Ensure exactly one event pump per harness: subscribe to the harness event
     // stream and re-emit every event on the studio://event channel for the UI.
+    // The previous pump task is ABORTED when the harness changes — without
+    // this, switching A→B→A left the original A pump alive alongside a new
+    // one, duplicating every A event (and double-sending queued prompts).
     let need_pump = {
         let mut pump = state.pump_harness.lock();
         if pump.as_deref() != Some(session.harness.as_str()) {
@@ -370,13 +373,17 @@ pub async fn send_prompt(
         }
     };
     if need_pump {
+        if let Some(old) = state.pump_handle.lock().take() {
+            old.abort();
+        }
         let mut rx = harness.subscribe();
         let app_pump = app.clone();
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             while let Some(ev) = rx.recv().await {
                 emit_harness_event(&app_pump, ev);
             }
         });
+        *state.pump_handle.lock() = Some(handle);
     }
 
     harness.prompt(&msg, prompt_mode).await.map_err(|e| e.to_string())?;
@@ -406,6 +413,7 @@ pub async fn approve(
     payload: serde_json::Value,
     approved: bool,
     always_allow: bool,
+    value: Option<String>,
 ) -> Result<(), String> {
     let session = state.session.lock().clone();
     let harness = {
@@ -416,18 +424,32 @@ pub async fn approve(
             .clone()
     };
 
-    // Persist a scoped allow rule when the user checks "always allow".
+    // Relay the answer back FIRST — persisting an "always allow" rule must
+    // never block or swallow the user's decision (a failed rule write used to
+    // return early here, dropping the approval entirely).
+    let relay = harness.answer_approval(&request_id, approved, value).await;
+
+    // Persist a scoped allow rule when the user checks "always allow". Best
+    // effort: failures are surfaced as an event, never as a lost approval.
     if always_allow && approved {
         let req = crate::harness::approvals::ApprovalRequest {
             id: request_id.clone(),
             kind: kind.clone(),
             payload: payload.clone(),
         };
-        crate::harness::approvals::write_allow_rule(&session.harness, &req, true)?;
+        let project_dir = current_project_dir(&state, &session);
+        if let Err(e) =
+            crate::harness::approvals::write_allow_rule(&session.harness, &project_dir, &req, true)
+        {
+            tracing::warn!("always-allow rule not persisted: {e}");
+            let _ = app.emit(
+                "studio://event",
+                StudioEvent::Harness(crate::events::HarnessEvent::Error(e)),
+            );
+        }
     }
 
-    // Relay the answer back to the running harness process.
-    match harness.answer_approval(&request_id, approved).await {
+    match relay {
         Ok(()) => Ok(()),
         Err(crate::harness::HarnessError::NoApprovals) => {
             let _ = app.emit(
@@ -440,6 +462,163 @@ pub async fn approve(
         }
         Err(e) => Err(e.to_string()),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Attachments — composer file/image attachments (design.md §3 compose box).
+// The webview reads the picked file into base64 (no fs plugin needed) and the
+// Rust core copies it into the project's assets dir so the harness (which
+// spawns in the project dir) can read it. The prompt is referenced by
+// project-relative path by the UI before sending.
+// ---------------------------------------------------------------------------
+
+/// One saved attachment, as reported back to the composer.
+#[derive(Debug, Clone, Serialize)]
+pub struct AttachmentInfo {
+    pub id: String,
+    pub name: String,
+    /// Absolute path of the copied file (in the project assets dir).
+    pub path: String,
+    /// Project-relative path (what the prompt references).
+    pub rel_path: String,
+    pub kind: String, // image | file
+    pub size_bytes: u64,
+    pub created_at_ms: i64,
+}
+
+#[tauri::command]
+pub async fn save_attachment(
+    app: AppHandle,
+    state: State<'_, std::sync::Arc<AppState>>,
+    name: String,
+    data_b64: String,
+    kind: String,
+) -> Result<AttachmentInfo, String> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_b64.trim())
+        .map_err(|e| format!("invalid attachment payload: {e}"))?;
+    if bytes.is_empty() {
+        return Err("attachment is empty".to_string());
+    }
+    if bytes.len() > 64 * 1024 * 1024 {
+        return Err("attachment exceeds the 64MB limit".to_string());
+    }
+
+    let session = state.session.lock().clone();
+    let Some(project_id) = &session.current_project_id else {
+        return Err("open a project before attaching files".to_string());
+    };
+    let project_dir = current_project_dir(&state, &session);
+    let assets_dir = project_dir.join("assets");
+    std::fs::create_dir_all(&assets_dir)
+        .map_err(|e| format!("creating assets dir: {e}"))?;
+
+    // Sanitize the display name (strip any path components the picker might
+    // include) and make the on-disk name unique.
+    let safe = name
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or("attachment")
+        .chars()
+        .filter(|c| !matches!(c, '\0' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+        .collect::<String>();
+    let stem = safe.trim().to_string();
+    let stem = if stem.is_empty() { "attachment".to_string() } else { stem };
+    let mut path = assets_dir.join(&stem);
+    let mut n = 1;
+    while path.exists() {
+        let (file_stem, ext) = match stem.rfind('.') {
+            Some(i) if i > 0 => (stem[..i].to_string(), Some(stem[i..].to_string())),
+            _ => (stem.clone(), None),
+        };
+        path = match ext {
+            Some(e) => assets_dir.join(format!("{file_stem}~{n}{e}")),
+            None => assets_dir.join(format!("{stem}~{n}")),
+        };
+        n += 1;
+    }
+    std::fs::write(&path, &bytes).map_err(|e| format!("writing attachment: {e}"))?;
+
+    let rel = path
+        .strip_prefix(&project_dir)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| stem.clone());
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+
+    let asset_kind = if kind == "image" { "image" } else { "file" };
+    let id = state
+        .store
+        .lock()
+        .insert_asset(project_id, None, &path.to_string_lossy().to_string(), asset_kind, "local", None)
+        .map_err(|e| e.to_string())?;
+
+    let _ = app.emit(
+        "studio://event",
+        StudioEvent::Project(ProjectEvent::AssetAdded {
+            project_id: project_id.clone(),
+            asset_id: id.clone(),
+            path: path.to_string_lossy().to_string(),
+        }),
+    );
+
+    Ok(AttachmentInfo {
+        id,
+        name: stem,
+        path: path.to_string_lossy().to_string(),
+        rel_path: rel,
+        kind: asset_kind.to_string(),
+        size_bytes: bytes.len() as u64,
+        created_at_ms: now_ms,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// MCP server status (Tools view) — where the built-in navya-mcp server lives,
+// whether its runtime (uv) is installed, and the user's configured servers.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct McpStatus {
+    /// Resolved navya-mcp workspace directory (NAVYA_MCP_DIR or bundled path).
+    pub mcp_dir: String,
+    /// Path to the FastMCP server entrypoint.
+    pub server_py: String,
+    pub server_exists: bool,
+    /// `uv` on PATH (the runtime the harness adapters spawn the server with).
+    pub uv_available: bool,
+    pub uv_version: Option<String>,
+    /// Control server the MCP tools proxy to (set at launch).
+    pub control_url: Option<String>,
+    pub has_control_token: bool,
+    /// User-configured additional MCP servers (config JSON).
+    pub mcp_servers: Vec<crate::config::McpServerConfig>,
+}
+
+#[tauri::command]
+pub async fn get_mcp_status(state: State<'_, std::sync::Arc<AppState>>) -> Result<McpStatus, String> {
+    let mcp_dir = crate::harness::common::mcp_workspace_dir();
+    let server_py = mcp_dir.join("navya_mcp").join("server.py");
+
+    let (uv_available, uv_version) = match crate::harness::registry::which_path("uv") {
+        Some(p) => (true, crate::harness::registry::probe_version(&p, &["--version"])),
+        None => (false, None),
+    };
+
+    let cfg = state.config.lock().clone();
+    Ok(McpStatus {
+        mcp_dir: mcp_dir.to_string_lossy().to_string(),
+        server_py: server_py.to_string_lossy().to_string(),
+        server_exists: server_py.is_file(),
+        uv_available,
+        uv_version,
+        control_url: state.control_url.lock().clone(),
+        has_control_token: state.control_token.lock().as_deref().map(|t| !t.is_empty()).unwrap_or(false),
+        mcp_servers: cfg.mcp_servers,
+    })
 }
 
 #[tauri::command]
@@ -501,6 +680,16 @@ pub async fn render_to_video(
     state: State<'_, std::sync::Arc<AppState>>,
     args: RenderArgs,
 ) -> Result<String, String> {
+    render_to_video_core(&app, &state, args).await
+}
+
+/// Core render enqueuing shared by the UI command and the control-server tool
+/// dispatch (harness-driven renders go through the exact same worker path).
+pub async fn render_to_video_core(
+    app: &AppHandle,
+    state: &std::sync::Arc<AppState>,
+    args: RenderArgs,
+) -> Result<String, String> {
     let quality = match args.quality.as_deref().unwrap_or("draft") {
         "high" => RenderQuality::High,
         _ => RenderQuality::Draft,
@@ -530,7 +719,7 @@ pub async fn render_to_video(
         error: None,
     };
     state.render_queue.lock().add(job.clone());
-    persist_render_job(&state, &job);
+    persist_render_job(state, &job);
 
     let _ = app.emit(
         "studio://event",
@@ -678,6 +867,10 @@ async fn run_render_attempt(app: AppHandle, job: RenderJob, attempt: u32) {
 
     // Pump stdout: parse JSONL and emit RenderEvents.
     let stdout = child.stdout.take().expect("worker stdout");
+
+    // Track the live worker so cancel_render can kill it. Registered after all
+    // stdio handles were taken (they needed &mut child before the move).
+    state.render_children.lock().insert(job_id.clone(), child);
     let reader = tokio::io::BufReader::new(stdout);
     let mut lines = reader.lines();
     while let Ok(Some(line)) = lines.next_line().await {
@@ -699,6 +892,16 @@ async fn run_render_attempt(app: AppHandle, job: RenderJob, attempt: u32) {
                 );
             }
             "completed" => {
+                // Never let a late completion override a user cancellation.
+                let cancelled = state
+                    .render_queue
+                    .lock()
+                    .get(&job_id_for_stdout)
+                    .map(|j| j.status == RenderStatus::Cancelled)
+                    .unwrap_or(false);
+                if cancelled {
+                    continue;
+                }
                 let out = parsed.get("output_path").and_then(|v| v.as_str()).unwrap_or("renders/out.mp4").to_string();
                 {
                     let mut q = state.render_queue.lock();
@@ -717,6 +920,15 @@ async fn run_render_attempt(app: AppHandle, job: RenderJob, attempt: u32) {
                 );
             }
             "failed" => {
+                let cancelled = state
+                    .render_queue
+                    .lock()
+                    .get(&job_id_for_stdout)
+                    .map(|j| j.status == RenderStatus::Cancelled)
+                    .unwrap_or(false);
+                if cancelled {
+                    continue;
+                }
                 let err = parsed.get("error").and_then(|v| v.as_str()).unwrap_or("render failed").to_string();
                 {
                     let mut q = state.render_queue.lock();
@@ -739,7 +951,7 @@ async fn run_render_attempt(app: AppHandle, job: RenderJob, attempt: u32) {
                     let msg = parsed
                         .get("message")
                         .and_then(|v| v.as_str())
-                        .unwrap_or("&line")
+                        .unwrap_or(&line) // was the literal "&line" — a string
                         .to_string();
                     let _ = app_for_stdout.emit(
                         "studio://event",
@@ -753,6 +965,10 @@ async fn run_render_attempt(app: AppHandle, job: RenderJob, attempt: u32) {
             }
         }
     }
+
+    // The worker exited (loop ended) — drop its handle from the live-children
+    // map so cancel_render doesn't later kill a stale pid slot.
+    state.render_children.lock().remove(&job_id);
 
     // If the worker exited without sending completed/failed, mark failed — in
     // both the queue and the event stream, so the UI never shows a stuck job.
@@ -788,6 +1004,17 @@ async fn run_render_attempt(app: AppHandle, job: RenderJob, attempt: u32) {
                 }
             }
             tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+            // The user may have cancelled during the backoff sleep — respect
+            // it instead of resurrecting the job to Running.
+            let cancelled_during_backoff = state
+                .render_queue
+                .lock()
+                .get(&job_id)
+                .map(|j| j.status == RenderStatus::Cancelled)
+                .unwrap_or(false);
+            if cancelled_during_backoff {
+                return;
+            }
             Box::pin(run_render_attempt(app, job, attempt + 1)).await;
             return;
         }
@@ -824,6 +1051,16 @@ pub async fn list_renders(state: State<'_, std::sync::Arc<AppState>>) -> Result<
 
 #[tauri::command]
 pub async fn cancel_render(state: State<'_, std::sync::Arc<AppState>>, job_id: String) -> Result<bool, String> {
+    // Kill the live worker process (if any) BEFORE flipping the status — a
+    // cancelled job whose `node render-worker.mjs` keeps running would race
+    // the queue and could later report Completed over the Cancelled state.
+    // (Bind first, await after: the parking_lot guard is not Send, so holding
+    // it across .kill().await made the command future non-Send.)
+    let mut child = state.render_children.lock().remove(&job_id);
+    if let Some(c) = child.as_mut() {
+        let _ = c.kill().await;
+    }
+    drop(child);
     let ok = state.render_queue.lock().update_status(&job_id, RenderStatus::Cancelled);
     if ok {
         if let Some(j) = state.render_queue.lock().get(&job_id) {
@@ -954,6 +1191,18 @@ pub async fn generate_image(
     state: State<'_, std::sync::Arc<AppState>>,
     args: GenerateImageArgs,
 ) -> Result<GeneratedImageResult, String> {
+    generate_image_core(Some(&app), &state, args).await
+}
+
+/// Core image generation shared by the UI command and the control-server tool
+/// dispatch — harness-driven generation takes exactly the cloud/local routing
+/// the UI uses. `app` is optional: None suppresses progress/log events (the
+/// tool path passes the app handle via AppState.app_handle).
+pub async fn generate_image_core(
+    app: Option<&AppHandle>,
+    state: &std::sync::Arc<AppState>,
+    args: GenerateImageArgs,
+) -> Result<GeneratedImageResult, String> {
     let session = state.session.lock().clone();
     let model = args.model.unwrap_or_else(|| if session.source == "local" { "sd-xl".to_string() } else { "dall-e-3".to_string() });
 
@@ -977,10 +1226,25 @@ pub async fn generate_image(
         // Local path: lazily start the sd-server sidecar (download-on-first-
         // run + checksum via sidecar::bootstrap), then generate. Child output
         // and bootstrap progress stream into the sidecar log drawer.
+        let Some(app) = app else {
+            return Ok(GeneratedImageResult {
+                source: "local".to_string(),
+                url: None,
+                revised_prompt: None,
+                error: Some("local generation requires the app handle (unavailable)".to_string()),
+            });
+        };
         let cfg = state.config.lock().clone();
         let sup = state.sd.clone();
         let bin = cfg.sd_binary_path.clone();
         let models_dir = cfg.sd_models_dir.clone();
+        // Honour the user's configured GPU flavor (was ignored — always
+        // defaulted to Cpu, downloading the wrong build for CUDA machines).
+        let flavor = match cfg.sd_gpu_backend {
+            crate::config::SdGpuBackend::Cuda => crate::sd::SdGpuBackend::Cuda,
+            crate::config::SdGpuBackend::Vulkan => crate::sd::SdGpuBackend::Vulkan,
+            crate::config::SdGpuBackend::Cpu => crate::sd::SdGpuBackend::Cpu,
+        };
         let progress_app = app.clone();
         let mut on_progress = move |m: &str| {
             let _ = progress_app.emit(
@@ -1002,7 +1266,7 @@ pub async fn generate_image(
             .ensure_running(
                 &bin,
                 Path::new(&models_dir),
-                crate::sd::SdGpuBackend::default(),
+                flavor,
                 Some(sup_ref),
                 &mut on_progress,
             )

@@ -7,57 +7,56 @@
  * harness picker calls set_harness; "Start with a local model" sets source=local.
  */
 
-import { useState } from "react";
-import { useStore } from "../lib/store";
-
+import {useState} from 'react'
+import {useStore} from '../lib/store'
 
 export function OnboardingScreen() {
-  const saveApiKey = useStore((s) => s.saveApiKey);
-  const setSource = useStore((s) => s.setSource);
-  const setHarness = useStore((s) => s.setHarness);
-  const harnesses = useStore((s) => s.harnesses) ?? [];
-  const session = useStore((s) => s.session);
-  const newProject = useStore((s) => s.newProject);
+  const saveApiKey = useStore((s) => s.saveApiKey)
+  const setSource = useStore((s) => s.setSource)
+  const setHarness = useStore((s) => s.setHarness)
+  const harnesses = useStore((s) => s.harnesses) ?? []
+  const session = useStore((s) => s.session)
+  const newProject = useStore((s) => s.newProject)
 
-  const [key, setKey] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [key, setKey] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
 
   const connectCloud = async () => {
-    setBusy(true);
-    setErr(null);
+    setBusy(true)
+    setErr(null)
     try {
-      if (key.trim()) await saveApiKey(key.trim());
-      await setSource("cloud");
+      if (key.trim()) await saveApiKey(key.trim())
+      await setSource('cloud')
     } catch (e) {
-      setErr(String(e));
+      setErr(String(e))
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
-  };
+  }
 
   const startLocal = async () => {
-    setBusy(true);
-    setErr(null);
+    setBusy(true)
+    setErr(null)
     try {
-      await setSource("local");
+      await setSource('local')
     } catch (e) {
-      setErr(String(e));
+      setErr(String(e))
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
-  };
+  }
 
   const startBlankProject = async () => {
-    setBusy(true);
+    setBusy(true)
     try {
-      await newProject("My first video", ".");
+      await newProject('My first video', '.')
     } catch (e) {
-      setErr(String(e));
+      setErr(String(e))
     } finally {
-      setBusy(false);
+      setBusy(false)
     }
-  };
+  }
 
   return (
     <div className="flex h-screen flex-col items-center justify-center bg-canvas p-8 text-ink">
@@ -69,7 +68,9 @@ export function OnboardingScreen() {
       <div className="grid w-full max-w-2xl grid-cols-2 gap-4">
         <div className="rounded-xl border border-line-soft bg-panel p-5 shadow-[var(--shadow-xs)] transition-colors hover:border-line">
           <h3 className="mb-1 text-sm font-semibold text-ink-strong">Connect Navya Cloud</h3>
-          <p className="mb-3 text-[13px] text-ink-muted">Paste your API key to use hosted models.</p>
+          <p className="mb-3 text-[13px] text-ink-muted">
+            Paste your API key to use hosted models.
+          </p>
           <input
             type="password"
             className="input mb-3"
@@ -78,13 +79,15 @@ export function OnboardingScreen() {
             onChange={(e) => setKey(e.target.value)}
           />
           <button className="btn btn-primary w-full" disabled={busy} onClick={connectCloud}>
-            {busy ? "Connecting…" : "Connect →"}
+            {busy ? 'Connecting…' : 'Connect →'}
           </button>
         </div>
 
         <div className="flex flex-col rounded-xl border border-line-soft bg-panel p-5 shadow-[var(--shadow-xs)] transition-colors hover:border-line">
           <h3 className="mb-1 text-sm font-semibold text-ink-strong">Start with a local model</h3>
-          <p className="mb-3 flex-1 text-[13px] text-ink-muted">Run fully offline with llama.cpp + sd-server.</p>
+          <p className="mb-3 flex-1 text-[13px] text-ink-muted">
+            Run fully offline with llama.cpp + sd-server.
+          </p>
           <button className="btn w-full" disabled={busy} onClick={startLocal}>
             Use local →
           </button>
@@ -92,7 +95,7 @@ export function OnboardingScreen() {
       </div>
 
       <div className="mt-5 text-center text-[13px] text-ink-muted">
-        …or{" "}
+        …or{' '}
         <button
           className="font-medium text-ink-strong underline decoration-line underline-offset-2 transition-colors hover:decoration-ink-strong"
           onClick={startBlankProject}
@@ -108,11 +111,13 @@ export function OnboardingScreen() {
           <button
             key={h.id}
             onClick={() => void setHarness(h.id)}
-            className={`chip mono ${session?.harness === h.id ? "is-active" : ""}`}
+            className={`chip mono ${session?.harness === h.id ? 'is-active' : ''}`}
             disabled={!h.available}
-            title={h.available ? "installed" : "not installed on PATH"}
+            title={h.available ? 'installed' : 'not installed on PATH'}
           >
-            <span className={`text-[9px] ${h.available ? (session?.harness === h.id ? "" : "text-ok") : "text-ink-faint"}`}>
+            <span
+              className={`text-[9px] ${h.available ? (session?.harness === h.id ? '' : 'text-ok') : 'text-ink-faint'}`}
+            >
               ●
             </span>
             {h.label}
@@ -122,5 +127,5 @@ export function OnboardingScreen() {
 
       {err && <div className="mt-4 text-[13px] text-danger">⚠ {err}</div>}
     </div>
-  );
+  )
 }
