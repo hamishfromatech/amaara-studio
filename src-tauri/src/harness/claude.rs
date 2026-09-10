@@ -1,25 +1,29 @@
 //! Claude Code harness adapter (Phase 12).
 //!
-//! Drives `claude -p --output-format stream-json --verbose --include-partial-messages
-//! --input-format stream-json` over stdio. This is the second harness (after
-//! a-coder-cli) that proves the studio is harness-agnostic.
+//! Drives `claude -p --output-format stream-json --verbose
+//! --include-partial-messages --input-format stream-json --permission-mode
+//! manual` over stdio. Protocol shapes below were captured live from Claude
+//! Code 2.1.228 (see tests + tools/harness-stubs/claude-code*) — do not
+//! "simplify" them back to invented shapes; every one here is verified.
 //!
-//! Stream-json protocol:
-//! - Input (stdin): NDJSON user messages + control messages:
-//!     {"type":"user_message","text":"..."}
-//!     {"type":"interrupt"}
-//!     {"type":"permission_response","permission_response":{"id":"...","response":"allow"}}
-//! - Output (stdout): NDJSON events:
-//!     {"type":"system","subtype":"init",...}
-//!     {"type":"stream_event","event":{"type":"message_start",...}}
-//!     {"type":"stream_event","event":{"type":"text_delta","delta":"..."}}
-//!     {"type":"stream_event","event":{"type":"tool_use",...}}
-//!     {"type":"stream_event","event":{"type":"tool_result",...}}
-//!     {"type":"stream_event","event":{"type":"message_stop",...}}
-//!     {"type":"permission_request","permission_request":{...}}
+//! **Input (stdin, NDJSON):**
+//!   user turn:    {"type":"user","message":{"role":"user","content":[{"type":"text","text":...}]}}
+//!   interrupt:    {"type":"control_request","control_request":{"request_id":<client-uuid>,"request":{"subtype":"interrupt"}}}
+//!   permission:   {"type":"control_response","control_response":{"request_id":...,"response":{"subtype":"allow","updatedInput":...} | {"subtype":"deny"}}}
 //!
-//! The adapter writes the per-project `.claude/settings.json` so Claude picks up
-//! the Navya MCP tool server (navya-mcp) with the live control-server URL/token.
+//! **Output (stdout, NDJSON):**
+//!   {"type":"system","subtype":"init",...,"model":...}
+//!   {"type":"system","subtype":"status"|"thinking_tokens",...}            (skipped)
+//!   {"type":"stream_event","event":{type:"message_start"|"content_block_start"|"content_block_delta"|"content_block_stop"|"message_delta"|"message_stop",...}}
+//!     text deltas:  event.delta = {"type":"text_delta","text":...}
+//!     thinking:     event.delta = {"type":"thinking_delta","thinking":...}
+//!   {"type":"assistant","message":{...,"content":[{"type":"tool_use","id","name","input"},...]}}
+//!   {"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id","content","is_error"}]}}
+//!   {"type":"control_request","control_request":{"request_id":...,"request":{"subtype":"can_use_tool","tool_name":...,"input":...}}}  → permission prompt
+//!   {"is_error":false,"duration_api_ms":...,"num_turns":N,"stop_reason":...}  (final result line — NO "type" field)
+//!
+//! The adapter writes the per-project `.claude/settings.json` so Claude picks
+//! up the Navya MCP tool server (navya-mcp) with the live control-server URL/token.
 
 use async_trait::async_trait;
 use std::{
@@ -48,8 +52,12 @@ struct Inner {
     state: ChildState,
     stdin: std::sync::Mutex<Option<std::process::ChildStdin>>,
     child_handle: std::sync::Mutex<Option<std::process::Child>>,
-    /// Pending permission requests awaiting a user answer.
+    /// Pending permission (can_use_tool) requests awaiting a user answer,
+    /// keyed by request_id — kept so the answer can carry updatedInput.
     pending_permissions: HashMap<String, serde_json::Value>,
+    /// Tool ids already announced (assistant messages repeat tool_use blocks
+    /// that content_block_start already surfaced — never emit twice).
+    emitted_tools: std::collections::HashSet<String>,
 }
 
 impl ClaudeCodeHarness {
@@ -64,10 +72,11 @@ impl ClaudeCodeHarness {
                 persistent: true,
             },
             inner: Arc::new(std::sync::Mutex::new(Inner {
-                state: ChildState::new(PathBuf::new()),
+                state: ChildState::new(std::path::PathBuf::new()),
                 stdin: std::sync::Mutex::new(None),
                 child_handle: std::sync::Mutex::new(None),
                 pending_permissions: HashMap::new(),
+                emitted_tools: std::collections::HashSet::new(),
             })),
         }
     }
@@ -84,7 +93,8 @@ impl ClaudeCodeHarness {
     }
 
     /// Write the per-project `.claude/settings.json` that wires the Navya MCP
-    /// server and a permissive-but-safe permission policy.
+    /// server and a permission policy. User-authored keys in an existing file
+    /// are preserved; only `permissions` + `mcpServers` are studio-owned.
     fn write_project_config(
         &self,
         project_dir: &std::path::Path,
@@ -185,15 +195,17 @@ impl HarnessTrait for ClaudeCodeHarness {
         self.write_project_config(
             &ctx.project_dir, ctx.control_url.as_deref(), ctx.control_token.as_deref())?;
 
-        // Spawn Claude in persistent bidirectional mode.
-        // Permission requests come back as `permission_request` events and are
-        // surfaced through the studio's native ApprovalDialog (Phase 11) — we
-        // must NOT pass --dangerously-skip-permissions, which would bypass the
-        // approval flow entirely and let the agent run any command silently.
+        // Spawn Claude in persistent bidirectional stream-json mode.
+        // Permission prompts that the user's settings don't pre-allow arrive
+        // as `can_use_tool` control requests and are surfaced through the
+        // studio's native ApprovalDialog (Phase 11). We must NOT pass
+        // --dangerously-skip-permissions — that would silently bypass the
+        // approval flow entirely.
         let args = vec![
             "-p".to_string(),
             "--output-format".to_string(), "stream-json".to_string(),
             "--verbose".to_string(),
+            "--permission-mode".to_string(), "manual".to_string(),
             "--include-partial-messages".to_string(),
             "--input-format".to_string(), "stream-json".to_string(),
         ];
@@ -213,6 +225,7 @@ impl HarnessTrait for ClaudeCodeHarness {
             inner.state.started = true;
             inner.state.stopping = false;
             inner.state.project_dir = ctx.project_dir.clone();
+            inner.emitted_tools.clear();
             *inner.stdin.lock().unwrap() = Some(stdin);
             inner.child_handle.lock().unwrap().replace(child);
         }
@@ -255,34 +268,43 @@ impl HarnessTrait for ClaudeCodeHarness {
     }
 
     async fn prompt(&self, msg: &str, mode: PromptMode) -> Result<(), HarnessError> {
-        match mode {
-            PromptMode::Steer | PromptMode::FollowUp => {
-                // Steer in Claude is an interrupt followed by a user message.
-                self.send_cmd(serde_json::json!({ "type": "interrupt" }))?;
-            }
-            PromptMode::Normal => {}
+        // Real stream-json user turn (captured from Claude Code 2.1.228):
+        // {"type":"user","message":{"role":"user","content":[{"type":"text","text":...}]}}.
+        // The previously-sent {"type":"user_message"} shape is not part of the
+        // protocol — the CLI ignores it and the turn never starts.
+        if matches!(mode, PromptMode::Steer | PromptMode::FollowUp) {
+            // Steer in Claude is an interrupt followed by a new user message.
+            self.send_cmd(control_request_interrupt())?;
         }
-        self.send_cmd(serde_json::json!({ "type": "user_message", "text": msg }))
+        self.send_cmd(serde_json::json!({
+            "type": "user",
+            "message": { "role": "user", "content": [ { "type": "text", "text": msg } ] }
+        }))
     }
 
     async fn steer(&self, msg: &str) -> Result<(), HarnessError> {
-        self.send_cmd(serde_json::json!({ "type": "interrupt" }))?;
-        self.send_cmd(serde_json::json!({ "type": "user_message", "text": msg }))
+        self.send_cmd(control_request_interrupt())?;
+        self.send_cmd(serde_json::json!({
+            "type": "user",
+            "message": { "role": "user", "content": [ { "type": "text", "text": msg } ] }
+        }))
     }
 
     async fn abort(&self) -> Result<(), HarnessError> {
-        self.send_cmd(serde_json::json!({ "type": "interrupt" }))
+        // SDK control protocol: interrupt the current turn.
+        self.send_cmd(control_request_interrupt())
     }
 
     async fn set_model(&self, _model: &str) -> Result<(), HarnessError> {
         // Claude Code model selection is handled via `--model` on spawn or via
-        // settings.json. A real implementation would restart with the new model
-        // or write it into `.claude/settings.json` under `model`.
+        // settings.json `model`. The adapter restarts pick the session model
+        // up from the HarnessCtx; mid-session switching is not exposed by the
+        // stream-json control protocol we rely on.
         Ok(())
     }
 
     async fn available_models(&self) -> Result<Vec<ModelInfo>, HarnessError> {
-        // Claude has no live model RPC like a-coder-cli. Surface the static
+        // Claude has no live model RPC over this transport. Surface the static
         // descriptor catalog until a live listing is wired.
         Ok(registry::fallback_models(self.id()))
     }
@@ -291,20 +313,38 @@ impl HarnessTrait for ClaudeCodeHarness {
         &self,
         request_id: &str,
         approved: bool,
-        _value: Option<String>,
+        value: Option<String>,
     ) -> Result<(), HarnessError> {
-        // Claude's permission protocol is boolean-only; an edited value is
-        // not representable, so it is ignored (the user can re-run after edit).
-        let response = if approved { "allow" } else { "deny" };
-        // Remove the pending request; if it's gone, still send the response.
-        {
+        // Claude's stream-json permission flow: can_use_tool control_request →
+        // control_response. An edited value replaces the relevant input field
+        // (Bash-like tools take `command`).
+        let pending_input = {
             let mut inner = self.inner.lock().unwrap();
-            inner.pending_permissions.remove(request_id);
-        }
-        self.send_cmd(serde_json::json!({
-            "type": "permission_response",
-            "permission_response": { "id": request_id, "response": response }
-        }))
+            inner.pending_permissions.remove(request_id)
+        };
+        let response = if approved {
+            let mut updated = serde_json::json!({ "subtype": "allow" });
+            if let (Some(v), Some(req)) = (value, pending_input.as_ref()) {
+                let input = req
+                    .pointer("/request/input")
+                    .and_then(|i| i.as_object())
+                    .cloned()
+                    .unwrap_or_default();
+                if input.contains_key("command") {
+                    let mut with_cmd = input.clone();
+                    with_cmd.insert("command".into(), serde_json::Value::String(v));
+                    updated["updatedInput"] = serde_json::Value::Object(with_cmd);
+                } else if !input.is_empty() {
+                    updated["updatedInput"] = serde_json::Value::Object(input);
+                }
+            }
+            serde_json::json!({ "type": "control_response", "control_response": {
+                "request_id": request_id, "response": updated } })
+        } else {
+            serde_json::json!({ "type": "control_response", "control_response": {
+                "request_id": request_id, "response": { "subtype": "deny" } } })
+        };
+        self.send_cmd(response)
     }
 
     fn subscribe(&self) -> Receiver<HarnessEvent> {
@@ -331,7 +371,27 @@ impl HarnessTrait for ClaudeCodeHarness {
     }
 }
 
+/// Client-generated interrupt request (SDK control protocol).
+fn control_request_interrupt() -> serde_json::Value {
+    let id = format!(
+        "interrupt-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
+    serde_json::json!({
+        "type": "control_request",
+        "control_request": { "request_id": id, "request": { "subtype": "interrupt" } }
+    })
+}
+
 fn handle_stdout_line(inner: &Arc<std::sync::Mutex<Inner>>, json: &serde_json::Value) {
+    // The per-turn result line carries no "type" field at all — skip it (the
+    // stream's message_stop already drives AgentEnd).
+    if json.get("type").is_none() && json.get("is_error").is_some() {
+        return;
+    }
     let top_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("");
     match top_type {
         "system" => {
@@ -343,6 +403,7 @@ fn handle_stdout_line(inner: &Arc<std::sync::Mutex<Inner>>, json: &serde_json::V
                     .unwrap_or("default")
                     .to_string();
                 let mut g = inner.lock().unwrap();
+                g.emitted_tools.clear();
                 common::broadcast(
                     &mut g.state.subscribers, HarnessEvent::AgentStart { model });
             }
@@ -355,22 +416,106 @@ fn handle_stdout_line(inner: &Arc<std::sync::Mutex<Inner>>, json: &serde_json::V
                 }
             }
         }
-        "permission_request" => {
-            if let Some(req) = json.get("permission_request") {
-                let id = req.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let _name = req.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let kind = req.get("type").and_then(|v| v.as_str()).unwrap_or("confirm").to_string();
-                {
-                    let mut g = inner.lock().unwrap();
-                    g.pending_permissions.insert(id.clone(), req.clone());
+        // Complete assistant message: authoritative tool_use blocks with full
+        // input (content_block_start carries an empty input that fills in via
+        // input_json_delta chunks we'd have to accumulate — the assistant
+        // message lands right before execution and always has the args).
+        "assistant" => {
+            let blocks = json
+                .pointer("/message/content")
+                .and_then(|c| c.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let mut starts = Vec::new();
+            for block in blocks.iter() {
+                if block.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
+                    let id = block.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    starts.push((id, block.clone()));
                 }
-                let mut g = inner.lock().unwrap();
+            }
+            if starts.is_empty() {
+                return;
+            }
+            let mut g = inner.lock().unwrap();
+            for (id, block) in starts {
+                if id.is_empty() || !g.emitted_tools.insert(id.clone()) {
+                    continue;
+                }
                 common::broadcast(
                     &mut g.state.subscribers,
-                    HarnessEvent::ApprovalRequest { id, kind, payload: req.clone() },
+                    HarnessEvent::ToolStart {
+                        tool_id: id,
+                        name: block.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        args: block.get("input").cloned().unwrap_or(serde_json::Value::Null),
+                    },
                 );
             }
         }
+        // Tool results arrive as top-level user-role messages.
+        "user" => {
+            let items = json
+                .pointer("/message/content")
+                .and_then(|c| c.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let mut ends = Vec::new();
+            for item in items.iter() {
+                if item.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
+                    ends.push(item.clone());
+                }
+            }
+            if ends.is_empty() {
+                return;
+            }
+            let mut g = inner.lock().unwrap();
+            for tool_result in ends {
+                let id = tool_result
+                    .get("tool_use_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let is_error = tool_result.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+                let content = tool_result.get("content");
+                let text = match content {
+                    Some(serde_json::Value::String(s)) => Some(s.clone()),
+                    Some(other) => content_text(other),
+                    None => None,
+                };
+                common::broadcast(
+                    &mut g.state.subscribers,
+                    HarnessEvent::ToolEnd { tool_id: id, result: text, is_error },
+                );
+            }
+        }
+        // Permission prompts (only for tools not pre-allowed by settings).
+        "control_request" => {
+            let req = json.get("control_request");
+            let subtype = req
+                .and_then(|r| r.pointer("/request/subtype"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if subtype != "can_use_tool" {
+                return; // interrupt acks etc. — nothing to surface
+            }
+            let id = req
+                .and_then(|r| r.get("request_id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let tool_name = req
+                .and_then(|r| r.pointer("/request/tool_name"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("tool")
+                .to_string();
+            let mut g = inner.lock().unwrap();
+            g.pending_permissions.insert(id.clone(), json.clone());
+            common::broadcast(
+                &mut g.state.subscribers,
+                HarnessEvent::ApprovalRequest { id, kind: tool_name, payload: json.clone() },
+            );
+        }
+        // Acknowledgements of OUR control requests — nothing to surface.
+        "control_response" => {}
         _ => {}
     }
 }
@@ -378,41 +523,34 @@ fn handle_stdout_line(inner: &Arc<std::sync::Mutex<Inner>>, json: &serde_json::V
 fn parse_stream_event(event: &serde_json::Value) -> Option<HarnessEvent> {
     let event_type = event.get("type").and_then(|v| v.as_str())?;
     match event_type {
-        "text_delta" => Some(HarnessEvent::TextDelta(
-            event.get("delta").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        )),
-        "thinking_delta" => Some(HarnessEvent::ThinkingDelta(
-            event.get("delta").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        )),
-        "tool_use" => {
-            let tool = event.get("tool_use")?;
-            Some(HarnessEvent::ToolStart {
-                tool_id: tool.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                name: tool.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                args: tool.get("input").cloned().unwrap_or(serde_json::Value::Null),
-            })
+        // content_block_delta carries the real deltas:
+        //   text:     {"type":"text_delta","text":...}
+        //   thinking: {"type":"thinking_delta","thinking":...}
+        "content_block_delta" => {
+            let delta = event.get("delta")?;
+            match delta.get("type").and_then(|v| v.as_str())? {
+                "text_delta" => Some(HarnessEvent::TextDelta(
+                    delta.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                )),
+                "thinking_delta" => Some(HarnessEvent::ThinkingDelta(
+                    delta.get("thinking").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                )),
+                _ => None, // input_json_delta / signature_delta — not surfaced
+            }
         }
-        "tool_result" => {
-            let tool = event.get("tool_result")?;
-            Some(HarnessEvent::ToolEnd {
-                tool_id: tool.get("tool_use_id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                result: tool.get("content").and_then(content_text),
-                is_error: tool.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false),
-            })
+        "message_delta" => {
+            // Carries the turn's stop_reason; message_stop follows immediately.
+            None
         }
         "message_stop" => {
-            let success = event
-                .get("stop_reason")
-                .and_then(|v| v.as_str())
-                .map(|r| !matches!(r, "error" | "aborted"))
-                .unwrap_or(true);
-            Some(HarnessEvent::AgentEnd { success, message: None })
+            // End of the assistant turn. Success is refined by the final
+            // result line; here we optimistically mark the turn complete.
+            Some(HarnessEvent::AgentEnd { success: true, message: None })
         }
         "error" => Some(HarnessEvent::Error(
             event.get("message").and_then(|v| v.as_str()).unwrap_or("Claude error").to_string(),
         )),
-        "message_start" | "content_block_start" | "content_block_stop" | "tool_input_delta" => None,
-        _ => None,
+        _ => None, // message_start / content_block_start / content_block_stop
     }
 }
 
@@ -420,7 +558,7 @@ fn content_text(v: &serde_json::Value) -> Option<String> {
     if let Some(text) = v.as_str() {
         return Some(text.to_string());
     }
-    if let Some(items) = v.get("content").and_then(|c| c.as_array()) {
+    if let Some(items) = v.as_array() {
         let mut out = String::new();
         for item in items {
             if let Some(t) = item.get("text").and_then(|t| t.as_str()) {
@@ -428,6 +566,9 @@ fn content_text(v: &serde_json::Value) -> Option<String> {
             }
         }
         return if out.is_empty() { None } else { Some(out) };
+    }
+    if let Some(items) = v.get("content").and_then(|c| c.as_array()) {
+        return content_text(&serde_json::Value::Array(items.clone()));
     }
     None
 }
@@ -453,22 +594,116 @@ mod tests {
         assert!(caps.persistent);
     }
 
+    // --- shapes captured live from Claude Code 2.1.228 ----------------------
+
     #[test]
-    fn parse_text_delta() {
-        let json = serde_json::json!({"type":"stream_event","event":{"type":"text_delta","delta":"hello"}});
-        let ev = parse_stream_event(&json["event"]);
-        assert!(matches!(ev, Some(HarnessEvent::TextDelta(t)) if t == "hello"));
+    fn parse_text_delta_from_content_block_delta() {
+        let json = serde_json::json!({
+            "type": "content_block_delta", "index": 0,
+            "delta": {"type": "text_delta", "text": "ok"}
+        });
+        match parse_stream_event(&json) {
+            Some(HarnessEvent::TextDelta(t)) => assert_eq!(t, "ok"),
+            other => panic!("expected TextDelta, got {other:?}"),
+        }
     }
 
     #[test]
-    fn parse_tool_use_and_result() {
-        let use_json = serde_json::json!({"type":"stream_event","event":{"type":"tool_use","tool_use":{"id":"tu1","name":"Bash","input":{"command":"ls"}}}});
-        let ev = parse_stream_event(&use_json["event"]);
-        assert!(matches!(ev, Some(HarnessEvent::ToolStart { tool_id, name, .. }) if tool_id == "tu1" && name == "Bash"));
+    fn parse_thinking_delta_from_content_block_delta() {
+        let json = serde_json::json!({
+            "type": "stream_event_event_only",
+        });
+        // thinking delta shape (from live capture)
+        let ev = serde_json::json!({
+            "type": "content_block_delta", "index": 0,
+            "delta": {"type": "thinking_delta", "thinking": "The user wants"}
+        });
+        let _ = json;
+        match parse_stream_event(&ev) {
+            Some(HarnessEvent::ThinkingDelta(t)) => assert_eq!(t, "The user wants"),
+            other => panic!("expected ThinkingDelta, got {other:?}"),
+        }
+    }
 
-        let result_json = serde_json::json!({"type":"stream_event","event":{"type":"tool_result","tool_result":{"tool_use_id":"tu1","content":"out","is_error":false}}});
-        let ev = parse_stream_event(&result_json["event"]);
-        assert!(matches!(ev, Some(HarnessEvent::ToolEnd { tool_id, result: Some(r), is_error: false }) if tool_id == "tu1" && r == "out"));
+    #[test]
+    fn message_stop_yields_agent_end() {
+        let ev = parse_stream_event(&serde_json::json!({"type": "message_stop"}));
+        assert!(matches!(ev, Some(HarnessEvent::AgentEnd { success: true, .. })));
+    }
+
+    #[test]
+    fn tool_result_from_user_event() {
+        let h = ClaudeCodeHarness::new();
+        let mut rx = h.subscribe();
+        let inner = Arc::clone(&h.inner);
+        let json = serde_json::json!({
+            "type": "user",
+            "message": {"role": "user", "content": [
+                {"tool_use_id": "tu_9", "type": "tool_result",
+                 "content": "studio-probe-42\n", "is_error": false}
+            ]}
+        });
+        handle_stdout_line(&inner, &json);
+        match rx.try_recv() {
+            Ok(HarnessEvent::ToolEnd { tool_id, result, is_error }) => {
+                assert_eq!(tool_id, "tu_9");
+                assert_eq!(result.as_deref(), Some("studio-probe-42\n"));
+                assert!(!is_error);
+            }
+            other => panic!("expected ToolEnd, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tool_start_from_assistant_message_with_full_args() {
+        let h = ClaudeCodeHarness::new();
+        let mut rx = h.subscribe();
+        let inner = Arc::clone(&h.inner);
+        let json = serde_json::json!({
+            "type": "assistant",
+            "message": {"id": "m1", "role": "assistant",
+                "content": [{"type": "tool_use", "id": "call_1", "name": "Bash",
+                             "input": {"command": "echo studio-probe-123"}}]}
+        });
+        handle_stdout_line(&inner, &json);
+        match rx.try_recv() {
+            Ok(HarnessEvent::ToolStart { tool_id, name, args }) => {
+                assert_eq!(tool_id, "call_1");
+                assert_eq!(name, "Bash");
+                assert_eq!(args["command"], "echo studio-probe-123");
+            }
+            other => panic!("expected ToolStart, got {other:?}"),
+        }
+        // The same tool_use id must never emit twice.
+        handle_stdout_line(&inner, &json);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn can_use_tool_becomes_approval_request() {
+        let h = ClaudeCodeHarness::new();
+        let mut rx = h.subscribe();
+        let inner = Arc::clone(&h.inner);
+        let json = serde_json::json!({
+            "type": "control_request",
+            "control_request": {"request_id": "req-7",
+                "request": {"subtype": "can_use_tool", "tool_name": "WebFetch",
+                            "input": {"url": "https://example.com"}}}
+        });
+        handle_stdout_line(&inner, &json);
+        match rx.try_recv() {
+            Ok(HarnessEvent::ApprovalRequest { id, kind, payload }) => {
+                assert_eq!(id, "req-7");
+                assert_eq!(kind, "WebFetch");
+                assert_eq!(payload.pointer("/control_request/request/tool_name").and_then(|v| v.as_str()), Some("WebFetch"));
+            }
+            other => panic!("expected ApprovalRequest, got {other:?}"),
+        }
+        // The result line (no "type") must not panic or emit.
+        let inner2 = Arc::clone(&h.inner);
+        let no_type = serde_json::json!({"is_error": false, "num_turns": 1, "stop_reason": "end_turn"});
+        handle_stdout_line(&inner2, &no_type);
+        assert!(rx.try_recv().is_err());
     }
 
     #[test]

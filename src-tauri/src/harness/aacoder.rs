@@ -59,6 +59,30 @@ struct Inner {
     pending_models: Option<oneshot::Sender<Vec<ModelInfo>>>,
 }
 
+/// The navya-studio extension (tool bridge) source, compiled into the binary
+/// so the installed app can stage it without packaging harness-pack.
+const STUDIO_EXTENSION_TS: &str = include_str!("../../../harness-pack/a-coder-cli/extensions/navya-studio.ts");
+
+/// Stage the studio tool-bridge extension into the project-local a-coder-cli
+/// extensions dir (`.a-coder-cli/extensions/`, auto-discovered by the CLI).
+/// Idempotent: rewrites only when the staged content differs.
+///
+/// Without this the harness can prompt and stream fine but can never CALL the
+/// studio's tools (render_to_video, generate_image, …) — the extension is what
+/// proxies tool calls to the control server, and project-local staging keeps
+/// the bridge scoped to the project instead of touching the global config.
+fn stage_project_extension(project_dir: &std::path::Path) {
+    let dir = project_dir.join(".a-coder-cli").join("extensions");
+    let file = dir.join("navya-studio.ts");
+    let needs_write = match std::fs::read_to_string(&file) {
+        Ok(existing) => existing != STUDIO_EXTENSION_TS,
+        Err(_) => true,
+    };
+    if needs_write && std::fs::create_dir_all(&dir).is_ok() {
+        let _ = std::fs::write(&file, STUDIO_EXTENSION_TS);
+    }
+}
+
 /// Probe whether a binary is on PATH. Returns path or None.
 pub fn which(bin: &str) -> Option<PathBuf> {
     // Test/CI override (headless e2e): drive the adapter against a stub binary
@@ -171,6 +195,10 @@ impl HarnessTrait for AaaCoderCliHarness {
                 return Ok(());
             }
         }
+
+        // Ensure the studio tool-bridge extension is staged in the project so
+        // the harness can call studio tools over the control server.
+        stage_project_extension(&ctx.project_dir);
 
         let binary = match which("a-coder-cli") {
             Some(b) => b,
@@ -906,5 +934,30 @@ mod e2e_stub {
         assert!(saw_start, "no AgentStart event");
         assert_eq!(text, "stub reply", "unexpected streamed text");
         assert_eq!(ended, Some(true), "agent should end successfully");
+    }
+}
+
+#[cfg(test)]
+mod extension_staging {
+    use super::*;
+
+    #[test]
+    fn stages_tool_bridge_extension_idempotently() {
+        let dir = std::env::temp_dir().join(format!("navya-ext-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        stage_project_extension(&dir);
+        let file = dir.join(".a-coder-cli").join("extensions").join("navya-studio.ts");
+        let staged = std::fs::read_to_string(&file).expect("extension should be staged");
+        assert_eq!(staged, STUDIO_EXTENSION_TS);
+        assert!(staged.contains("registerTool") && staged.contains("render_to_video"));
+
+        // Second stage with identical content must not churn the file
+        // (mtime-agnostic assertion: content stays byte-identical).
+        stage_project_extension(&dir);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), STUDIO_EXTENSION_TS);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
