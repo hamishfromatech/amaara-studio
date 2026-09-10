@@ -101,116 +101,126 @@
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg: #202020;
-  --bg-app: #202020;
-  --bg-panel: #353535;
-  --bg-subtle: #494949;
-  --bg-muted: #5c5c5c;
-  --bg-fill-tertiary: rgba(255, 255, 255, 0.06);
-  --bg-fill-secondary: rgba(255, 255, 255, 0.1);
-  --bg-fill: rgba(255, 255, 255, 0.16);
-  --bg-elevated: #353535;
-  --border: #5c5c5c;
-  --border-strong: #848484;
-  --border-selected: #a3a3a3;
-  --border-soft: #494949;
+  /* Cool graphite ramp — canvas is deepest, panels/elevated step up (macOS
+     dark-style elevation). Slight blue cast keeps large surfaces from going
+     muddy; borders sit near the surface fill so boxes feel quiet, not
+     chalk-outlined. */
+  --bg: #0e0f12;
+  --bg-app: #0e0f12;
+  --bg-panel: #15171b;
+  --bg-subtle: #1d2027;
+  --bg-muted: #2a2e37;
+  --bg-fill-tertiary: rgba(255, 255, 255, 0.04);
+  --bg-fill-secondary: rgba(255, 255, 255, 0.07);
+  --bg-fill: rgba(255, 255, 255, 0.12);
+  --bg-elevated: #1d2027;
+  --border: #282d36;
+  --border-strong: #3d434e;
+  --border-selected: #555c69;
+  --border-soft: #222730;
 
-  --text: #ededed;
-  --text-strong: #fafafa;
-  --text-muted: #bdbdbd;
-  --text-soft: #848484;
-  --text-faint: #5c5c5c;
+  --text: #d7d9dd;
+  --text-strong: #f4f5f7;
+  --text-muted: #9ba0a9;
+  --text-soft: #71757e;
+  --text-faint: #555a63;
 
-  --accent: #ededed;
-  --accent-contrast: #202020;
-  --accent-strong: #fafafa;
-  --accent-soft: #494949;
-  --accent-hover: #fafafa;
-  --brand: #87ea5c;
-  --brand-weak: #2f781d;
-  --brand-soft: #164111;
-  --brand-text: #adf788;
+  --accent: #e9eaee;
+  --accent-contrast: #101215;
+  --accent-strong: #f5f6f8;
+  --accent-soft: #2a2e37;
+  --accent-hover: #f5f6f8;
+  /* Brand green stays the identity, but is calmed a step and its tints are
+     mixed against the new surface so chips/highlights stop glowing. */
+  --brand: #7ede5c;
+  --brand-weak: color-mix(in srgb, #7ede5c 32%, #15171b);
+  --brand-soft: color-mix(in srgb, #7ede5c 12%, #0e0f12);
+  --brand-text: #a5e57f;
 
-  --green: #3bbf7d;
-  --green-bg: #164111;
-  --green-border: #2f781d;
-  --blue: #3aa5f0;
-  --blue-bg: color-mix(in srgb, #1a74ff 22%, #202020);
-  --blue-border: color-mix(in srgb, #3aa5f0 34%, #5c5c5c);
-  --red: #ff5e5e;
-  --red-bg: color-mix(in srgb, #f04142 24%, #202020);
-  --red-border: color-mix(in srgb, #ff5e5e 34%, #5c5c5c);
-  --amber: #ffc740;
-  --amber-bg: color-mix(in srgb, #ffba12 22%, #202020);
+  --green: #3ec47a;
+  --green-bg: color-mix(in srgb, #3ec47a 14%, #0e0f12);
+  --green-border: color-mix(in srgb, #3ec47a 38%, #15171b);
+  --blue: #5aa7f2;
+  --blue-bg: color-mix(in srgb, #1a74ff 16%, #0e0f12);
+  --blue-border: color-mix(in srgb, #5aa7f2 36%, #1d2027);
+  --red: #f26462;
+  --red-bg: color-mix(in srgb, #f04142 16%, #0e0f12);
+  --red-border: color-mix(in srgb, #f26462 36%, #1d2027);
+  --amber: #ecb84e;
+  --amber-bg: color-mix(in srgb, #ffba12 16%, #0e0f12);
 
-  --shadow-xs: 0 1px 0 rgba(0, 0, 0, 0.2);
+  --scrim: rgba(0, 0, 0, 0.55);
+
+  --shadow-xs: 0 1px 0 rgba(0, 0, 0, 0.35);
   --shadow-sm:
-    0 1px 2px rgba(0, 0, 0, 0.3),
-    0 1px 3px rgba(0, 0, 0, 0.2);
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 1px 3px rgba(0, 0, 0, 0.25);
   --shadow-md:
-    0 6px 24px rgba(0, 0, 0, 0.4),
-    0 2px 6px rgba(0, 0, 0, 0.25);
+    0 6px 24px rgba(0, 0, 0, 0.5),
+    0 2px 6px rgba(0, 0, 0, 0.3);
   --shadow-lg:
-    0 24px 60px rgba(0, 0, 0, 0.6),
-    0 8px 16px rgba(0, 0, 0, 0.3);
+    0 24px 60px rgba(0, 0, 0, 0.65),
+    0 8px 16px rgba(0, 0, 0, 0.35);
 }
 
 /* System mode: follow OS preference when no explicit data-theme is set. */
 @media (prefers-color-scheme: dark) {
   html:not([data-theme]) {
     color-scheme: dark;
-    --bg: #202020;
-    --bg-app: #202020;
-    --bg-panel: #353535;
-    --bg-subtle: #494949;
-    --bg-muted: #5c5c5c;
-    --bg-fill-tertiary: rgba(255, 255, 255, 0.06);
-    --bg-fill-secondary: rgba(255, 255, 255, 0.1);
-    --bg-fill: rgba(255, 255, 255, 0.16);
-    --bg-elevated: #353535;
-    --border: #5c5c5c;
-    --border-strong: #848484;
-    --border-selected: #a3a3a3;
-    --border-soft: #494949;
+    --bg: #0e0f12;
+    --bg-app: #0e0f12;
+    --bg-panel: #15171b;
+    --bg-subtle: #1d2027;
+    --bg-muted: #2a2e37;
+    --bg-fill-tertiary: rgba(255, 255, 255, 0.04);
+    --bg-fill-secondary: rgba(255, 255, 255, 0.07);
+    --bg-fill: rgba(255, 255, 255, 0.12);
+    --bg-elevated: #1d2027;
+    --border: #282d36;
+    --border-strong: #3d434e;
+    --border-selected: #555c69;
+    --border-soft: #222730;
 
-    --text: #ededed;
-    --text-strong: #fafafa;
-    --text-muted: #bdbdbd;
-    --text-soft: #848484;
-    --text-faint: #5c5c5c;
+    --text: #d7d9dd;
+    --text-strong: #f4f5f7;
+    --text-muted: #9ba0a9;
+    --text-soft: #71757e;
+    --text-faint: #555a63;
 
-    --accent: #ededed;
-    --accent-contrast: #202020;
-    --accent-strong: #fafafa;
-    --accent-soft: #494949;
-    --accent-hover: #fafafa;
-    --brand: #87ea5c;
-    --brand-weak: #2f781d;
-    --brand-soft: #164111;
-    --brand-text: #adf788;
+    --accent: #e9eaee;
+    --accent-contrast: #101215;
+    --accent-strong: #f5f6f8;
+    --accent-soft: #2a2e37;
+    --accent-hover: #f5f6f8;
+    --brand: #7ede5c;
+    --brand-weak: color-mix(in srgb, #7ede5c 32%, #15171b);
+    --brand-soft: color-mix(in srgb, #7ede5c 12%, #0e0f12);
+    --brand-text: #a5e57f;
 
-    --green: #3bbf7d;
-    --green-bg: #164111;
-    --green-border: #2f781d;
-    --blue: #3aa5f0;
-    --blue-bg: color-mix(in srgb, #1a74ff 22%, #202020);
-    --blue-border: color-mix(in srgb, #3aa5f0 34%, #5c5c5c);
-    --red: #ff5e5e;
-    --red-bg: color-mix(in srgb, #f04142 24%, #202020);
-    --red-border: color-mix(in srgb, #ff5e5e 34%, #5c5c5c);
-    --amber: #ffc740;
-    --amber-bg: color-mix(in srgb, #ffba12 22%, #202020);
+    --green: #3ec47a;
+    --green-bg: color-mix(in srgb, #3ec47a 14%, #0e0f12);
+    --green-border: color-mix(in srgb, #3ec47a 38%, #15171b);
+    --blue: #5aa7f2;
+    --blue-bg: color-mix(in srgb, #1a74ff 16%, #0e0f12);
+    --blue-border: color-mix(in srgb, #5aa7f2 36%, #1d2027);
+    --red: #f26462;
+    --red-bg: color-mix(in srgb, #f04142 16%, #0e0f12);
+    --red-border: color-mix(in srgb, #f26462 36%, #1d2027);
+    --amber: #ecb84e;
+    --amber-bg: color-mix(in srgb, #ffba12 16%, #0e0f12);
 
-    --shadow-xs: 0 1px 0 rgba(0, 0, 0, 0.2);
+    --scrim: rgba(0, 0, 0, 0.55);
+
+    --shadow-xs: 0 1px 0 rgba(0, 0, 0, 0.35);
     --shadow-sm:
-      0 1px 2px rgba(0, 0, 0, 0.3),
-      0 1px 3px rgba(0, 0, 0, 0.2);
+      0 1px 2px rgba(0, 0, 0, 0.4),
+      0 1px 3px rgba(0, 0, 0, 0.25);
     --shadow-md:
-      0 6px 24px rgba(0, 0, 0, 0.4),
-      0 2px 6px rgba(0, 0, 0, 0.25);
+      0 6px 24px rgba(0, 0, 0, 0.5),
+      0 2px 6px rgba(0, 0, 0, 0.3);
     --shadow-lg:
-      0 24px 60px rgba(0, 0, 0, 0.6),
-      0 8px 16px rgba(0, 0, 0, 0.3);
+      0 24px 60px rgba(0, 0, 0, 0.65),
+      0 8px 16px rgba(0, 0, 0, 0.35);
   }
 }
 
@@ -610,11 +620,11 @@ code {
     padding-right: 24px;
   }
   [data-theme="dark"] select.input {
-    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%239a9690' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='3 5 6 8 9 5'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%239ba0a9' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='3 5 6 8 9 5'/%3E%3C/svg%3E");
   }
   @media (prefers-color-scheme: dark) {
     html:not([data-theme]) select.input {
-      background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%239a9690' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='3 5 6 8 9 5'/%3E%3C/svg%3E");
+      background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%239ba0a9' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='3 5 6 8 9 5'/%3E%3C/svg%3E");
     }
   }
 
@@ -754,7 +764,9 @@ code {
     position: fixed;
     inset: 0;
     z-index: 50;
-    background: rgba(28, 27, 26, 0.35);
+    /* Light theme keeps its warm scrim; dark themes use a token so the
+       overlay reads as depth, not gray haze. */
+    background: var(--scrim, rgba(28, 27, 26, 0.35));
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
     display: flex;
