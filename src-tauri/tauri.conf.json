@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "build": {
     "beforeDevCommand": "pnpm --filter ./ui dev",
+    "beforeBuildCommand": "pnpm --filter ./ui build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../ui/dist"
   },
