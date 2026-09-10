@@ -105,6 +105,21 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
+            // Repair project dirs recorded by older builds — the onboarding
+            // "blank project" used to store a literal ".", which made every
+            // project-dir consumer (harness spawn, render, preview) resolve
+            // the app's working directory instead of a real project tree.
+            {
+                let base = data_dir.join("projects");
+                match state.store.lock().repair_project_dirs(|row| base.join(&row.id)) {
+                    Ok(repaired) if !repaired.is_empty() => {
+                        tracing::info!("repaired {} project dir(s) from placeholder paths", repaired.len());
+                    }
+                    Err(e) => tracing::warn!("project dir repair failed: {e}"),
+                    _ => {}
+                }
+            }
+
             // Give non-command callers (control-server tool dispatch) access
             // to the handle for event emission + path resolution.
             let _ = state.app_handle.set(handle.clone());
@@ -144,6 +159,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             commands::new_project,
             commands::list_projects,
             commands::open_project,
+            commands::delete_project,
             commands::set_model,
             commands::set_source,
             commands::set_harness,

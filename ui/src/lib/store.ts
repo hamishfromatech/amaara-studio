@@ -105,6 +105,8 @@ interface AppState extends Partial<StateSnapshot> {
 
   newProject: (name: string, dir: string) => Promise<void>
   openProject: (projectId: string) => Promise<void>
+  /** Delete a project (metadata only — files on disk stay). */
+  deleteProject: (projectId: string) => Promise<void>
 
   saveApiKey: (key: string) => Promise<void>
   clearApiKey: () => Promise<void>
@@ -414,6 +416,36 @@ export const useStore = create<AppState>((set, get) => ({
     })
     await get().refreshProjectContext()
     useStore.getState().announce(target ? `Opened ${target.name}` : 'Project opened')
+  },
+
+  deleteProject: async (projectId) => {
+    const wasActive = get().session?.current_project_id === projectId
+    if (wasActive) {
+      // Stop a harness running inside that project before removing it.
+      void get().abort()
+    }
+    try {
+      const deleted = await Commands.deleteProject(projectId)
+      if (!deleted) {
+        useStore.getState().announce('Project not found')
+        return
+      }
+      if (wasActive) {
+        set({
+          chat: [],
+          assets: [],
+          timeline: null,
+          selectedClipId: null,
+          pendingApproval: null,
+          queuedPrompts: [],
+        })
+      }
+      useStore.getState().announce('Project deleted')
+      await get().refreshProjectContext()
+    } catch (e) {
+      useStore.getState().announce('Could not delete project')
+      set({error: String(e)})
+    }
   },
 
   saveApiKey: async (key) => {

@@ -133,11 +133,54 @@ pub async fn list_projects(state: State<'_, std::sync::Arc<AppState>>) -> Result
 }
 
 #[tauri::command]
+pub async fn delete_project(
+    app: AppHandle,
+    state: State<'_, std::sync::Arc<AppState>>,
+    project_id: String,
+) -> Result<bool, String> {
+    let was_active = state.session.lock().current_project_id.as_deref() == Some(project_id.as_str());
+    if was_active {
+        // Stop a harness running inside that project before removing it.
+        let harness = {
+            let harness_id = state.session.lock().harness.clone();
+            let registry = state.harness_registry.lock();
+            registry.get(&harness_id)
+        };
+        if let Some(h) = harness {
+            let _ = h.stop().await;
+        }
+    }
+    let deleted = state
+        .store
+        .lock()
+        .delete_project(&project_id)
+        .map_err(|e| e.to_string())?;
+    if deleted {
+        if was_active {
+            let mut s = state.session.lock();
+            if s.current_project_id.as_deref() == Some(project_id.as_str()) {
+                s.current_project_id = None;
+            }
+        }
+        let _ = app.emit(
+            "studio://event",
+            StudioEvent::Project(ProjectEvent::Deleted { project_id }),
+        );
+    }
+    Ok(deleted)
+}
+
+#[tauri::command]
 pub async fn open_project(
     app: AppHandle,
     state: State<'_, std::sync::Arc<AppState>>,
     project_id: String,
 ) -> Result<(), String> {
+    // Repair any broken project dir records before resolving (older builds
+    // stored a literal "." for onboarding projects, which made every
+    // project-dir consumer resolve the app's CWD).
+    repair_project_dirs(&app, &state)?;
+
     let store = state.store.lock();
     let projects = store.list_projects().map_err(|e| e.to_string())?;
     let proj = projects
@@ -1431,6 +1474,29 @@ fn chrono_like_id() -> u128 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0)
+}
+
+/// Normalize broken project-dir records (relative/placeholder/missing).
+/// Relative paths relocate under `<app_data>/projects/<id>`; missing absolute
+/// dirs are re-created in place. Returns the rewritten rows (logged).
+pub fn repair_project_dirs(
+    app: &AppHandle,
+    state: &std::sync::Arc<AppState>,
+) -> Result<Vec<crate::store::ProjectRow>, String> {
+    let base = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("projects");
+    let repaired = state
+        .store
+        .lock()
+        .repair_project_dirs(|row| base.join(&row.id))
+        .map_err(|e| e.to_string())?;
+    for row in &repaired {
+        tracing::info!("repaired project {} dir -> {}", row.id, row.dir);
+    }
+    Ok(repaired)
 }
 
 /// Resolve the on-disk directory of the session's current project.

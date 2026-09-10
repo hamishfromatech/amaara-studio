@@ -1418,6 +1418,37 @@ code {
     align-items: center;
     gap: 10px;
   }
+  .project-card__delete {
+    flex-shrink: 0;
+    align-self: flex-start;
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-faint);
+    font-size: 11px;
+    cursor: pointer;
+    transition:
+      color var(--dur-quick) var(--ease-out),
+      background-color var(--dur-quick) var(--ease-out);
+  }
+  .project-card__delete:hover,
+  .project-card__delete:focus-visible {
+    color: var(--red);
+    background: var(--red-bg);
+  }
+  .project-card__delete.is-armed {
+    width: auto;
+    padding: 0 8px;
+    height: 22px;
+    color: var(--red);
+    background: var(--red-bg);
+    border: 1px solid var(--red-border);
+    font-weight: 600;
+  }
   .project-card__swatch {
     width: 36px;
     height: 36px;

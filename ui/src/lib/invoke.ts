@@ -207,6 +207,7 @@ export const Commands = {
   newProject: (name: string, dir: string) => invoke<ProjectRow>('new_project', {args: {name, dir}}),
   listProjects: () => invoke<ProjectRow[]>('list_projects'),
   openProject: (projectId: string) => invoke<void>('open_project', {projectId}),
+  deleteProject: (projectId: string) => invoke<boolean>('delete_project', {projectId}),
 
   setModel: (model: string) => invoke<Session>('set_model', {model}),
   setSource: (source: string) => invoke<Session>('set_source', {source}),

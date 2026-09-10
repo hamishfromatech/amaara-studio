@@ -83,6 +83,7 @@ pub enum ProjectEvent {
     Switched { project_id: String, name: String },
     Updated { project_id: String, changed_at: i64 },
     AssetAdded { project_id: String, asset_id: String, path: String },
+    Deleted { project_id: String },
 }
 
 /// HyperFrames preview-server lifecycle (Timeline tab, Phase 10). The server
@@ -178,6 +179,7 @@ impl ProjectEvent {
             ProjectEvent::Switched { project_id, name } => format!("project:switch[{project_id}] {name}"),
             ProjectEvent::Updated { changed_at, .. } => format!("project:update@{changed_at}"),
             ProjectEvent::AssetAdded { project_id, asset_id, .. } => format!("project:asset[{project_id}:{asset_id}]"),
+            ProjectEvent::Deleted { project_id } => format!("project:delete[{project_id}]"),
         }
     }
 }

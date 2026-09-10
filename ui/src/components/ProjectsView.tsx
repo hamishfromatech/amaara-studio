@@ -18,10 +18,13 @@ export function ProjectsView() {
   const session = useStore((s) => s.session)
   const newProject = useStore((s) => s.newProject)
   const openProject = useStore((s) => s.openProject)
+  const deleteProject = useStore((s) => s.deleteProject)
 
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
   const [dir, setDir] = useState('')
+  /** Project id armed for delete (two-click confirm, no native dialog). */
+  const [confirmId, setConfirmId] = useState<string | null>(null)
 
   return (
     <div className="entry-main__scroll-inner">
@@ -111,13 +114,18 @@ export function ProjectsView() {
             <>
               {projects.map((p) => {
                 const isActive = session?.current_project_id === p.id
+                const armed = confirmId === p.id
                 return (
-                  <button
+                  <div
                     key={p.id}
-                    type="button"
                     className={`project-card ${isActive ? 'is-active' : ''}`}
-                    onClick={() => void openProject(p.id)}
+                    role="button"
+                    tabIndex={0}
                     aria-current={isActive ? 'true' : undefined}
+                    onClick={() => armed ? setConfirmId(null) : void openProject(p.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !armed) void openProject(p.id)
+                    }}
                   >
                     <div className="project-card__head">
                       <div
@@ -131,12 +139,29 @@ export function ProjectsView() {
                           {p.dir}
                         </div>
                       </div>
+                      <button
+                        type="button"
+                        className={`project-card__delete ${armed ? 'is-armed' : ''}`}
+                        title={armed ? 'Click again to delete this project' : 'Delete project (files on disk are kept)'}
+                        aria-label={`Delete project ${p.name}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (armed) {
+                            void deleteProject(p.id)
+                            setConfirmId(null)
+                          } else {
+                            setConfirmId(p.id)
+                          }
+                        }}
+                      >
+                        {armed ? 'delete?' : '✕'}
+                      </button>
                     </div>
                     <div className="project-card__meta">
                       <span className="project-card__chip">{p.harness}</span>
                       <span>{formatRelative(p.created_at_ms)}</span>
                     </div>
-                  </button>
+                  </div>
                 )
               })}
 
