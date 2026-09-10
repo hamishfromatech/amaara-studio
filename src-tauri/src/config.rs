@@ -10,39 +10,46 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// UI density: comfortable (default) or compact for laptops.
+/// Wire contract: serialized lowercase — the TS side compares 'comfortable' |
+/// 'compact'. PascalCase aliases keep pre-rename config.json files parsing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[derive(Default)]
+#[serde(rename_all = "lowercase")]
 pub enum Density {
-    #[serde(alias = "comfortable")]
+    #[serde(alias = "Comfortable")]
     #[default]
     Comfortable,
-    #[serde(alias = "compact")]
+    #[serde(alias = "Compact")]
     Compact,
 }
 
 
 /// Theme mode. Dark is the studio default (design.md §11).
+/// Wire contract: serialized lowercase ('dark' | 'light'); see Density.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[derive(Default)]
+#[serde(rename_all = "lowercase")]
 pub enum ThemeMode {
-    #[serde(alias = "dark")]
+    #[serde(alias = "Dark")]
     #[default]
     Dark,
-    #[serde(alias = "light")]
+    #[serde(alias = "Light")]
     Light,
 }
 
 
 /// GPU build flavor selected at BUNDLE time (not runtime) — CUDA/Vulkan/CPU.
+/// Wire contract: serialized lowercase ('cuda' | 'vulkan' | 'cpu'); see Density.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[derive(Default)]
+#[serde(rename_all = "lowercase")]
 pub enum SdGpuBackend {
-    #[serde(alias = "cuda")]
+    #[serde(alias = "Cuda")]
     #[default]
     Cuda,
-    #[serde(alias = "vulkan")]
+    #[serde(alias = "Vulkan")]
     Vulkan,
-    #[serde(alias = "cpu")]
+    #[serde(alias = "Cpu")]
     Cpu,
 }
 
@@ -485,5 +492,34 @@ mod tests {
     fn gpu_backend_serde() {
         let cfg: NavyaConfig = serde_json::from_str(r#"{ "sd_gpu_backend": "vulkan" }"#).unwrap();
         assert_eq!(cfg.sd_gpu_backend, SdGpuBackend::Vulkan);
+    }
+
+    /// Wire contract (UI ↔ Rust): every enum crossing the IPC boundary must
+    /// serialize to the exact lowercase strings the TS side compares. A
+    /// PascalCase leak here silently breaks the theme/density/GPU toggles and
+    /// any `=== 'x'` comparison in the UI (Shell quick-toggle, Settings rows,
+    /// queue-row states) while every Rust-side test still passes.
+    #[test]
+    fn wire_contract_enums_serialize_lowercase() {
+        assert_eq!(serde_json::to_string(&ThemeMode::Dark).unwrap(), "\"dark\"");
+        assert_eq!(serde_json::to_string(&ThemeMode::Light).unwrap(), "\"light\"");
+        assert_eq!(serde_json::to_string(&Density::Comfortable).unwrap(), "\"comfortable\"");
+        assert_eq!(serde_json::to_string(&Density::Compact).unwrap(), "\"compact\"");
+        assert_eq!(serde_json::to_string(&SdGpuBackend::Cuda).unwrap(), "\"cuda\"");
+        assert_eq!(serde_json::to_string(&SdGpuBackend::Vulkan).unwrap(), "\"vulkan\"");
+        assert_eq!(serde_json::to_string(&SdGpuBackend::Cpu).unwrap(), "\"cpu\"");
+    }
+
+    #[test]
+    fn wire_contract_enums_still_parse_legacy_pascal_case() {
+        // Configs written by older builds carry PascalCase variants; aliases
+        // must keep them parsing so users don't silently lose settings.
+        let old: NavyaConfig = serde_json::from_str(
+            r#"{ "theme": "Dark", "density": "Comfortable", "sd_gpu_backend": "Cuda" }"#,
+        )
+        .unwrap();
+        assert_eq!(old.theme, ThemeMode::Dark);
+        assert_eq!(old.density, Density::Comfortable);
+        assert_eq!(old.sd_gpu_backend, SdGpuBackend::Cuda);
     }
 }

@@ -8,31 +8,37 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Render quality options.
+/// Wire contract: serialized lowercase — the TS side compares 'draft' | 'high'
+/// (and RenderStatus drives the queue-row states). PascalCase aliases keep
+/// rows persisted before the rename deserializing.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[derive(Default)]
+#[serde(rename_all = "lowercase")]
 pub enum RenderQuality {
-    #[serde(alias = "draft")]
+    #[serde(alias = "Draft")]
     #[default]
     Draft,
-    #[serde(alias = "high")]
+    #[serde(alias = "High")]
     High,
 }
 
 
 /// Render target options.
+/// Wire contract: serialized lowercase; see RenderQuality.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[derive(Default)]
+#[serde(rename_all = "lowercase")]
 pub enum RenderTarget {
-    #[serde(alias = "local")]
+    #[serde(alias = "Local")]
     #[default]
     Local,
-    #[serde(alias = "docker")]
+    #[serde(alias = "Docker")]
     Docker,
-    #[serde(alias = "cloud")]
+    #[serde(alias = "Cloud")]
     Cloud,
-    #[serde(alias = "lambda")]
+    #[serde(alias = "Lambda")]
     Lambda,
-    #[serde(alias = "cloudrun")]
+    #[serde(alias = "CloudRun")]
     CloudRun,
 }
 
@@ -55,12 +61,20 @@ pub struct RenderJob {
     pub error: Option<String>,
 }
 
+/// Wire contract: serialized lowercase — the render queue UI compares
+/// 'queued' | 'running' | 'done' | 'failed' | 'cancelled'; see RenderQuality.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "lowercase")]
 pub enum RenderStatus {
+    #[serde(alias = "Queued")]
     Queued,
+    #[serde(alias = "Running")]
     Running,
+    #[serde(alias = "Done")]
     Done,
+    #[serde(alias = "Failed")]
     Failed,
+    #[serde(alias = "Cancelled")]
     Cancelled,
 }
 
@@ -151,6 +165,45 @@ fn current_time_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Wire contract (UI ↔ Rust): render enums serialize to the exact
+    /// lowercase strings RendersTab/store.ts compare ('queued' | 'running' |
+    /// 'done' | 'failed' | 'cancelled', targets, qualities). See config.rs's
+    /// matching test for the config-side contract.
+    #[test]
+    fn wire_contract_render_enums_serialize_lowercase() {
+        for (v, s) in [
+            (RenderStatus::Queued, "queued"),
+            (RenderStatus::Running, "running"),
+            (RenderStatus::Done, "done"),
+            (RenderStatus::Failed, "failed"),
+            (RenderStatus::Cancelled, "cancelled"),
+        ] {
+            assert_eq!(serde_json::to_string(&v).unwrap(), format!("\"{s}\""));
+        }
+        for (v, s) in [
+            (RenderTarget::Local, "local"),
+            (RenderTarget::Docker, "docker"),
+            (RenderTarget::Cloud, "cloud"),
+            (RenderTarget::Lambda, "lambda"),
+            (RenderTarget::CloudRun, "cloudrun"),
+        ] {
+            assert_eq!(serde_json::to_string(&v).unwrap(), format!("\"{s}\""));
+        }
+        for (v, s) in [(RenderQuality::Draft, "draft"), (RenderQuality::High, "high")] {
+            assert_eq!(serde_json::to_string(&v).unwrap(), format!("\"{s}\""));
+        }
+        // Rows persisted by older builds (PascalCase via the old derives)
+        // still parse.
+        assert_eq!(
+            serde_json::from_str::<RenderStatus>("\"Running\"").unwrap(),
+            RenderStatus::Running
+        );
+        assert_eq!(
+            serde_json::from_str::<RenderTarget>("\"CloudRun\"").unwrap(),
+            RenderTarget::CloudRun
+        );
+    }
 
     #[test]
     fn render_queue_add_and_list() {
