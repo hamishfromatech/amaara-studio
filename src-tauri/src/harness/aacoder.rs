@@ -57,7 +57,18 @@ struct Inner {
     pending_ui: HashMap<String, serde_json::Value>,
     /// Pending get_available_models round-trip.
     pending_models: Option<oneshot::Sender<Vec<ModelInfo>>>,
+    /// Last successful get_available_models result + fetch time. The CLI needs
+    /// ~20s to boot its MCP servers before it can answer, so the model picker
+    /// reuses this cache instead of re-paying the boot cost on every refresh.
+    models_cache: Option<(std::time::Instant, Vec<ModelInfo>)>,
 }
+
+/// get_available_models waits for the CLI to boot its MCP servers — measured
+/// ~20-60s cold on a real install (MCP boot); 90s leaves headroom (the old 20s timeout
+/// made the picker fall back to the static catalog almost every time).
+const MODELS_RPC_TIMEOUT: Duration = Duration::from_secs(90);
+/// Successful model listings are cached for the picker for this long.
+const MODELS_CACHE_TTL: Duration = Duration::from_secs(300);
 
 /// The navya-studio extension (tool bridge) source, compiled into the binary
 /// so the installed app can stage it without packaging harness-pack.
@@ -134,6 +145,7 @@ impl AaaCoderCliHarness {
                 subscribers: Vec::new(),
                 pending_ui: HashMap::new(),
                 pending_models: None,
+                models_cache: None,
             })),
         }
     }
@@ -318,9 +330,17 @@ impl HarnessTrait for AaaCoderCliHarness {
     }
 
     async fn available_models(&self) -> Result<Vec<ModelInfo>, HarnessError> {
+        // A fresh cache answers instantly — the RPC itself costs the CLI's
+        // whole MCP-server boot (~20s), which made every picker refresh feel
+        // dead and usually hit the old 20s timeout.
+        if let Some((at, cached)) = self.inner.lock().unwrap().models_cache.clone() {
+            if at.elapsed() < MODELS_CACHE_TTL && !cached.is_empty() {
+                return Ok(cached);
+            }
+        }
         // Real round-trip: send get_available_models and await the response.
         // Note: the first command after spawn can take several seconds while
-        // a-coder-cli loads its MCP servers, so allow a generous timeout.
+        // a-coder-cli loads its MCP servers, hence the generous timeout.
         let (tx, rx) = oneshot::channel();
         {
             let mut inner = self.inner.lock().unwrap();
@@ -331,8 +351,14 @@ impl HarnessTrait for AaaCoderCliHarness {
         }
         self.send_cmd(serde_json::json!({ "type": "get_available_models" }))?;
 
-        match tokio::time::timeout(Duration::from_secs(20), rx).await {
-            Ok(Ok(models)) if !models.is_empty() => Ok(models),
+        match tokio::time::timeout(MODELS_RPC_TIMEOUT, rx).await {
+            Ok(Ok(models)) if !models.is_empty() => {
+                self.inner.lock().unwrap().models_cache =
+                    Some((std::time::Instant::now(), models.clone()));
+                Ok(models)
+            }
+            // Timeout/empty: fall back WITHOUT caching, so a later refresh can
+            // still pick up the real catalog once the CLI is warm.
             _ => Ok(fallback_models()),
         }
     }
@@ -959,5 +985,43 @@ mod extension_staging {
         assert_eq!(std::fs::read_to_string(&file).unwrap(), STUDIO_EXTENSION_TS);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod models_cache_tests {
+    use super::*;
+
+    #[test]
+    fn fresh_cache_answers_without_a_live_round_trip() {
+        let h = AaaCoderCliHarness::new();
+        // Not started, no stdin — the RPC path would fail with NotStarted.
+        // A fresh cache must short-circuit and return the cached catalog.
+        let cached = vec![ModelInfo {
+            id: "ollama-cloud/nemotron-3-super".into(),
+            name: Some("Ollama Cloud: nemotron-3-super".into()),
+            kind: "chat".into(),
+        }];
+        h.inner.lock().unwrap().models_cache =
+            Some((std::time::Instant::now(), cached.clone()));
+        let models = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(h.available_models())
+            .expect("cache hit");
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].id, "ollama-cloud/nemotron-3-super");
+    }
+
+    #[test]
+    fn stale_cache_does_not_short_circuit() {
+        let h = AaaCoderCliHarness::new();
+        // Expired cache: the method must fall through to the started check
+        // (NotStarted here) rather than serving stale data forever.
+        h.inner.lock().unwrap().models_cache = Some((
+            std::time::Instant::now() - MODELS_CACHE_TTL - Duration::from_secs(1),
+            vec![ModelInfo { id: "old".into(), name: None, kind: "chat".into() }],
+        ));
+        let res = tokio::runtime::Runtime::new().unwrap().block_on(h.available_models());
+        assert!(matches!(res, Err(HarnessError::NotStarted)));
     }
 }

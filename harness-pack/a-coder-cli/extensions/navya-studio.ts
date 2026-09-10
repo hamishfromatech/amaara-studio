@@ -3,12 +3,23 @@
  *
  * Registers the studio tools via pi.registerTool and proxies each call to the
  * control server's HTTP API (127.0.0.1:<port>/tool/<name>) with bearer token auth.
+ *
+ * Contract (a-coder-cli docs/extensions.md Quick Start): the default export
+ * must be a FUNCTION receiving the ExtensionAPI - `export default function (pi)`.
+ * An object export stalls the CLI's extension loader (the RPC loop never
+ * becomes ready - measured: 6.3s to answer without the extension, >150s with
+ * the broken shape).
+ *
+ * Tool execute signature: async execute(toolCallId, params, signal, onUpdate, ctx)
+ * returning { content: [{ type: "text", text }], details } - errors are
+ * returned as text content so the model can react instead of crashing the turn.
  */
 
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
+// Control server URL and token from environment (set by the harness adapter).
+const CONTROL_URL = process.env.NAVYA_CONTROL_URL || "http://127.0.0.1:8080";
+const CONTROL_TOKEN = process.env.NAVYA_CONTROL_TOKEN;
 
-// Tool definitions matching crates/navya-tools/lib.rs
+// Tool definitions matching crates/navya-tools (the control server dispatch).
 const TOOLS = [
   {
     name: "generate_image",
@@ -69,16 +80,12 @@ const TOOLS = [
   },
 ];
 
-// Control server URL and token from environment (set by harness adapter).
-const CONTROL_URL = process.env.NAVYA_CONTROL_URL || "http://127.0.0.1:8080";
-const CONTROL_TOKEN = process.env.NAVYA_CONTROL_TOKEN;
-
 /**
  * Execute a tool call via the control server HTTP API.
  */
 async function executeTool(toolName: string, args: any) {
   if (!CONTROL_TOKEN) {
-    throw new Error("NAVYA_CONTROL_TOKEN not set; ensure harness adapter is active.");
+    throw new Error("NAVYA_CONTROL_TOKEN not set; ensure the harness adapter is active.");
   }
 
   const url = `${CONTROL_URL}/tool/${toolName}`;
@@ -99,31 +106,27 @@ async function executeTool(toolName: string, args: any) {
   return res.json();
 }
 
-// Register tools with the a-coder-cli pi extension API.
-export function registerTools(pi: any) {
+export default function (pi: any) {
   for (const tool of TOOLS) {
-    const execFn = async (args: any) => {
-      try {
-        const result = await executeTool(tool.name, args);
-        return {
-          success: true,
-          data: result,
-        };
-      } catch (err: any) {
-        return {
-          success: false,
-          error: err.message,
-        };
-      }
-    };
-
     pi.registerTool({
       name: tool.name,
+      label: tool.name,
       description: tool.description,
       parameters: tool.parameters,
-      execute: execFn,
+      async execute(_toolCallId: string, params: any) {
+        try {
+          const result = await executeTool(tool.name, params);
+          return {
+            content: [{ type: "text", text: JSON.stringify(result) }],
+            details: {},
+          };
+        } catch (err: any) {
+          return {
+            content: [{ type: "text", text: `Tool ${tool.name} failed: ${err?.message ?? String(err)}` }],
+            details: {},
+          };
+        }
+      },
     });
   }
 }
-
-export default { registerTools };
