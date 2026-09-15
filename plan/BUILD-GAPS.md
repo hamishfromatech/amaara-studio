@@ -429,3 +429,21 @@ Per harness, research and pin to a `harness-pack/<harness>/SPEC.md`:
 - **2026-08-26** — FastMCP bundling + conformance research completed → `docs/research/fastmcp-bundling.md`.
 - **2026-08-26** — `navya-mcp/server.py` updated to FastMCP v4; `pyproject.toml` + `requirements.txt` pinned.
 - **2026-08-26** — `src-tauri/src/sidecar/llama.rs` restored and implemented.
+
+
+## 2026-09-15 — harness tool-support audit closed (commit 225f43a)
+Full audit of every harness/tool path found 5 gaps; all fixed:
+1. open_in_folder: advertised by amaara-mcp but missing from control dispatch
+   (every MCP-bridge call errored). Fixed: dispatch arm + a-coder extension tool.
+2. select dialogs: UI never rendered options; adapter auto-picked the first.
+   Fixed: ApprovalDialog renders the option list; chosen option relayed through
+   approve value; Rust prefers it.
+3. ThinkingDelta dropped by the UI store — now accumulated + rendered as a
+   collapsed thinking disclosure on the turn.
+4. Retry events dropped — now a system line per attempt.
+5. harness-pack a-coder-cli skills/prompts never deployed — now staged into
+   <project>/.a-coder-cli/{skills,prompts}/ with the extension.
+Known remaining (accepted for now): user-configured MCP servers in Tools view
+are stored but not injected into any harness; antigravity has no tool bridge
+(streaming-only by design); claude adapter writes the GLOBAL
+~/.claude/mcp-servers.json (documented side effect).
