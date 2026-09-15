@@ -21,13 +21,7 @@
 
 use async_trait::async_trait;
 use serde::Deserialize;
-use std::{
-    collections::HashMap,
-    io::{BufRead, Write},
-    path::PathBuf,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, mpsc::Receiver, oneshot};
 
 use crate::harness::{
@@ -56,8 +50,12 @@ struct Inner {
     /// shared flags and broadcast a false "process exited" over the new
     /// session's reply (the stale-reader bug that masked every agent reply).
     generation: u64,
-    stdin: std::sync::Mutex<Option<std::process::ChildStdin>>,
-    child_handle: std::sync::Mutex<Option<std::process::Child>>,
+    /// Async stdin queue handle (created at spawn; a forwarder task performs
+    /// the async write — the desktop-app client's shape).
+    stdin: std::sync::Mutex<Option<mpsc::Sender<String>>>,
+    /// Retained so `kill_on_drop` keeps the CLI alive for our lifetime and
+    /// reaps it when the handle drops (the desktop-app client does the same).
+    child_handle: std::sync::Mutex<Option<tokio::process::Child>>,
     /// Every live subscriber gets every event (event pump + future consumers).
     subscribers: Vec<mpsc::Sender<HarnessEvent>>,
     /// Dialog extension_ui_requests awaiting an answer (id -> full request),
@@ -160,20 +158,20 @@ impl AaaCoderCliHarness {
         }
     }
 
-    /// Write one JSONL command line to the process stdin. Caller must hold no
-    /// other locks on Inner (this locks inner then stdin).
+    /// Queue one JSONL command line to the child's stdin. The forwarder task
+    /// performs the async write; try_send keeps this sync and bounded (a full
+    /// queue means the CLI stopped consuming — surface that, never block).
     fn send_cmd(&self, cmd: serde_json::Value) -> Result<(), HarnessError> {
         let inner = self.inner.lock().unwrap();
         if !inner.started {
             return Err(HarnessError::NotStarted);
         }
-        let mut stdin = inner.stdin.lock().unwrap();
-        let child_stdin = stdin.as_mut().ok_or(HarnessError::NotStarted)?;
-        writeln!(child_stdin, "{}", cmd)
+        let stdin_guard = inner.stdin.lock().unwrap();
+        let tx = stdin_guard.as_ref().ok_or(HarnessError::NotStarted)?;
+        let line = serde_json::to_string(&cmd)
+            .map_err(|e| HarnessError::Process(format!("serialize rpc command: {e}")))?;
+        tx.try_send(line)
             .map_err(|e| HarnessError::Process(format!("write to a-coder-cli stdin: {e}")))?;
-        child_stdin
-            .flush()
-            .map_err(|e| HarnessError::Process(format!("flush a-coder-cli stdin: {e}")))?;
         Ok(())
     }
 }
@@ -248,10 +246,13 @@ impl HarnessTrait for AaaCoderCliHarness {
                 (binary, Vec::new())
             };
 
-        // Spawn: `a-coder-cli --mode rpc` in the project directory.
+        // Spawn: `a-coder-cli --mode rpc` in the project directory, on the
+        // tokio async runtime (blocking std reads inside tokio tasks starved
+        // the current-thread test runtime and are the documented anti-pattern;
+        // the desktop app's client uses async IO the same way).
         // Pass the control server URL + token as env vars so the harness
         // extension can proxy tool calls to the control server.
-        let mut command = std::process::Command::new(&prog);
+        let mut command = tokio::process::Command::new(&prog);
         command.args(&prefix);
         if let Some(url) = &ctx.control_url {
             command.env("AMAARA_CONTROL_URL", url);
@@ -270,13 +271,33 @@ impl HarnessTrait for AaaCoderCliHarness {
             // drained continuously (a full stderr pipe stalls the child) and
             // logged so failures are diagnosable from the studio log.
             .stderr(std::process::Stdio::piped())
+            // If the harness handle ever drops without stop(), take the CLI
+            // down with it instead of leaking an orphan (desktop-app client
+            // behavior).
+            .kill_on_drop(true)
             .spawn()
             .map_err(|e| HarnessError::Process(format!("failed to spawn a-coder-cli: {e}")))?;
 
-        let child_pid = c.id();
+        let child_pid = c.id().unwrap_or(0);
         let stdout = c.stdout.take().expect("stdout should be open");
-        let stdin = c.stdin.take().expect("stdin should be open");
+        let child_stdin = c.stdin.take().expect("stdin should be open");
         let stderr = c.stderr.take().expect("stderr should be open");
+
+        // Command queue → child stdin forwarder (async write; the desktop
+        // client uses the same shape).
+        let (stdin_tx, mut stdin_rx) = mpsc::channel::<String>(256);
+        tokio::spawn(async move {
+            use tokio::io::AsyncWriteExt;
+            let mut child_stdin = child_stdin;
+            while let Some(line) = stdin_rx.recv().await {
+                if child_stdin.write_all(line.as_bytes()).await.is_err()
+                    || child_stdin.write_all(b"\n").await.is_err()
+                {
+                    break;
+                }
+                let _ = child_stdin.flush().await;
+            }
+        });
 
         {
             let mut inner = self.inner.lock().unwrap();
@@ -284,7 +305,7 @@ impl HarnessTrait for AaaCoderCliHarness {
             inner.stopping = false;
             inner.project_dir = ctx.project_dir.clone();
             inner.model = ctx.model.clone();
-            *inner.stdin.lock().unwrap() = Some(stdin);
+            *inner.stdin.lock().unwrap() = Some(stdin_tx);
             inner.child_handle.lock().unwrap().replace(c);
             inner.generation += 1;
         }
@@ -298,17 +319,16 @@ impl HarnessTrait for AaaCoderCliHarness {
         );
         let inner = Arc::clone(&self.inner);
         tokio::spawn(async move {
-            let mut reader = std::io::BufReader::new(stdout);
-            let mut buf = String::new();
+            use tokio::io::AsyncBufReadExt;
+            let mut lines = tokio::io::BufReader::new(stdout).lines();
             loop {
-                buf.clear();
-                match reader.read_line(&mut buf) {
-                    Ok(0) => {
+                match lines.next_line().await {
+                    Ok(None) => {
                         tracing::warn!("a-coder-cli (pid {child_pid}) stdout EOF");
                         break; // EOF — process exited (or closed stdout)
                     }
-                    Ok(_) => {
-                        let line = buf.trim_end_matches(['\n', '\r']);
+                    Ok(Some(line)) => {
+                        let line = line.trim_end_matches('\r');
                         if line.is_empty() {
                             continue;
                         }
@@ -377,18 +397,11 @@ impl HarnessTrait for AaaCoderCliHarness {
         // line — this is where CLI crash reasons surface (the chat only ever
         // saw "process exited" before).
         tokio::spawn(async move {
-            let mut reader = std::io::BufReader::new(stderr);
-            let mut buf = String::new();
-            loop {
-                buf.clear();
-                match reader.read_line(&mut buf) {
-                    Ok(0) | Err(_) => break,
-                    Ok(_) => {
-                        let line = buf.trim_end_matches(['\n', '\r']);
-                        if !line.is_empty() {
-                            tracing::warn!("a-coder-cli stderr: {line}");
-                        }
-                    }
+            use tokio::io::AsyncBufReadExt;
+            let mut lines = tokio::io::BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                if !line.trim_end_matches('\r').is_empty() {
+                    tracing::warn!("a-coder-cli stderr: {}", line.trim_end_matches('\r'));
                 }
             }
         });
@@ -542,9 +555,11 @@ impl HarnessTrait for AaaCoderCliHarness {
         if !inner.started {
             return Err(HarnessError::NotStarted);
         }
-        let mut stdin = inner.stdin.lock().unwrap();
-        let child_stdin = stdin.as_mut().ok_or(HarnessError::NotStarted)?;
-        writeln!(child_stdin, "{}", cmd)
+        let stdin_guard = inner.stdin.lock().unwrap();
+        let tx = stdin_guard.as_ref().ok_or(HarnessError::NotStarted)?;
+        let line = serde_json::to_string(&cmd)
+            .map_err(|e| HarnessError::Process(format!("serialize approval answer: {e}")))?;
+        tx.try_send(line)
             .map_err(|e| HarnessError::Process(format!("write approval answer: {e}")))?;
         Ok(())
     }
@@ -570,8 +585,8 @@ impl HarnessTrait for AaaCoderCliHarness {
             let mut handle = inner.child_handle.lock().unwrap();
             handle.take()
         };
-        if let Some(child) = child {
-            let pid = child.id();
+        if let Some(mut child) = child {
+            let pid = child.id().unwrap_or(0);
             tracing::info!("a-coder-cli stop(): killing pid {pid}");
             if cfg!(windows) {
                 let _ = std::process::Command::new("taskkill")
@@ -582,7 +597,10 @@ impl HarnessTrait for AaaCoderCliHarness {
                     .args(["-TERM", &pid.to_string()])
                     .output();
             }
-            // Dropping the Child detaches it; the tree kill above handles exit.
+            // SIGKILL fallback via kill_on_drop: if the tree kill missed (pid
+            // reused / permission), dropping the tokio Child still takes the
+            // direct child down.
+            child.start_kill().ok();
         }
         Ok(())
     }

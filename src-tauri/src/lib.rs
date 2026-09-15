@@ -41,6 +41,14 @@ fn config_path(app: &tauri::AppHandle) -> PathBuf {
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
+    // A GUI launch on macOS/Linux does not inherit the shell's PATH (Tauri
+    // docs: "GUI apps on macOS and Linux do not inherit the $PATH from your
+    // shell dotfiles"). Reconstruct it BEFORE the builder spawns any threads
+    // — env::set_var is not thread-safe, so this must precede all runtime
+    // thread creation. Everything after (harness discovery, sidecars, spawn
+    // env) inherits the corrected PATH.
+    pathenv::apply_reconstructed_path();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::new().build())
@@ -55,11 +63,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .unwrap_or_else(|_| PathBuf::from("."));
             logging::init(&data_dir.join("logs"));
 
-            // A GUI launch on macOS gets the minimal launchd PATH — the
-            // user's installed CLIs (a-coder-cli, node, ffmpeg) are invisible
-            // to `which` and child spawns. Reconstruct the user's PATH before
-            // anything resolves or spawns a binary.
-            pathenv::apply_reconstructed_path();
+            // Record the reconstructed PATH in the studio log (set before the
+            // builder, above — this line just makes it observable).
+            tracing::info!(
+                "PATH entries at startup: {}",
+                std::env::var("PATH")
+                    .unwrap_or_default()
+                    .split(if cfg!(windows) { ';' } else { ':' })
+                    .count()
+            );
 
             // Config: load from app-data JSON (or default + persist).
             let cfg_path = config_path(&handle);
