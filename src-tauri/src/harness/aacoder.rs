@@ -256,12 +256,17 @@ impl HarnessTrait for AaaCoderCliHarness {
             .current_dir(&ctx.project_dir)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
+            // Piped (not null): a CLI crash reason printed to stderr used to
+            // vanish, leaving only "process exited" in the chat. Lines are
+            // drained continuously (a full stderr pipe stalls the child) and
+            // logged so failures are diagnosable from the studio log.
+            .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| HarnessError::Process(format!("failed to spawn a-coder-cli: {e}")))?;
 
         let stdout = c.stdout.take().expect("stdout should be open");
         let stdin = c.stdin.take().expect("stdin should be open");
+        let stderr = c.stderr.take().expect("stderr should be open");
 
         {
             let mut inner = self.inner.lock().unwrap();
@@ -297,19 +302,69 @@ impl HarnessTrait for AaaCoderCliHarness {
                 }
             }
             // EOF: mark stopped; surface an error unless stop() was requested.
-            let notify = {
+            // Include the exit code when the child has already been reaped so
+            // the chat shows "exited (code 1)" instead of a bare EOF mystery.
+            let (notify, code) = {
                 let mut g = inner.lock().unwrap();
                 let was_started = g.started;
                 g.started = false;
-                was_started && !g.stopping
+                let code = g
+                    .child_handle
+                    .lock()
+                    .unwrap()
+                    .as_mut()
+                    .and_then(|c| c.try_wait().ok().flatten())
+                    .and_then(|s| s.code());
+                (was_started && !g.stopping, code)
             };
             if notify {
-                broadcast(
-                    &inner,
-                    HarnessEvent::Error("a-coder-cli process exited".into()),
-                );
+                let detail = match code {
+                    Some(code) => format!("a-coder-cli process exited (code {code})"),
+                    None => "a-coder-cli process exited".into(),
+                };
+                broadcast(&inner, HarnessEvent::Error(detail));
             }
         });
+
+        // Drain stderr so the child never blocks on a full pipe, and log every
+        // line — this is where CLI crash reasons surface (the chat only ever
+        // saw "process exited" before).
+        tokio::spawn(async move {
+            let mut reader = std::io::BufReader::new(stderr);
+            let mut buf = String::new();
+            loop {
+                buf.clear();
+                match reader.read_line(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {
+                        let line = buf.trim_end_matches(['\n', '\r']);
+                        if !line.is_empty() {
+                            tracing::warn!("a-coder-cli stderr: {line}");
+                        }
+                    }
+                }
+            }
+        });
+
+        // Apply the session model to the fresh CLI process. The studio-side
+        // set_model IPC can't do this for a not-yet-started harness, and the
+        // spawn is the only chance before the first prompt (previously the
+        // picker's selection was silently ignored and the CLI ran its own
+        // default model). "amaara/auto" is the studio's cloud-router concept —
+        // the CLI doesn't know it, so it means "use the CLI default".
+        if !ctx.model.is_empty() && ctx.model != "amaara/auto" {
+            let cmd = match ctx.model.split_once('/') {
+                Some((provider, model_id)) => {
+                    serde_json::json!({ "type": "set_model", "provider": provider, "modelId": model_id })
+                }
+                None => serde_json::json!({ "type": "set_model", "modelId": ctx.model }),
+            };
+            if let Err(e) = self.send_cmd(cmd) {
+                tracing::warn!("set_model after spawn failed: {e}");
+            } else {
+                tracing::info!("harness model set to {}", ctx.model);
+            }
+        }
 
         Ok(())
     }

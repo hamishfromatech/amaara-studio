@@ -204,7 +204,7 @@ impl HarnessTrait for ClaudeCodeHarness {
         // studio's native ApprovalDialog (Phase 11). We must NOT pass
         // --dangerously-skip-permissions — that would silently bypass the
         // approval flow entirely.
-        let args = vec![
+        let mut args = vec![
             "-p".to_string(),
             "--output-format".to_string(),
             "stream-json".to_string(),
@@ -215,6 +215,14 @@ impl HarnessTrait for ClaudeCodeHarness {
             "--input-format".to_string(),
             "stream-json".to_string(),
         ];
+        // Session model from the picker. "amaara/auto" is the studio's
+        // cloud-router concept — Claude doesn't know it, so it means "Claude
+        // default" (no --model flag). Mid-session switching is not exposed by
+        // the stream-json control protocol; a harness restart picks it up.
+        if !ctx.model.is_empty() && ctx.model != "amaara/auto" {
+            args.push("--model".to_string());
+            args.push(ctx.model.clone());
+        }
 
         let (mut child, stdin) = common::spawn_command(
             &binary,
