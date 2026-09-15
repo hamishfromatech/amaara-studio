@@ -12,6 +12,7 @@
 
 import {useState, type ReactNode} from 'react'
 import {useStore} from '../lib/store'
+import {Logo} from './Logo'
 import type {NavId} from '../lib/nav'
 
 export type {NavId} from '../lib/nav'
@@ -165,10 +166,8 @@ export function EntryNavRail({navId, onChange}: Props) {
   return (
     <nav className="entry-nav-rail" aria-label="Studio navigation">
       <div className="entry-nav-rail__brand">
-        <span className="entry-nav-rail__brand-mark" aria-hidden>
-          ⬢
-        </span>
-        <span className="entry-nav-rail__brand-name">Amaara Studio</span>
+        <Logo size={19} />
+        <span className="entry-nav-rail__brand-name">Amaara</span>
       </div>
 
       <div className="entry-nav-rail__scroll">

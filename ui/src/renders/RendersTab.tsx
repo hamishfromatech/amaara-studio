@@ -192,7 +192,7 @@ function JobDetail({job, onCancel}: {job: RenderJob; onCancel: () => void}) {
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-fill-secondary">
               <div
-                className="h-full rounded-full bg-info"
+                className="h-full rounded-full bg-brand"
                 style={{
                   width: `${pct ?? 0}%`,
                   transition: 'width var(--dur-quick) var(--ease-out)',

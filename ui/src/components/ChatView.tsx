@@ -127,7 +127,7 @@ function ToolCard({tool}: {tool: ToolCall}) {
         aria-label={`Tool ${tool.name}, ${stateLabel}${open ? ', expanded' : ', collapsed'}`}
       >
         <span className="tool-card__glyph" aria-hidden>
-          🛠
+          //
         </span>
         <span className="tool-card__name">{tool.name}</span>
         <span className={`tool-card__state tool-card__state--${stateLabel}`}>
@@ -241,6 +241,7 @@ function ChatMessageRow({
           {harness ? ` · ${harness}` : ''}
           {model ? ` · ${model}` : ''}
         </span>
+        {runLive && <span className="live-dot" aria-hidden style={{marginRight: -2}} />}
         {runLive && (
           <span className="chat-msg__clock">
             {msg.status === 'thinking' && !msg.content && msg.tools.length === 0
@@ -252,7 +253,12 @@ function ChatMessageRow({
         {msg.status === 'error' && <span className="chat-msg__clock">error</span>}
         {msg.status === 'done' && msg.content && <CopyButton text={msg.content} />}
       </div>
-      {msg.content && <div className="chat-msg__body">{msg.content}</div>}
+      {msg.content && (
+        <div className="chat-msg__body">
+          {msg.content}
+          {runLive && <span className="stream-caret">▍</span>}
+        </div>
+      )}
       {msg.tools.length > 0 && (
         <div className="chat-msg__tools">
           {msg.tools.map((t: ToolCall) => (

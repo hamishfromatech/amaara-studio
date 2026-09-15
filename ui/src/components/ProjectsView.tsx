@@ -132,7 +132,11 @@ export function ProjectsView() {
                         className="project-card__swatch"
                         style={{background: swatchFor(p.id)}}
                         aria-hidden
-                      />
+                      >
+                        <span className="recent-project-card__initial">
+                          {p.name.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
                       <div style={{flex: 1, minWidth: 0}}>
                         <div className="project-card__title">{p.name}</div>
                         <div className="project-card__dir" title={p.dir}>

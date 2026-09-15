@@ -143,10 +143,18 @@ export function HomeView({
   return (
     <div className="home-wash entry-main__scroll-inner">
       <div className="home-hero">
-        <h1 className="home-hero__logo">Amaara Studio</h1>
-        <p className="home-hero__tagline">Direct an agent. Watch it make. Render to video.</p>
+        <div className="home-hero__kicker reveal">Amaara Studio</div>
+        <h1 className="home-hero__logo reveal reveal-1">
+          Direct an agent.
+          <br />
+          <em>Watch it make.</em>
+        </h1>
+        <p className="home-hero__tagline reveal reveal-2">
+          Type what you want. The agent storyboards, authors the composition, and renders it
+          to video — while you watch every step.
+        </p>
 
-        <div className="home-pill-row" role="tablist" aria-label="Scenarios">
+        <div className="home-pill-row reveal reveal-3" role="tablist" aria-label="Scenarios">
           {SCENARIO_PILLS.map((pill) => (
             <button
               key={pill.id}
@@ -165,7 +173,7 @@ export function HomeView({
         </div>
 
         {recentMessages.length > 0 && (
-          <div className="home-hero__history-wrap">
+          <div className="home-hero__history-wrap reveal reveal-2">
             <div className="home-hero__history-link">
               <button
                 type="button"
@@ -214,6 +222,9 @@ export function HomeView({
                   </div>
                   <div className="home-hero__history-msg-body">
                     {m.content || (m.status === 'thinking' ? '…' : '')}
+                    {m.role === 'agent' &&
+                      (m.status === 'thinking' || m.status === 'tool-calling') &&
+                      m.content && <span className="stream-caret">▍</span>}
                   </div>
                   {/* Failure recovery (open-design): one-click retry of the
                     prompt this failed turn was answering. */}
@@ -234,7 +245,7 @@ export function HomeView({
           </div>
         )}
 
-        <div className="home-hero__composer-card">
+        <div className="home-hero__composer-card reveal reveal-4">
           <div className="home-hero__active-row">
             {current ? (
               <span
@@ -298,7 +309,15 @@ export function HomeView({
               className="recent-project-card"
               onClick={() => void openProject(p.id)}
             >
-              <div className="recent-project-card__swatch" style={{background: swatchFor(p.id)}} />
+              <div
+                className="recent-project-card__swatch"
+                style={{background: swatchFor(p.id)}}
+                aria-hidden
+              >
+                <span className="recent-project-card__initial">
+                  {p.name.charAt(0).toUpperCase()}
+                </span>
+              </div>
               <div className="recent-project-card__name" title={p.name}>
                 {p.name}
               </div>

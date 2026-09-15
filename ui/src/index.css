@@ -33,123 +33,138 @@
   font-weight: 400;
 }
 
-/* -------- Tokens (open-design palette) ------------------------------ */
+@font-face {
+  font-family: "Fraunces";
+  src: url("/fonts/Fraunces-Variable.ttf") format("truetype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 100 900;
+  font-stretch: 100%;
+}
+
+/* -------- Tokens (Amaara 'Phosphor Darkroom' palette) ----------------
+   A film-studio instrument: warm paper in the light, a warm charcoal
+   darkroom in dark (the hero theme). Phosphor green is the single accent
+   — live signals, primary actions, brand moments — never a wash. */
 :root {
-  --bg: #fff;
-  --bg-app: #fff;
-  --bg-panel: #fafafa;
-  --bg-subtle: #ededed;
-  --bg-muted: #dbdbdb;
-  --bg-fill-tertiary: rgba(0, 0, 0, 0.03);
-  --bg-fill-secondary: rgba(0, 0, 0, 0.06);
-  --bg-fill: rgba(0, 0, 0, 0.12);
-  --bg-elevated: #fafafa;
+  --bg: #f7f5ee;
+  --bg-app: #f7f5ee;
+  --bg-panel: #f1eee5;
+  --bg-subtle: #e8e4d7;
+  --bg-muted: #dbd5c4;
+  --bg-fill-tertiary: rgba(46, 41, 30, 0.03);
+  --bg-fill-secondary: rgba(46, 41, 30, 0.06);
+  --bg-fill: rgba(46, 41, 30, 0.12);
+  --bg-elevated: #f1eee6;
 
-  --border: #dbdbdb;
-  --border-strong: #bdbdbd;
-  --border-selected: #a3a3a3;
-  --border-soft: #ededed;
+  --border: #ded7c6;
+  --border-strong: #c5bda9;
+  --border-selected: #a79d85;
+  --border-soft: #eae4d4;
 
-  --text: #494949;
-  --text-strong: #202020;
-  --text-muted: #5c5c5c;
-  --text-soft: #848484;
-  --text-faint: #bdbdbd;
+  --text: #4b463a;
+  --text-strong: #232017;
+  --text-muted: #645e4f;
+  --text-soft: #8a8371;
+  --text-faint: #b7af9b;
 
-  --accent: #353535;
-  --accent-contrast: #fafafa;
-  --accent-strong: #202020;
-  --accent-soft: #ededed;
-  --accent-hover: #202020;
-  --brand: #87ea5c;
-  --brand-weak: #d0ffb5;
-  --brand-soft: #ebffde;
-  --brand-text: #0d5400;
+  --accent: #343027;
+  --accent-contrast: #f7f5ee;
+  --accent-strong: #232017;
+  --accent-soft: #e8e4d7;
+  --accent-hover: #232017;
+  --brand: #3f9c1d;
+  --brand-weak: #cfeab5;
+  --brand-soft: #e6f5d6;
+  --brand-text: #1f5c08;
+  --brand-ink: #12260a;
 
-  --green: #00aa54;
-  --green-bg: #f5ffee;
-  --green-border: #adf788;
-  --blue: #1a74ff;
-  --blue-bg: color-mix(in srgb, #1a74ff 10%, #fafafa);
-  --blue-border: color-mix(in srgb, #1a74ff 24%, #dbdbdb);
-  --red: #f04142;
-  --red-bg: color-mix(in srgb, #f04142 10%, #fafafa);
-  --red-border: color-mix(in srgb, #f04142 24%, #dbdbdb);
-  --amber: #ff7528;
-  --amber-bg: color-mix(in srgb, #ffba12 18%, #fafafa);
+  --green: #148a43;
+  --green-bg: #ebf7e0;
+  --green-border: #a9dc8b;
+  --blue: #1a6fd4;
+  --blue-bg: color-mix(in srgb, #1a74ff 9%, #f7f5ee);
+  --blue-border: color-mix(in srgb, #1a74ff 26%, #ded7c6);
+  --red: #d43c3c;
+  --red-bg: color-mix(in srgb, #f04142 9%, #f7f5ee);
+  --red-border: color-mix(in srgb, #f04142 26%, #ded7c6);
+  --amber: #c26a12;
+  --amber-bg: color-mix(in srgb, #ffba12 20%, #f7f5ee);
 
-  --shadow-xs: 0 1px 0 rgba(28, 27, 26, 0.04);
+  --scrim: rgba(30, 26, 18, 0.4);
+
+  --shadow-xs: 0 1px 0 rgba(38, 33, 22, 0.05);
   --shadow-sm:
-    0 1px 2px rgba(28, 27, 26, 0.05),
-    0 1px 3px rgba(28, 27, 26, 0.04);
+    0 1px 2px rgba(38, 33, 22, 0.05),
+    0 1px 3px rgba(38, 33, 22, 0.04);
   --shadow-md:
-    0 6px 24px rgba(28, 27, 26, 0.07),
-    0 2px 6px rgba(28, 27, 26, 0.04);
+    0 6px 24px rgba(38, 33, 22, 0.08),
+    0 2px 6px rgba(38, 33, 22, 0.05);
   --shadow-lg:
-    0 24px 60px rgba(28, 27, 26, 0.16),
-    0 8px 16px rgba(28, 27, 26, 0.07);
+    0 24px 60px rgba(38, 33, 22, 0.16),
+    0 8px 16px rgba(38, 33, 22, 0.07);
 
-  --selected: #353535;
-  --selected-soft: color-mix(in srgb, #353535 12%, transparent);
+  --selected: #34302a;
+  --selected-soft: color-mix(in srgb, #34302a 12%, transparent);
 
   --sans: "Albert Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
   --mono: "JiduMono Pro", ui-monospace, "SFMono-Regular", monospace;
+  --display: "Fraunces", "Iowan Old Style", Georgia, serif;
 
   --ease-out: cubic-bezier(0, 0, 0, 1);
+  --ease-cine: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-quick: 100ms;
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  /* Cool graphite ramp — canvas is deepest, panels/elevated step up (macOS
-     dark-style elevation). Slight blue cast keeps large surfaces from going
-     muddy; borders sit near the surface fill so boxes feel quiet, not
-     chalk-outlined. */
-  --bg: #0e0f12;
-  --bg-app: #0e0f12;
-  --bg-panel: #15171b;
-  --bg-subtle: #1d2027;
-  --bg-muted: #2a2e37;
-  --bg-fill-tertiary: rgba(255, 255, 255, 0.04);
-  --bg-fill-secondary: rgba(255, 255, 255, 0.07);
-  --bg-fill: rgba(255, 255, 255, 0.12);
-  --bg-elevated: #1d2027;
-  --border: #282d36;
-  --border-strong: #3d434e;
-  --border-selected: #555c69;
-  --border-soft: #222730;
+  /* Warm charcoal ramp — a darkroom, not a server room. Canvas is deepest
+     with a faint tungsten cast; phosphor green is the only saturated voice. */
+  --bg: #0e0d0a;
+  --bg-app: #0e0d0a;
+  --bg-panel: #14120e;
+  --bg-subtle: #1b1813;
+  --bg-muted: #292520;
+  --bg-fill-tertiary: rgba(255, 248, 235, 0.04);
+  --bg-fill-secondary: rgba(255, 248, 235, 0.07);
+  --bg-fill: rgba(255, 248, 235, 0.12);
+  --bg-elevated: #1b1813;
+  --border: #2b2620;
+  --border-strong: #453e33;
+  --border-selected: #605748;
+  --border-soft: #201d17;
 
-  --text: #d7d9dd;
-  --text-strong: #f4f5f7;
-  --text-muted: #9ba0a9;
-  --text-soft: #71757e;
-  --text-faint: #555a63;
+  --text: #d9d4c6;
+  --text-strong: #f7f4e9;
+  --text-muted: #a49d8c;
+  --text-soft: #7d7669;
+  --text-faint: #575146;
 
-  --accent: #e9eaee;
-  --accent-contrast: #101215;
-  --accent-strong: #f5f6f8;
-  --accent-soft: #2a2e37;
-  --accent-hover: #f5f6f8;
-  /* Brand green stays the identity, but is calmed a step and its tints are
-     mixed against the new surface so chips/highlights stop glowing. */
-  --brand: #7ede5c;
-  --brand-weak: color-mix(in srgb, #7ede5c 32%, #15171b);
-  --brand-soft: color-mix(in srgb, #7ede5c 12%, #0e0f12);
-  --brand-text: #a5e57f;
+  --accent: #ece7d8;
+  --accent-contrast: #12100b;
+  --accent-strong: #f7f4e9;
+  --accent-soft: #2b2620;
+  --accent-hover: #f7f4e9;
+  /* Phosphor stays the identity — one luminous signal on the darkroom wall. */
+  --brand: #8ce95e;
+  --brand-weak: color-mix(in srgb, #8ce95e 30%, #14120e);
+  --brand-soft: color-mix(in srgb, #8ce95e 10%, #0e0d0a);
+  --brand-text: #a9ef80;
+  --brand-ink: #101903;
 
   --green: #3ec47a;
-  --green-bg: color-mix(in srgb, #3ec47a 14%, #0e0f12);
-  --green-border: color-mix(in srgb, #3ec47a 38%, #15171b);
-  --blue: #5aa7f2;
-  --blue-bg: color-mix(in srgb, #1a74ff 16%, #0e0f12);
-  --blue-border: color-mix(in srgb, #5aa7f2 36%, #1d2027);
-  --red: #f26462;
-  --red-bg: color-mix(in srgb, #f04142 16%, #0e0f12);
-  --red-border: color-mix(in srgb, #f26462 36%, #1d2027);
-  --amber: #ecb84e;
-  --amber-bg: color-mix(in srgb, #ffba12 16%, #0e0f12);
+  --green-bg: color-mix(in srgb, #3ec47a 14%, #0e0d0a);
+  --green-border: color-mix(in srgb, #3ec47a 38%, #14120e);
+  --blue: #6fa9e8;
+  --blue-bg: color-mix(in srgb, #1a74ff 15%, #0e0d0a);
+  --blue-border: color-mix(in srgb, #6fa9e8 34%, #1b1813);
+  --red: #ef6a5f;
+  --red-bg: color-mix(in srgb, #f04142 15%, #0e0d0a);
+  --red-border: color-mix(in srgb, #ef6a5f 36%, #14120e);
+  --amber: #e8b558;
+  --amber-bg: color-mix(in srgb, #ffba12 15%, #0e0d0a);
 
-  --scrim: rgba(0, 0, 0, 0.55);
+  --scrim: rgba(5, 4, 2, 0.6);
 
   --shadow-xs: 0 1px 0 rgba(0, 0, 0, 0.35);
   --shadow-sm:
@@ -167,49 +182,50 @@
 @media (prefers-color-scheme: dark) {
   html:not([data-theme]) {
     color-scheme: dark;
-    --bg: #0e0f12;
-    --bg-app: #0e0f12;
-    --bg-panel: #15171b;
-    --bg-subtle: #1d2027;
-    --bg-muted: #2a2e37;
-    --bg-fill-tertiary: rgba(255, 255, 255, 0.04);
-    --bg-fill-secondary: rgba(255, 255, 255, 0.07);
-    --bg-fill: rgba(255, 255, 255, 0.12);
-    --bg-elevated: #1d2027;
-    --border: #282d36;
-    --border-strong: #3d434e;
-    --border-selected: #555c69;
-    --border-soft: #222730;
+    --bg: #0e0d0a;
+    --bg-app: #0e0d0a;
+    --bg-panel: #14120e;
+    --bg-subtle: #1b1813;
+    --bg-muted: #292520;
+    --bg-fill-tertiary: rgba(255, 248, 235, 0.04);
+    --bg-fill-secondary: rgba(255, 248, 235, 0.07);
+    --bg-fill: rgba(255, 248, 235, 0.12);
+    --bg-elevated: #1b1813;
+    --border: #2b2620;
+    --border-strong: #453e33;
+    --border-selected: #605748;
+    --border-soft: #201d17;
 
-    --text: #d7d9dd;
-    --text-strong: #f4f5f7;
-    --text-muted: #9ba0a9;
-    --text-soft: #71757e;
-    --text-faint: #555a63;
+    --text: #d9d4c6;
+    --text-strong: #f7f4e9;
+    --text-muted: #a49d8c;
+    --text-soft: #7d7669;
+    --text-faint: #575146;
 
-    --accent: #e9eaee;
-    --accent-contrast: #101215;
-    --accent-strong: #f5f6f8;
-    --accent-soft: #2a2e37;
-    --accent-hover: #f5f6f8;
-    --brand: #7ede5c;
-    --brand-weak: color-mix(in srgb, #7ede5c 32%, #15171b);
-    --brand-soft: color-mix(in srgb, #7ede5c 12%, #0e0f12);
-    --brand-text: #a5e57f;
+    --accent: #ece7d8;
+    --accent-contrast: #12100b;
+    --accent-strong: #f7f4e9;
+    --accent-soft: #2b2620;
+    --accent-hover: #f7f4e9;
+    --brand: #8ce95e;
+    --brand-weak: color-mix(in srgb, #8ce95e 30%, #14120e);
+    --brand-soft: color-mix(in srgb, #8ce95e 10%, #0e0d0a);
+    --brand-text: #a9ef80;
+    --brand-ink: #101903;
 
     --green: #3ec47a;
-    --green-bg: color-mix(in srgb, #3ec47a 14%, #0e0f12);
-    --green-border: color-mix(in srgb, #3ec47a 38%, #15171b);
-    --blue: #5aa7f2;
-    --blue-bg: color-mix(in srgb, #1a74ff 16%, #0e0f12);
-    --blue-border: color-mix(in srgb, #5aa7f2 36%, #1d2027);
-    --red: #f26462;
-    --red-bg: color-mix(in srgb, #f04142 16%, #0e0f12);
-    --red-border: color-mix(in srgb, #f26462 36%, #1d2027);
-    --amber: #ecb84e;
-    --amber-bg: color-mix(in srgb, #ffba12 16%, #0e0f12);
+    --green-bg: color-mix(in srgb, #3ec47a 14%, #0e0d0a);
+    --green-border: color-mix(in srgb, #3ec47a 38%, #14120e);
+    --blue: #6fa9e8;
+    --blue-bg: color-mix(in srgb, #1a74ff 15%, #0e0d0a);
+    --blue-border: color-mix(in srgb, #6fa9e8 34%, #1b1813);
+    --red: #ef6a5f;
+    --red-bg: color-mix(in srgb, #f04142 15%, #0e0d0a);
+    --red-border: color-mix(in srgb, #ef6a5f 36%, #14120e);
+    --amber: #e8b558;
+    --amber-bg: color-mix(in srgb, #ffba12 15%, #0e0d0a);
 
-    --scrim: rgba(0, 0, 0, 0.55);
+    --scrim: rgba(5, 4, 2, 0.6);
 
     --shadow-xs: 0 1px 0 rgba(0, 0, 0, 0.35);
     --shadow-sm:
@@ -261,6 +277,83 @@ html[data-density="compact"] .list-card__row {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Cinematic entrance — larger, slower rise for hero/first-run moments. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+.reveal {
+  animation: rise-in 0.9s var(--ease-cine) both;
+}
+.reveal-1 { animation-delay: 0.05s; }
+.reveal-2 { animation-delay: 0.14s; }
+.reveal-3 { animation-delay: 0.23s; }
+.reveal-4 { animation-delay: 0.32s; }
+.reveal-5 { animation-delay: 0.41s; }
+
+/* Live signal — a phosphor dot breathing its glow (replaces opaque
+   spinners for “something is running”). */
+@keyframes live-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 45%, transparent);
+  }
+  55% {
+    box-shadow: 0 0 0 5px transparent;
+  }
+}
+.live-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand);
+  animation: live-pulse 2.1s var(--ease-out) infinite;
+}
+
+/* Streaming caret — a phosphor block cursor after streamed text. */
+@keyframes caret-blink {
+  0%, 55% { opacity: 1; }
+  56%, 100% { opacity: 0; }
+}
+.stream-caret {
+  display: inline-block;
+  width: 0.5em;
+  margin-left: 2px;
+  color: var(--brand);
+  animation: caret-blink 1.05s steps(1) infinite;
+}
+
+/* Film grain — one SVG turbulence tile, fixed over the whole app at
+   ~4% opacity. pointer-events:none; adds the darkroom texture. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+html[data-theme="light"] body::after {
+  opacity: 0.032;
+}
+
+/* Display type — Fraunces for brand/hero/empty-state moments. */
+.display {
+  font-family: var(--display);
+  font-variation-settings: "SOFT" 40, "WONK" 0;
+  letter-spacing: -0.015em;
 }
 @keyframes flash-ok {
   0% {
@@ -411,7 +504,7 @@ body {
 }
 
 ::selection {
-  background: var(--selected-soft);
+  background: color-mix(in srgb, var(--brand) 28%, transparent);
 }
 
 input[type="checkbox"] {
@@ -465,6 +558,78 @@ code {
 
 /* -------- Primitives (open-design idioms) ---------------------------- */
 @layer components {
+  /* Command bar — quiet chrome over the canvas. The project select is
+     borderless (its own weight IS the affordance); controls sit right. */
+  .topbar {
+    display: flex;
+    height: 46px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--bg);
+    padding: 0 12px;
+    user-select: none;
+  }
+  .topbar__left {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 10px;
+  }
+  .topbar__mark {
+    display: inline-flex;
+    padding: 2px;
+  }
+  .topbar__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .topbar__sep {
+    width: 1px;
+    height: 18px;
+    background: var(--border);
+    margin: 0 4px;
+  }
+  .topbar__select {
+    font: inherit;
+    font-size: 12.5px;
+    color: var(--text);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 4px 22px 4px 8px;
+    max-width: 240px;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%237d7669' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='3 5 6 8 9 5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 7px center;
+    background-size: 11px 11px;
+    transition:
+      background-color var(--dur-quick) var(--ease-out),
+      border-color var(--dur-quick) var(--ease-out);
+  }
+  .topbar__select:hover {
+    background-color: var(--bg-fill-tertiary);
+  }
+  .topbar__select:focus-visible {
+    outline: 1px solid var(--brand);
+    outline-offset: 1px;
+  }
+  .topbar__select--project {
+    font-weight: 600;
+    color: var(--text-strong);
+    max-width: 260px;
+  }
+  .topbar__theme {
+    color: var(--text-muted);
+  }
+
   /* Buttons: 36px outline control, hairline border, quiet hover fill, 1px
      press. `.btn-sm` for chrome/rail rows. Primary is a solid pill. */
   .btn {
@@ -503,7 +668,7 @@ code {
   .chip:focus-visible,
   .seg button:focus-visible,
   .tab:focus-visible {
-    outline: 1px solid var(--blue);
+    outline: 1px solid var(--brand);
     outline-offset: 2px;
   }
   .btn:disabled {
@@ -522,18 +687,19 @@ code {
   }
 
   .btn-primary {
-    background: var(--text-strong);
-    border-color: var(--text-strong);
+    background: var(--brand);
+    border-color: var(--brand);
     border-radius: 999px;
-    color: var(--bg);
+    color: var(--brand-ink, #101903);
+    font-weight: 600;
   }
   .btn-primary:hover:not(:disabled) {
-    background: var(--text);
-    border-color: var(--text);
+    background: color-mix(in srgb, var(--brand) 86%, var(--accent-contrast));
+    border-color: color-mix(in srgb, var(--brand) 86%, var(--accent-contrast));
   }
   .btn-primary:active:not(:disabled) {
-    background: var(--text-muted);
-    border-color: var(--text-muted);
+    background: color-mix(in srgb, var(--brand) 78%, var(--accent));
+    border-color: color-mix(in srgb, var(--brand) 78%, var(--accent));
   }
 
   .btn-subtle {
@@ -788,15 +954,17 @@ code {
      active/done state.
      ==================================================================== */
 
-  /* Wash background — a faint dot grid behind the Home view. CSS-only
-     approximation of open-design's `AppWashKineticGrid` (no WebGL). */
+  /* Wash background — the darkroom projector: a phosphor-tinted lamp
+     glow at the top and a faint dot grid beneath. CSS-only. */
   .home-wash {
     background-color: var(--bg);
     background-image:
-      radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--text-faint) 28%, transparent) 1px, transparent 0),
-      radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--text-faint) 14%, transparent) 1px, transparent 0);
-    background-size: 16px 16px, 64px 64px;
-    background-position: 0 0, 0 0;
+      radial-gradient(1100px 480px at 50% -10%, color-mix(in srgb, var(--brand) 7%, transparent), transparent 62%),
+      radial-gradient(1600px 900px at 50% 118%, color-mix(in srgb, var(--text-strong) 5%, transparent), transparent 55%),
+      radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--text-faint) 26%, transparent) 1px, transparent 0),
+      radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--text-faint) 12%, transparent) 1px, transparent 0);
+    background-size: auto, auto, 16px 16px, 64px 64px;
+    background-position: 0 0, 0 0, 0 0, 0 0;
   }
 
   /* Subtle vertical fade so the wash doesn't compete with content edges. */
@@ -828,24 +996,17 @@ code {
   .entry-nav-rail__brand {
     display: flex;
     align-items: center;
-    gap: 8px;
-    height: 44px;
+    gap: 9px;
+    height: 46px;
     padding: 0 14px;
     border-bottom: 1px solid var(--border-soft);
     flex-shrink: 0;
   }
-  .entry-nav-rail__brand-mark {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    font-size: 14px;
-    color: var(--text-strong);
-  }
   .entry-nav-rail__brand-name {
-    font-size: 13px;
-    font-weight: 700;
+    font-family: var(--display);
+    font-variation-settings: "SOFT" 50, "WONK" 0, "opsz" 40;
+    font-size: 16.5px;
+    font-weight: 560;
     letter-spacing: -0.01em;
     color: var(--text-strong);
   }
@@ -897,12 +1058,13 @@ code {
     color: var(--text-strong);
   }
   .entry-nav-rail__btn.is-active {
-    background: color-mix(in srgb, var(--selected) 9%, var(--bg-subtle));
+    background: var(--bg-subtle);
     color: var(--text-strong);
     font-weight: 600;
+    box-shadow: inset 2px 0 0 var(--brand);
   }
   .entry-nav-rail__btn:focus-visible {
-    outline: 1px solid var(--blue);
+    outline: 1px solid var(--brand);
     outline-offset: 1px;
   }
   .entry-nav-rail__btn-icon {
@@ -913,7 +1075,7 @@ code {
     color: var(--text-soft);
   }
   .entry-nav-rail__btn.is-active .entry-nav-rail__btn-icon {
-    color: var(--text-strong);
+    color: var(--brand-text);
   }
   .entry-nav-rail__btn-label {
     flex: 1;
@@ -1040,19 +1202,45 @@ code {
     gap: 18px;
   }
   .home-hero__logo {
-    font-size: 28px;
-    font-weight: 800;
-    letter-spacing: -0.03em;
+    font-family: var(--display);
+    font-variation-settings: "SOFT" 60, "WONK" 0, "opsz" 72;
+    font-size: 46px;
+    font-weight: 500;
+    letter-spacing: -0.025em;
     color: var(--text-strong);
-    line-height: 1;
+    line-height: 1.06;
     margin: 0;
+    text-align: center;
+  }
+  .home-hero__logo em {
+    font-style: italic;
+    font-variation-settings: "SOFT" 100, "WONK" 1, "opsz" 60;
+    color: var(--brand-text);
+  }
+  .home-hero__kicker {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .home-hero__kicker::before,
+  .home-hero__kicker::after {
+    content: "";
+    width: 26px;
+    height: 1px;
+    background: var(--border-strong);
   }
   .home-hero__tagline {
     margin: 0;
-    font-size: 13px;
+    font-size: 13.5px;
+    line-height: 1.65;
     color: var(--text-muted);
     text-align: center;
-    max-width: 520px;
+    max-width: 52ch;
   }
 
   .home-pill-row {
@@ -1107,8 +1295,10 @@ code {
       box-shadow var(--dur-quick) var(--ease-out);
   }
   .home-hero__composer-card:focus-within {
-    border-color: var(--border-strong);
-    box-shadow: var(--shadow-md);
+    border-color: color-mix(in srgb, var(--brand) 42%, var(--border));
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--brand) 9%, transparent),
+      var(--shadow-md);
   }
 
   .home-hero__active-row {
@@ -1215,8 +1405,8 @@ code {
     border-left: 2px solid var(--border-soft);
   }
   .home-hero__history-msg--agent {
-    border-color: var(--blue-border);
-    background: var(--blue-bg);
+    border-left: 2px solid color-mix(in srgb, var(--brand) 55%, var(--border-soft));
+    background: var(--bg-panel);
   }
   .home-hero__history-msg--you {
     border-color: var(--border);
@@ -1283,15 +1473,24 @@ code {
     background: var(--bg-panel);
   }
   .recent-project-card:focus-visible {
-    outline: 1px solid var(--blue);
+    outline: 1px solid var(--brand);
     outline-offset: 2px;
   }
   .recent-project-card__swatch {
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     border-radius: 8px;
-    /* background set inline via deterministic hue */
-    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.04);
+    /* background set inline via deterministic tint */
+    box-shadow: inset 0 0 0 1px rgba(255, 250, 235, 0.06);
+    display: grid;
+    place-items: center;
+  }
+  .recent-project-card__initial {
+    font-family: var(--display);
+    font-style: italic;
+    font-size: 16px;
+    color: var(--brand-text);
+    line-height: 1;
   }
   .recent-project-card__name {
     font-size: 13px;
@@ -1331,23 +1530,25 @@ code {
     text-align: center;
   }
   .empty-state__glyph {
-    font-family: var(--mono);
-    font-size: 18px;
+    font-family: var(--display);
+    font-size: 26px;
     color: var(--text-soft);
     line-height: 1;
   }
   .empty-state__title {
     margin-top: 12px;
-    font-size: 13px;
+    font-family: var(--display);
+    font-size: 19px;
     font-weight: 500;
+    letter-spacing: -0.01em;
     color: var(--text-strong);
   }
   .empty-state__desc {
-    margin-top: 4px;
-    font-size: 12px;
+    margin-top: 6px;
+    font-size: 12.5px;
     color: var(--text-faint);
-    line-height: 1.6;
-    max-width: 34ch;
+    line-height: 1.65;
+    max-width: 40ch;
   }
   .recent-projects-strip__new-card {
     flex: 0 0 200px;
@@ -1406,7 +1607,7 @@ code {
     background: var(--bg-panel);
   }
   .project-card:focus-visible {
-    outline: 1px solid var(--blue);
+    outline: 1px solid var(--brand);
     outline-offset: 2px;
   }
   .project-card.is-active {
@@ -1454,7 +1655,9 @@ code {
     height: 36px;
     border-radius: 8px;
     flex-shrink: 0;
-    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.04);
+    box-shadow: inset 0 0 0 1px rgba(255, 250, 235, 0.06);
+    display: grid;
+    place-items: center;
   }
   .project-card__title {
     font-size: 14px;
@@ -1632,28 +1835,45 @@ code {
 }
 .chat-view__list[role="log"] {
   padding: 12px 0;
+  /* Constrain the column for reading measure (virtualized rows are
+     absolutely positioned within this width). */
+  padding-inline: max(32px, calc((100% - 860px) / 2));
 }
 .chat-view__row {
-  padding: 8px 32px;
+  padding: 8px 0;
 }
 
-/* Messages. */
+/* Messages — the readout idiom: quiet blocks with a phosphor tick on
+   agent turns, right-aligned warm panels for the user. */
 .chat-msg {
-  padding: 8px 12px;
-  border-radius: 6px;
+  padding: 10px 14px;
+  border-radius: 8px;
 }
 .chat-msg--you {
   text-align: right;
 }
+.chat-msg--you .chat-msg__body {
+  display: inline-block;
+  text-align: left;
+  background: var(--bg-subtle);
+  padding: 9px 13px;
+  border-radius: 12px 12px 3px 12px;
+  max-width: 78%;
+}
+.chat-msg--you .chat-msg__body {
+  color: var(--text-strong);
+}
 .chat-msg--system {
   border-left: 0;
+  color: var(--text-muted);
 }
 .chat-msg--agent {
   background: var(--bg-panel);
+  border-left: 2px solid color-mix(in srgb, var(--brand) 60%, var(--border-soft));
 }
 .chat-msg--agent.chat-msg--error {
   background: var(--red-bg);
-  border-left: 2px solid var(--red-border);
+  border-left: 2px solid var(--red);
 }
 .chat-msg--error.chat-msg--you {
   background: var(--red-bg);
@@ -1707,7 +1927,8 @@ code {
   animation: shimmer 1.6s var(--ease-out) infinite;
 }
 .chat-status--working {
-  color: var(--info);
+  color: var(--brand);
+  animation: shimmer 1.4s var(--ease-out) infinite;
 }
 .chat-status--waiting {
   color: var(--amber);
@@ -1722,21 +1943,25 @@ code {
   color: var(--text-faint);
 }
 
-/* Tool cards (design.md §3). */
+/* Tool cards — mono readout strips. A running call carries a live green
+   bar; done/error tint the tick only. */
 .tool-card {
   border: 1px solid var(--border-soft);
   border-radius: 8px;
   margin-top: 10px;
   overflow: hidden;
+  background: var(--bg);
 }
 .tool-card--running {
-  border-color: var(--info-border);
+  border-color: color-mix(in srgb, var(--brand) 38%, var(--border-soft));
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--brand) 55%, transparent);
 }
 .tool-card--done {
-  border-color: var(--green-border);
+  border-color: var(--border-soft);
 }
 .tool-card--error {
-  border-color: var(--red-border);
+  border-color: color-mix(in srgb, var(--red) 42%, var(--border-soft));
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--red) 55%, transparent);
 }
 .tool-card__head {
   display: flex;
@@ -1756,11 +1981,14 @@ code {
   background: var(--bg-subtle);
 }
 .tool-card__glyph {
-  font-size: 13px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
 }
 .tool-card__name {
-  font-weight: 600;
-  font-size: 13px;
+  font-family: var(--mono);
+  font-weight: 400;
+  font-size: 12px;
   color: var(--text-strong);
 }
 .tool-card__state {
@@ -1967,6 +2195,171 @@ code {
   margin-bottom: 8px;
 }
 .home-hero__history-link .entry-section__action {
-  color: var(--info);
+  color: var(--brand-text);
   font-weight: 600;
+}
+
+/* ====================================================================
+   Onboarding — the cinematic first-run. Full-bleed darkroom stage:
+   projector glow, grain (global), Fraunces headline, staggered reveal.
+   ==================================================================== */
+.onboard {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(1100px 520px at 50% -12%, color-mix(in srgb, var(--brand) 9%, transparent), transparent 60%),
+    radial-gradient(1500px 900px at 50% 120%, color-mix(in srgb, var(--text-strong) 6%, transparent), transparent 55%),
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--text-faint) 24%, transparent) 1px, transparent 0);
+  background-size: auto, auto, 18px 18px;
+  padding: 48px 24px;
+}
+.onboard__stage {
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.onboard__brand {
+  margin-bottom: 26px;
+  color: var(--text-strong);
+}
+.onboard__title {
+  font-family: var(--display);
+  font-variation-settings: "SOFT" 60, "WONK" 0, "opsz" 90;
+  font-size: 44px;
+  font-weight: 480;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  color: var(--text-strong);
+  margin: 0 0 16px;
+}
+.onboard__title em {
+  font-style: italic;
+  font-variation-settings: "SOFT" 100, "WONK" 1, "opsz" 72;
+  color: var(--brand-text);
+}
+.onboard__sub {
+  margin: 0 0 40px;
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: var(--text-muted);
+  max-width: 46ch;
+}
+.onboard__doors {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+@media (max-width: 640px) {
+  .onboard__doors {
+    grid-template-columns: 1fr;
+  }
+}
+.onboard__card {
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  text-align: left;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+  transition:
+    border-color var(--dur-quick) var(--ease-out),
+    box-shadow var(--dur-quick) var(--ease-out);
+}
+.onboard__card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+.onboard__card:focus-within {
+  border-color: color-mix(in srgb, var(--brand) 42%, var(--border));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--brand) 9%, transparent),
+    var(--shadow-md);
+}
+.onboard__card-kicker {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 10px;
+}
+.onboard__card-title {
+  font-family: var(--display);
+  font-size: 19px;
+  font-weight: 520;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+  margin: 0 0 6px;
+}
+.onboard__card-desc {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  margin: 0 0 16px;
+  min-height: 3.2em;
+}
+.onboard__key {
+  margin-bottom: 12px;
+}
+.onboard__cta {
+  width: 100%;
+  justify-content: center;
+}
+.onboard__card--alt .onboard__cta {
+  margin-top: auto;
+}
+.onboard__blank {
+  margin-top: 22px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.onboard__blank button {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text-strong);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: text-decoration-color var(--dur-quick) var(--ease-out);
+}
+.onboard__blank button:hover {
+  text-decoration-color: var(--brand);
+}
+.onboard__harness {
+  margin-top: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.onboard__harness-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-right: 4px;
+}
+.onboard__err {
+  margin-top: 18px;
+  font-size: 13px;
+  color: var(--red);
+  background: var(--red-bg);
+  border: 1px solid var(--red-border);
+  border-radius: 8px;
+  padding: 8px 14px;
 }

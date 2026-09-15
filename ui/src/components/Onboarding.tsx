@@ -1,14 +1,17 @@
 /**
- * Onboarding (first launch) — production wiring.
+ * Onboarding (first launch) — the cinematic first-run.
  *
- * Per design.md §8: first launch shows Amaara key entry OR start-local, plus a
- * harness picker. The agent runs the intent interview in-chat later (no wizard).
- * Here the "Connect Amaara Cloud" flow calls the real set_api_key command; the
- * harness picker calls set_harness; "Start with a local model" sets source=local.
+ * Design: a full-bleed darkroom stage — projector glow, film grain (global),
+ * Fraunces display headline, staggered reveal. Two doors: connect Amaara
+ * Cloud (key entry) or run local (llama.cpp + sd-server), plus a quiet
+ * "blank project" escape and the harness picker as designed chips.
+ *
+ * Wiring is untouched: set_api_key / set_source / set_harness / new_project.
  */
 
 import {useState} from 'react'
 import {useStore} from '../lib/store'
+import {Logo} from './Logo'
 
 export function OnboardingScreen() {
   const saveApiKey = useStore((s) => s.saveApiKey)
@@ -59,73 +62,110 @@ export function OnboardingScreen() {
   }
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center bg-canvas p-8 text-ink">
-      <h1 className="mb-1.5 text-2xl font-bold tracking-tight text-ink-strong">⬢ Amaara Studio</h1>
-      <p className="mb-8 max-w-md text-center text-sm text-ink-muted">
-        A content-creation studio powered by AI. Direct an agent. Watch it make. Render to video.
-      </p>
-
-      <div className="grid w-full max-w-2xl grid-cols-2 gap-4">
-        <div className="rounded-xl border border-line-soft bg-panel p-5 shadow-[var(--shadow-xs)] transition-colors hover:border-line">
-          <h3 className="mb-1 text-sm font-semibold text-ink-strong">Connect Amaara Cloud</h3>
-          <p className="mb-3 text-[13px] text-ink-muted">
-            Paste your API key to use hosted models.
-          </p>
-          <input
-            type="password"
-            className="input mb-3"
-            placeholder="Paste your Amaara API key"
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-          />
-          <button className="btn btn-primary w-full" disabled={busy} onClick={connectCloud}>
-            {busy ? 'Connecting…' : 'Connect →'}
-          </button>
+    <div className="onboard">
+      <div className="onboard__stage">
+        {/* Brand */}
+        <div className="onboard__brand reveal">
+          <Logo size={30} />
         </div>
 
-        <div className="flex flex-col rounded-xl border border-line-soft bg-panel p-5 shadow-[var(--shadow-xs)] transition-colors hover:border-line">
-          <h3 className="mb-1 text-sm font-semibold text-ink-strong">Start with a local model</h3>
-          <p className="mb-3 flex-1 text-[13px] text-ink-muted">
-            Run fully offline with llama.cpp + sd-server.
-          </p>
-          <button className="btn w-full" disabled={busy} onClick={startLocal}>
-            Use local →
-          </button>
-        </div>
-      </div>
+        {/* Display headline */}
+        <h1 className="onboard__title reveal reveal-1">
+          The studio where
+          <br />
+          <em>an agent makes film.</em>
+        </h1>
+        <p className="onboard__sub reveal reveal-2">
+          Direct it in plain language. Watch every step. Render to video — cloud or fully
+          offline.
+        </p>
 
-      <div className="mt-5 text-center text-[13px] text-ink-muted">
-        …or{' '}
-        <button
-          className="font-medium text-ink-strong underline decoration-line underline-offset-2 transition-colors hover:decoration-ink-strong"
-          onClick={startBlankProject}
-          disabled={busy}
-        >
-          start a blank project
-        </button>
-      </div>
-
-      <div className="mt-8 flex max-w-2xl flex-wrap items-center justify-center gap-2">
-        <span className="text-xs text-ink-soft">Pick a harness</span>
-        {harnesses.map((h) => (
-          <button
-            key={h.id}
-            onClick={() => void setHarness(h.id)}
-            className={`chip mono ${session?.harness === h.id ? 'is-active' : ''}`}
-            disabled={!h.available}
-            title={h.available ? 'installed' : 'not installed on PATH'}
-          >
-            <span
-              className={`text-[9px] ${h.available ? (session?.harness === h.id ? '' : 'text-ok') : 'text-ink-faint'}`}
+        {/* Two doors */}
+        <div className="onboard__doors reveal reveal-3">
+          <div className="onboard__card">
+            <div className="onboard__card-kicker">Hosted</div>
+            <h2 className="onboard__card-title">Connect Amaara Cloud</h2>
+            <p className="onboard__card-desc">
+              Paste your API key for hosted models and the render farm.
+            </p>
+            <input
+              type="password"
+              className="input onboard__key"
+              placeholder="amaara_…"
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              aria-label="Amaara API key"
+            />
+            <button
+              className="btn btn-primary onboard__cta"
+              disabled={busy}
+              onClick={connectCloud}
             >
-              ●
-            </span>
-            {h.label}
-          </button>
-        ))}
-      </div>
+              {busy ? 'Connecting…' : 'Connect'}
+              <span aria-hidden>→</span>
+            </button>
+          </div>
 
-      {err && <div className="mt-4 text-[13px] text-danger">⚠ {err}</div>}
+          <div className="onboard__card onboard__card--alt">
+            <div className="onboard__card-kicker">Offline</div>
+            <h2 className="onboard__card-title">Start with a local model</h2>
+            <p className="onboard__card-desc">
+              llama.cpp for words, sd-server for pixels. Nothing leaves this machine.
+            </p>
+            <button
+              className="btn onboard__cta"
+              disabled={busy}
+              onClick={startLocal}
+            >
+              Use local
+              <span aria-hidden>→</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Quiet escape */}
+        <div className="onboard__blank reveal reveal-4">
+          …or{' '}
+          <button type="button" onClick={startBlankProject} disabled={busy}>
+            start a blank project
+          </button>
+        </div>
+
+        {/* Harness picker */}
+        {harnesses.length > 0 && (
+          <div className="onboard__harness reveal reveal-5">
+            <span className="onboard__harness-label">Harness</span>
+            {harnesses.map((h) => {
+              const active = session?.harness === h.id
+              return (
+                <button
+                  key={h.id}
+                  type="button"
+                  onClick={() => void setHarness(h.id)}
+                  className={`chip mono ${active ? 'is-active' : ''}`}
+                  disabled={!h.available}
+                  title={h.available ? 'installed' : 'not installed on PATH'}
+                >
+                  <span
+                    aria-hidden
+                    className={h.available ? (active ? '' : 'text-ok') : 'text-ink-faint'}
+                    style={{fontSize: 9, color: active ? 'var(--brand)' : undefined}}
+                  >
+                    ●
+                  </span>
+                  {h.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {err && (
+          <div className="onboard__err reveal reveal-5" role="alert">
+            <span aria-hidden>⚠</span> {err}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

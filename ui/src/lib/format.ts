@@ -43,15 +43,17 @@ export function hashString(s: string): number {
  *  teal / dusk) so every project feels native to the neutral product
  *  surface — never a saturated rainbow. Returns a CSS color string. */
 export function swatchFor(seed: string): string {
+  // Deep, warm, low-saturation tints that sit well on both the paper and
+  // darkroom themes — used as the "frame" behind the project initial.
   const palette = [
-    '#d6d3cc', // warm gray
-    '#c8c5b6', // sand
-    '#bcc3b3', // sage
-    '#b9c0c8', // slate
-    '#c5bcc8', // mauve
-    '#bbc8c5', // teal-gray
-    '#d3c5b9', // dusk
-    '#c8beb9', // rose-gray
+    '#232f22',
+    '#2c2a21',
+    '#21302c',
+    '#252938',
+    '#302631',
+    '#1f3030',
+    '#33291f',
+    '#312524',
   ]
   return palette[hashString(seed) % palette.length]
 }

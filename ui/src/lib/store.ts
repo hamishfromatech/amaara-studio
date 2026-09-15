@@ -46,6 +46,7 @@ import {
   type RenderEvent,
 } from './events'
 import type {NavId} from './nav'
+import {isDemoMode, buildDemoSnapshot, demoChat, demoRenders, demoAssets} from './demo'
 
 export interface ChatMessage {
   id: string
@@ -288,6 +289,14 @@ export const useStore = create<AppState>((set, get) => ({
         }
       }
     } catch (e) {
+      if (isDemoMode) {
+        // Dev browser preview (no Tauri): seed a representative snapshot so
+        // surfaces can be designed in Chrome. Never active in the app.
+        const snap = buildDemoSnapshot()
+        set({...snap, loading: false, initialized: true, error: null, chat: demoChat, renders: demoRenders, assets: demoAssets})
+        applyTheme('dark')
+        return
+      }
       set({loading: false, error: String(e), initialized: true})
     }
   },
@@ -302,6 +311,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   refreshRenders: async () => {
+    if (isDemoMode) return
     try {
       const renders = await Commands.listRenders()
       set({renders})
@@ -311,6 +321,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   refreshProjectContext: async () => {
+    if (isDemoMode) return
     try {
       const snap = await Commands.getState()
       // NOTE: models intentionally NOT copied from the snapshot — snapshot
@@ -328,6 +339,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   refreshModels: async () => {
+    if (isDemoMode) return
     try {
       const models = await Commands.listModels()
       set({models})
@@ -337,6 +349,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   refreshSidecars: async () => {
+    if (isDemoMode) return
     try {
       const sidecars = await Commands.getSidecarStatus()
       set({sidecars})
@@ -733,6 +746,7 @@ export const useStore = create<AppState>((set, get) => ({
   // Start the live preview server for the current composition. Idempotent:
   // a running server is left alone; a failed one is retried.
   startPreview: async () => {
+    if (isDemoMode) return
     const {preview} = get()
     if (preview.status === 'running' || preview.status === 'starting') return
     set({preview: {...preview, status: 'starting', error: null}})
@@ -754,6 +768,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   // Parse the current composition into a timeline and select its first clip.
   loadTimeline: async (projectId, compositionId) => {
+    if (isDemoMode) return
     try {
       const timeline = await Commands.getTimeline(projectId, compositionId)
       const selectedClipId = timeline.clips[0]?.id ?? null

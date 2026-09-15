@@ -19,6 +19,7 @@ import {ApprovalDialog} from './ApprovalDialog'
 import {Inspector} from './Inspector'
 import {CommandPalette} from './CommandPalette'
 import {ShortcutsHelp} from './ShortcutsHelp'
+import {Logo} from './Logo'
 import {RendersTab} from '../renders/RendersTab'
 import {TimelineTab} from '../timeline/TimelineTab'
 import {EntryNavRail, type NavId} from './EntryNavRail'
@@ -63,15 +64,16 @@ function TopBar() {
   ]
 
   return (
-    <header className="flex h-11 shrink-0 select-none items-center justify-between gap-3 border-b border-line-soft bg-canvas px-3 text-ink">
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="whitespace-nowrap text-[13px] font-bold tracking-tight text-ink-strong">
-          ⬢ Amaara Studio
+    <header className="topbar">
+      <div className="topbar__left">
+        <span className="topbar__mark" title="Amaara Studio">
+          <Logo size={18} />
         </span>
         <select
-          className="input input-sm w-44"
+          className="topbar__select topbar__select--project"
           value={session.current_project_id ?? ''}
           onChange={(e) => e.target.value && void openProject(e.target.value)}
+          aria-label="Project"
         >
           <option value="" disabled>
             {current ? current.name : 'No project open'}
@@ -84,7 +86,7 @@ function TopBar() {
         </select>
       </div>
 
-      <div className="flex items-center gap-2 text-[13px]">
+      <div className="topbar__actions">
         <button
           className="btn btn-primary btn-sm"
           disabled={!session.current_project_id}
@@ -98,7 +100,7 @@ function TopBar() {
           Render
         </button>
         <button
-          className="btn btn-sm"
+          className="btn btn-ghost btn-sm"
           disabled={!runActive}
           title={runActive ? 'Abort the current agent run (⌘.)' : 'No agent run in progress'}
           onClick={() => void abort()}
@@ -106,14 +108,17 @@ function TopBar() {
           Stop
         </button>
 
+        <span className="topbar__sep" aria-hidden />
+
         <select
-          className="input input-sm w-auto"
+          className="topbar__select"
           value={session.harness}
           onChange={(e) => void setHarness(e.target.value)}
           title={(() => {
             const h = harnesses.find((x) => x.id === session.harness)
             return h ? harnessHint(h) : 'Harness'
           })()}
+          aria-label="Harness"
         >
           {harnesses.map((h) => (
             <option key={h.id} value={h.id} disabled={!h.available} title={harnessHint(h)}>
@@ -123,10 +128,11 @@ function TopBar() {
         </select>
 
         <select
-          className="input input-sm w-auto max-w-52"
+          className="topbar__select topbar__select--model"
           value={session.model}
           onChange={(e) => void setModel(e.target.value)}
           title="Model"
+          aria-label="Model"
         >
           {groups.map(
             ([label, group]) =>
@@ -158,7 +164,7 @@ function TopBar() {
         </div>
 
         <button
-          className="btn btn-sm"
+          className="icon-btn topbar__theme"
           title={config.theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           onClick={() => void setTheme(config.theme === 'dark' ? 'light' : 'dark')}
         >

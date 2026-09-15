@@ -11,6 +11,7 @@ import {useEffect} from 'react'
 import {useStore} from './lib/store'
 import {OnboardingScreen} from './components/Onboarding'
 import {StudioShell} from './components/Shell'
+import {Logo} from './components/Logo'
 
 export default function App() {
   const loading = useStore((s) => s.loading)
@@ -25,12 +26,15 @@ export default function App() {
 
   if (!initialized || loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-canvas text-ink">
-        <div className="text-center">
-          <div className="mb-1.5 text-xl font-bold tracking-tight text-ink-strong">
-            ⬢ Amaara Studio
-          </div>
-          <div className="animate-pulse text-[13px] text-ink-muted">Starting up…</div>
+      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-canvas text-ink">
+        <div className="animate-pulse">
+          <Logo size={30} />
+        </div>
+        <div className="display text-[22px] font-medium tracking-tight text-ink-strong">
+          Amaara Studio
+        </div>
+        <div className="shimmer-text font-mono text-[11px] tracking-[0.14em] text-ink-faint uppercase">
+          Opening the darkroom…
         </div>
       </div>
     )
