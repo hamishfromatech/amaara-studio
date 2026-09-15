@@ -3,27 +3,21 @@
 //! Drives `codex app-server` over stdio JSON-RPC:
 //! - `thread/start` to begin a persistent thread
 //! - `command/exec` (or `thread/run`) to send user prompts
-//! - `dynamicTools` exposes the Navya MCP tools
+//! - `dynamicTools` exposes the Amaara MCP tools
 //! - `approvalPolicy` routes tool approvals through the UI
 //!
 //! The adapter writes a per-project `codex.json` config that registers the
-//! Navya MCP server as an MCP provider and sets the approval policy to
+//! Amaara MCP server as an MCP provider and sets the approval policy to
 //! `request`.
 
 use async_trait::async_trait;
-use std::{
-    collections::HashMap,
-    io::BufRead,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::HashMap, io::BufRead, path::PathBuf, sync::Arc};
 use tokio::sync::{mpsc, mpsc::Receiver};
 
 use crate::harness::{
     common::{self, ChildState},
     event::{HarnessEvent, ModelInfo},
-    registry,
-    Capabilities, HarnessCtx, HarnessError, Harness as HarnessTrait, PromptMode,
+    registry, Capabilities, Harness as HarnessTrait, HarnessCtx, HarnessError, PromptMode,
 };
 
 /// Codex harness implementation.
@@ -84,7 +78,7 @@ impl CodexHarness {
         Ok(id)
     }
 
-    /// Write the per-project Codex config that registers the Navya MCP server.
+    /// Write the per-project Codex config that registers the Amaara MCP server.
     fn write_project_config(
         &self,
         project_dir: &std::path::Path,
@@ -92,19 +86,19 @@ impl CodexHarness {
         control_token: Option<&str>,
     ) -> Result<(), HarnessError> {
         let mcp_dir = common::mcp_workspace_dir();
-        let server_py = mcp_dir.join("navya_mcp").join("server.py");
+        let server_py = mcp_dir.join("amaara_mcp").join("server.py");
         let server_py_abs = server_py.to_string_lossy().to_string();
 
         let config = serde_json::json!({
             "providerEntries": [
                 {
-                    "name": "Navya Cloud",
+                    "name": "Amaara Cloud",
                     "type": "openai-compatible",
                     "baseUrl": control_url.unwrap_or("http://127.0.0.1:8080")
                 }
             ],
             "mcpServers": {
-                "navya-studio-tools": {
+                "amaara-studio-tools": {
                     "command": "uv",
                     "args": [
                         "run",
@@ -115,8 +109,8 @@ impl CodexHarness {
                         server_py_abs
                     ],
                     "env": {
-                        "NAVYA_CONTROL_URL": control_url.unwrap_or("http://127.0.0.1:8080"),
-                        "NAVYA_CONTROL_TOKEN": control_token.unwrap_or("")
+                        "AMAARA_CONTROL_URL": control_url.unwrap_or("http://127.0.0.1:8080"),
+                        "AMAARA_CONTROL_TOKEN": control_token.unwrap_or("")
                     }
                 }
             },
@@ -124,7 +118,10 @@ impl CodexHarness {
         });
 
         let path = project_dir.join("codex.json");
-        common::write_config(&path, &serde_json::to_string_pretty(&config).unwrap_or_default())
+        common::write_config(
+            &path,
+            &serde_json::to_string_pretty(&config).unwrap_or_default(),
+        )
     }
 }
 
@@ -162,16 +159,25 @@ impl HarnessTrait for CodexHarness {
             }
         }
 
-        let Some(binary) = registry::descriptor_for(&self.id).and_then(|d| registry::detect(d).path) else {
-            return Err(HarnessError::Process("codex binary not found on PATH".into()));
+        let Some(binary) =
+            registry::descriptor_for(&self.id).and_then(|d| registry::detect(d).path)
+        else {
+            return Err(HarnessError::Process(
+                "codex binary not found on PATH".into(),
+            ));
         };
 
-        self.write_project_config(&ctx.project_dir, ctx.control_url.as_deref(), ctx.control_token.as_deref())?;
+        self.write_project_config(
+            &ctx.project_dir,
+            ctx.control_url.as_deref(),
+            ctx.control_token.as_deref(),
+        )?;
 
         let config_path = ctx.project_dir.join("codex.json");
         let args = vec![
             "app-server".to_string(),
-            "--config".to_string(), config_path.to_string_lossy().to_string(),
+            "--config".to_string(),
+            config_path.to_string_lossy().to_string(),
         ];
 
         let (mut child, stdin) = common::spawn_command(
@@ -222,12 +228,18 @@ impl HarnessTrait for CodexHarness {
             };
             if notify {
                 let mut g = inner.lock().unwrap();
-                common::broadcast(&mut g.state.subscribers, HarnessEvent::Error("Codex server exited".into()));
+                common::broadcast(
+                    &mut g.state.subscribers,
+                    HarnessEvent::Error("Codex server exited".into()),
+                );
             }
         });
 
         // Start a thread with the project context.
-        let _ = self.send_rpc("thread/start", serde_json::json!({"cwd": ctx.project_dir.to_string_lossy()}));
+        let _ = self.send_rpc(
+            "thread/start",
+            serde_json::json!({"cwd": ctx.project_dir.to_string_lossy()}),
+        );
 
         Ok(())
     }
@@ -240,7 +252,10 @@ impl HarnessTrait for CodexHarness {
 
     async fn steer(&self, msg: &str) -> Result<(), HarnessError> {
         // Steer via a follow-up command/exec on the same thread.
-        self.send_rpc("command/exec", serde_json::json!({"command": msg, "steer": true}))?;
+        self.send_rpc(
+            "command/exec",
+            serde_json::json!({"command": msg, "steer": true}),
+        )?;
         Ok(())
     }
 
@@ -305,60 +320,139 @@ impl HarnessTrait for CodexHarness {
 fn handle_stdout_line(inner: &Arc<std::sync::Mutex<Inner>>, json: &serde_json::Value) {
     // JSON-RPC responses/notifications.
     if let Some(method) = json.get("method").and_then(|v| v.as_str()) {
-        let params = json.get("params").cloned().unwrap_or(serde_json::Value::Null);
+        let params = json
+            .get("params")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
         match method {
             "thread/started" => {
                 let mut g = inner.lock().unwrap();
-                common::broadcast(&mut g.state.subscribers, HarnessEvent::AgentStart { model: "default".to_string() });
+                common::broadcast(
+                    &mut g.state.subscribers,
+                    HarnessEvent::AgentStart {
+                        model: "default".to_string(),
+                    },
+                );
             }
             "turn/started" => {
                 let mut g = inner.lock().unwrap();
-                common::broadcast(&mut g.state.subscribers, HarnessEvent::AgentStart { model: "default".to_string() });
+                common::broadcast(
+                    &mut g.state.subscribers,
+                    HarnessEvent::AgentStart {
+                        model: "default".to_string(),
+                    },
+                );
             }
             "item/text_delta" => {
                 if let Some(delta) = params.get("delta").and_then(|v| v.as_str()) {
                     let mut g = inner.lock().unwrap();
-                    common::broadcast(&mut g.state.subscribers, HarnessEvent::TextDelta(delta.to_string()));
+                    common::broadcast(
+                        &mut g.state.subscribers,
+                        HarnessEvent::TextDelta(delta.to_string()),
+                    );
                 }
             }
             "item/tool_call" => {
                 if let Some(tool) = params.get("tool_call") {
-                    let id = tool.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let name = tool.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let args = tool.get("arguments").cloned().unwrap_or(serde_json::Value::Null);
+                    let id = tool
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let name = tool
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let args = tool
+                        .get("arguments")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null);
                     let mut g = inner.lock().unwrap();
-                    common::broadcast(&mut g.state.subscribers, HarnessEvent::ToolStart { tool_id: id, name, args });
+                    common::broadcast(
+                        &mut g.state.subscribers,
+                        HarnessEvent::ToolStart {
+                            tool_id: id,
+                            name,
+                            args,
+                        },
+                    );
                 }
             }
             "item/tool_result" => {
                 if let Some(result) = params.get("tool_result") {
-                    let id = result.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let id = result
+                        .get("tool_call_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     let content = result.get("content").and_then(content_text);
-                    let is_error = result.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+                    let is_error = result
+                        .get("is_error")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
                     let mut g = inner.lock().unwrap();
-                    common::broadcast(&mut g.state.subscribers, HarnessEvent::ToolEnd { tool_id: id, result: content, is_error });
+                    common::broadcast(
+                        &mut g.state.subscribers,
+                        HarnessEvent::ToolEnd {
+                            tool_id: id,
+                            result: content,
+                            is_error,
+                        },
+                    );
                 }
             }
             "turn/completed" => {
                 let mut g = inner.lock().unwrap();
-                common::broadcast(&mut g.state.subscribers, HarnessEvent::AgentEnd { success: true, message: None });
+                common::broadcast(
+                    &mut g.state.subscribers,
+                    HarnessEvent::AgentEnd {
+                        success: true,
+                        message: None,
+                    },
+                );
             }
             "turn/failed" => {
-                let err = params.get("error").and_then(|v| v.as_str()).unwrap_or("turn failed").to_string();
+                let err = params
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("turn failed")
+                    .to_string();
                 let mut g = inner.lock().unwrap();
-                common::broadcast(&mut g.state.subscribers, HarnessEvent::AgentEnd { success: false, message: Some(err.clone()) });
+                common::broadcast(
+                    &mut g.state.subscribers,
+                    HarnessEvent::AgentEnd {
+                        success: false,
+                        message: Some(err.clone()),
+                    },
+                );
                 common::broadcast(&mut g.state.subscribers, HarnessEvent::Error(err));
             }
             "approval/request" => {
                 if let Some(req) = params.get("request") {
-                    let id = req.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let kind = req.get("type").and_then(|v| v.as_str()).unwrap_or("confirm").to_string();
+                    let id = req
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let kind = req
+                        .get("type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("confirm")
+                        .to_string();
                     {
                         let mut g = inner.lock().unwrap();
                         g.pending_approvals.insert(id.clone(), req.clone());
                     }
                     let mut g = inner.lock().unwrap();
-                    common::broadcast(&mut g.state.subscribers, HarnessEvent::ApprovalRequest { id, kind, payload: req.clone() });
+                    common::broadcast(
+                        &mut g.state.subscribers,
+                        HarnessEvent::ApprovalRequest {
+                            id,
+                            kind,
+                            payload: req.clone(),
+                        },
+                    );
                 }
             }
             _ => {}
@@ -367,7 +461,11 @@ fn handle_stdout_line(inner: &Arc<std::sync::Mutex<Inner>>, json: &serde_json::V
         // Handle responses to our own requests (e.g. thread/start ack).
         let _ = result;
     } else if let Some(err) = json.get("error") {
-        let msg = err.get("message").and_then(|v| v.as_str()).unwrap_or("JSON-RPC error").to_string();
+        let msg = err
+            .get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("JSON-RPC error")
+            .to_string();
         let mut g = inner.lock().unwrap();
         common::broadcast(&mut g.state.subscribers, HarnessEvent::Error(msg));
     }
@@ -425,6 +523,8 @@ mod tests {
             }
         });
         handle_stdout_line(&inner, &json);
-        assert!(matches!(rx.try_recv(), Ok(HarnessEvent::ToolStart { tool_id, name, .. }) if tool_id == "tc1" && name == "Bash"));
+        assert!(
+            matches!(rx.try_recv(), Ok(HarnessEvent::ToolStart { tool_id, name, .. }) if tool_id == "tc1" && name == "Bash")
+        );
     }
 }

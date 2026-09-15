@@ -1,7 +1,8 @@
-// Navya Studio — Tauri 2 application core.
+// Amaara Studio — Tauri 2 application core.
 // The GUI entry point lives here; main.rs only delegates so the crate also
 // builds as an rlib for tests and future headless binaries.
 
+pub(crate) mod amaara;
 pub mod commands;
 pub mod config;
 pub mod control;
@@ -9,12 +10,11 @@ pub mod engine;
 pub mod errors;
 pub mod events;
 pub mod feedback;
-pub mod logging;
 pub(crate) mod harness;
-pub(crate) mod navya;
+pub mod logging;
 pub mod preview;
-pub mod retry;
 pub(crate) mod render;
+pub mod retry;
 pub(crate) mod sd;
 pub(crate) mod sidecar;
 pub mod state;
@@ -36,7 +36,7 @@ fn config_path(app: &tauri::AppHandle) -> PathBuf {
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("."));
     let _ = std::fs::create_dir_all(&dir);
-    dir.join("navya-config.json")
+    dir.join("amaara-config.json")
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -63,15 +63,14 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .path()
                 .app_data_dir()
                 .unwrap_or_else(|_| PathBuf::from("."));
-            let store = match store::ProjectStore::new(data_dir.join("navya.db")) {
+            let store = match store::ProjectStore::new(data_dir.join("amaara.db")) {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::warn!("opening store failed, falling back to in-memory: {e}");
                     store::ProjectStore::new(":memory:").unwrap_or_else(|_| {
                         // Last-resort: an in-memory connection we know works.
                         store::ProjectStore {
-                            conn: rusqlite::Connection::open_in_memory()
-                                .expect("in-memory sqlite"),
+                            conn: rusqlite::Connection::open_in_memory().expect("in-memory sqlite"),
                         }
                     })
                 }
@@ -111,9 +110,16 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             // the app's working directory instead of a real project tree.
             {
                 let base = data_dir.join("projects");
-                match state.store.lock().repair_project_dirs(|row| base.join(&row.id)) {
+                match state
+                    .store
+                    .lock()
+                    .repair_project_dirs(|row| base.join(&row.id))
+                {
                     Ok(repaired) if !repaired.is_empty() => {
-                        tracing::info!("repaired {} project dir(s) from placeholder paths", repaired.len());
+                        tracing::info!(
+                            "repaired {} project dir(s) from placeholder paths",
+                            repaired.len()
+                        );
                     }
                     Err(e) => tracing::warn!("project dir repair failed: {e}"),
                     _ => {}

@@ -11,8 +11,7 @@ use std::path::PathBuf;
 /// Wire contract: serialized lowercase — the TS side compares 'draft' | 'high'
 /// (and RenderStatus drives the queue-row states). PascalCase aliases keep
 /// rows persisted before the rename deserializing.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum RenderQuality {
     #[serde(alias = "Draft")]
@@ -22,11 +21,9 @@ pub enum RenderQuality {
     High,
 }
 
-
 /// Render target options.
 /// Wire contract: serialized lowercase; see RenderQuality.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum RenderTarget {
     #[serde(alias = "Local")]
@@ -41,7 +38,6 @@ pub enum RenderTarget {
     #[serde(alias = "CloudRun")]
     CloudRun,
 }
-
 
 /// A render job in the queue.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,7 +126,10 @@ impl RenderQueue {
     pub fn update_status(&mut self, job_id: &str, status: RenderStatus) -> bool {
         if let Some(job) = self.jobs.get_mut(job_id) {
             let is_running = matches!(status, RenderStatus::Running);
-            let is_terminal = matches!(status, RenderStatus::Done | RenderStatus::Failed | RenderStatus::Cancelled);
+            let is_terminal = matches!(
+                status,
+                RenderStatus::Done | RenderStatus::Failed | RenderStatus::Cancelled
+            );
             job.status = status;
             if is_running && job.started_at_ms.is_none() {
                 job.started_at_ms = Some(current_time_ms());
@@ -159,7 +158,10 @@ impl RenderQueue {
 
 fn current_time_ms() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -190,7 +192,10 @@ mod tests {
         ] {
             assert_eq!(serde_json::to_string(&v).unwrap(), format!("\"{s}\""));
         }
-        for (v, s) in [(RenderQuality::Draft, "draft"), (RenderQuality::High, "high")] {
+        for (v, s) in [
+            (RenderQuality::Draft, "draft"),
+            (RenderQuality::High, "high"),
+        ] {
             assert_eq!(serde_json::to_string(&v).unwrap(), format!("\"{s}\""));
         }
         // Rows persisted by older builds (PascalCase via the old derives)

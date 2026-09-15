@@ -55,7 +55,10 @@ pub fn write_allow_rule(
 /// "Always allow this {kind} request" — the coarse tool-name rule is the
 /// closest native Claude Code equivalent.
 fn write_claude_allow(project_dir: &Path, request: &ApprovalRequest) -> Result<(), String> {
-    let payload = request.payload.as_object().ok_or("approval payload is not an object")?;
+    let payload = request
+        .payload
+        .as_object()
+        .ok_or("approval payload is not an object")?;
     let tool = payload
         .get("name")
         .or_else(|| payload.get("tool"))
@@ -67,20 +70,27 @@ fn write_claude_allow(project_dir: &Path, request: &ApprovalRequest) -> Result<(
     let mut settings: serde_json::Value = if settings_path.exists() {
         let raw = std::fs::read_to_string(&settings_path)
             .map_err(|e| format!("reading {}: {e}", settings_path.display()))?;
-        serde_json::from_str(&raw).map_err(|e| format!("parsing {}: {e}", settings_path.display()))?
+        serde_json::from_str(&raw)
+            .map_err(|e| format!("parsing {}: {e}", settings_path.display()))?
     } else {
         serde_json::json!({})
     };
 
-    let obj = settings.as_object_mut().ok_or("settings.json is not an object")?;
+    let obj = settings
+        .as_object_mut()
+        .ok_or("settings.json is not an object")?;
     let perms = obj
         .entry("permissions")
         .or_insert_with(|| serde_json::json!({}));
-    let perms_obj = perms.as_object_mut().ok_or("permissions is not an object")?;
+    let perms_obj = perms
+        .as_object_mut()
+        .ok_or("permissions is not an object")?;
     let allow = perms_obj
         .entry("allow")
         .or_insert_with(|| serde_json::json!([]));
-    let allow_arr = allow.as_array_mut().ok_or("permissions.allow is not an array")?;
+    let allow_arr = allow
+        .as_array_mut()
+        .ok_or("permissions.allow is not an array")?;
     if !allow_arr.iter().any(|v| v.as_str() == Some(tool)) {
         allow_arr.push(serde_json::json!(tool));
     }
@@ -123,8 +133,8 @@ mod tests {
         assert!(write_allow_rule("a-coder-cli", std::path::Path::new("."), &req, false).is_ok());
         // Harnesses without a writable policy honestly say so instead of
         // silently pretending the rule was persisted.
-        let err = write_allow_rule("a-coder-cli", std::path::Path::new("."), &req, true)
-            .unwrap_err();
+        let err =
+            write_allow_rule("a-coder-cli", std::path::Path::new("."), &req, true).unwrap_err();
         assert!(err.contains("a-coder-cli") && err.contains("not implemented"));
     }
 
@@ -140,7 +150,7 @@ mod tests {
 
     #[test]
     fn claude_allow_rule_persists_tool_name() {
-        let dir = std::env::temp_dir().join(format!("navya-allow-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("amaara-allow-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let req = ApprovalRequest {
@@ -154,15 +164,17 @@ mod tests {
         assert_eq!(v["permissions"]["allow"][0], "Bash");
         // A second allow of the same tool must not duplicate the entry.
         write_allow_rule("claude-code", &dir, &req, true).unwrap();
-        let v: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(dir.join(".claude").join("settings.json")).unwrap()).unwrap();
+        let v: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.join(".claude").join("settings.json")).unwrap(),
+        )
+        .unwrap();
         assert_eq!(v["permissions"]["allow"].as_array().unwrap().len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn always_allow_false_is_a_noop() {
-        let dir = std::env::temp_dir().join(format!("navya-allow-noop-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("amaara-allow-noop-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let req = ApprovalRequest {
@@ -177,7 +189,7 @@ mod tests {
 
     #[test]
     fn unsupported_harness_reports_not_implemented() {
-        let dir = std::env::temp_dir().join(format!("navya-allow-unsup-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("amaara-allow-unsup-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let req = ApprovalRequest {
             id: "r3".to_string(),

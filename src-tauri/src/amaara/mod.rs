@@ -1,6 +1,6 @@
-//! Navya Cloud HTTP client (production wiring).
+//! Amaara Cloud HTTP client (production wiring).
 //!
-//! Navya Cloud is an OpenAI-compatible endpoint. This client makes real HTTP
+//! Amaara Cloud is an OpenAI-compatible endpoint. This client makes real HTTP
 //! calls with reqwest (rustls): image generation via `/v1/images/generations`
 //! and model listing via `/v1/models`. The API key is read from the OS keyring
 //! at call time (never stored on disk or in this struct).
@@ -10,20 +10,20 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::config::{self, SERVICE_NAVYA};
+use crate::config::{self, SERVICE_AMAARA};
 
-/// Navya Cloud HTTP client state. The API key is NOT held here — it's fetched
+/// Amaara Cloud HTTP client state. The API key is NOT held here — it's fetched
 /// from the keyring on each call so a rotated key takes effect immediately.
 #[derive(Debug, Clone)]
-pub struct NavyaClient {
+pub struct AmaaraClient {
     pub base_url: String,
     pub use_auto_router: bool,
     pub byok: bool,
 }
 
-impl NavyaClient {
+impl AmaaraClient {
     pub fn new(base_url: String, use_auto_router: bool, byok: bool) -> Self {
-        NavyaClient {
+        AmaaraClient {
             base_url: base_url.trim_end_matches('/').to_string(),
             use_auto_router,
             byok,
@@ -32,9 +32,9 @@ impl NavyaClient {
 
     /// Load the API key from the keyring (returns an error string for the UI).
     fn api_key(&self) -> Result<String, String> {
-        match config::get_secret(SERVICE_NAVYA, "api-key") {
+        match config::get_secret(SERVICE_AMAARA, "api-key") {
             Ok(Some(k)) if !k.is_empty() => Ok(k),
-            Ok(_) => Err("No Navya API key set. Add it in onboarding or Settings.".to_string()),
+            Ok(_) => Err("No Amaara API key set. Add it in onboarding or Settings.".to_string()),
             Err(e) => Err(format!("keyring error: {e}")),
         }
     }
@@ -46,7 +46,7 @@ impl NavyaClient {
             .expect("reqwest client")
     }
 
-    /// Generate an image via Navya `/v1/images/generations` (OpenAI shape).
+    /// Generate an image via Amaara `/v1/images/generations` (OpenAI shape).
     /// Returns the image URL or a saved local path (best-effort download).
     /// Generate an image, retrying once on transient failures (network error,
     /// 429, 5xx) with equal-jitter backoff (`retry.rs`, open-design B2). Client
@@ -66,22 +66,23 @@ impl NavyaClient {
                 } else {
                     Some(crate::retry::FailureCategory::Transient)
                 };
-                let delay = crate::retry::compute_retry_backoff_ms(attempt, category, rand::random::<f64>);
-                tracing::info!("Navya generate_image transient failure; retrying in {delay}ms");
+                let delay =
+                    crate::retry::compute_retry_backoff_ms(attempt, category, rand::random::<f64>);
+                tracing::info!("Amaara generate_image transient failure; retrying in {delay}ms");
                 tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
             }
             match self.generate_image_once(prompt, model, size).await {
                 Ok(img) => return Ok(img),
                 Err(e) => {
-                    if !is_retryable_navya_error(&e) {
+                    if !is_retryable_amaara_error(&e) {
                         return Err(e);
                     }
-                    rate_limited = e.contains("Navya returned 429");
+                    rate_limited = e.contains("Amaara returned 429");
                     last_err = Some(e);
                 }
             }
         }
-        Err(last_err.unwrap_or_else(|| "Navya request failed".to_string()))
+        Err(last_err.unwrap_or_else(|| "Amaara request failed".to_string()))
     }
 
     /// One attempt of the generate call (no retry logic).
@@ -107,24 +108,27 @@ impl NavyaClient {
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("Navya request failed: {e}"))?;
+            .map_err(|e| format!("Amaara request failed: {e}"))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(format!("Navya returned {status}: {}", truncate(&text, 200)));
+            return Err(format!(
+                "Amaara returned {status}: {}",
+                truncate(&text, 200)
+            ));
         }
 
         let parsed: ImagesResponse = resp
             .json()
             .await
-            .map_err(|e| format!("invalid Navya response: {e}"))?;
+            .map_err(|e| format!("invalid Amaara response: {e}"))?;
 
         let item = parsed
             .data
             .into_iter()
             .next()
-            .ok_or_else(|| "Navya returned no image data".to_string())?;
+            .ok_or_else(|| "Amaara returned no image data".to_string())?;
 
         Ok(GeneratedImage {
             url: item.url,
@@ -140,16 +144,23 @@ impl NavyaClient {
         let req = self.client().get(format!("{}/v1/models", self.base_url));
         let req = match key {
             Ok(k) => req.bearer_auth(k),
-            Err(_) => req, // some Navya deployments list public models unauthed
+            Err(_) => req, // some Amaara deployments list public models unauthed
         };
 
         match req.send().await {
             Ok(resp) if resp.status().is_success() => {
                 let parsed: ModelsResponse = resp.json().await.map_err(|e| e.to_string())?;
-                Ok(parsed.data.into_iter().map(|m| {
-                    let id = m.id.clone();
-                    ModelSummary { id, kind: infer_kind(&m.id) }
-                }).collect())
+                Ok(parsed
+                    .data
+                    .into_iter()
+                    .map(|m| {
+                        let id = m.id.clone();
+                        ModelSummary {
+                            id,
+                            kind: infer_kind(&m.id),
+                        }
+                    })
+                    .collect())
             }
             _ => Ok(fallback_models()),
         }
@@ -157,14 +168,14 @@ impl NavyaClient {
 }
 
 /// Transient failures are worth one backoff retry; client mistakes are not.
-fn is_retryable_navya_error(err: &str) -> bool {
+fn is_retryable_amaara_error(err: &str) -> bool {
     // Network-level failure (reqwest error text from generate_image_once).
-    if err.contains("Navya request failed") {
+    if err.contains("Amaara request failed") {
         return true;
     }
     // HTTP status failures: retry only 429 + 5xx.
     for code in [429u16, 500, 502, 503, 504] {
-        if err.contains(&format!("Navya returned {code}")) {
+        if err.contains(&format!("Amaara returned {code}")) {
             return true;
         }
     }
@@ -218,9 +229,18 @@ fn infer_kind(id: &str) -> String {
 
 fn fallback_models() -> Vec<ModelSummary> {
     vec![
-        ModelSummary { id: "navya/auto".into(), kind: "chat".into() },
-        ModelSummary { id: "qwen3-32b".into(), kind: "chat".into() },
-        ModelSummary { id: "dall-e-3".into(), kind: "image".into() },
+        ModelSummary {
+            id: "amaara/auto".into(),
+            kind: "chat".into(),
+        },
+        ModelSummary {
+            id: "qwen3-32b".into(),
+            kind: "chat".into(),
+        },
+        ModelSummary {
+            id: "dall-e-3".into(),
+            kind: "image".into(),
+        },
     ]
 }
 
@@ -243,8 +263,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn navya_client_trims_trailing_slash() {
-        let c = NavyaClient::new("http://localhost:8000/".to_string(), true, false);
+    fn amaara_client_trims_trailing_slash() {
+        let c = AmaaraClient::new("http://localhost:8000/".to_string(), true, false);
         assert_eq!(c.base_url, "http://localhost:8000");
     }
 
@@ -277,9 +297,9 @@ mod tests {
     #[tokio::test]
     async fn api_key_errors_when_unset() {
         // Force the fake backend so this test doesn't depend on a real keyring
-        // (which may already contain a Navya key on the developer's machine).
+        // (which may already contain a Amaara key on the developer's machine).
         crate::config::set_fake_keyring(true);
-        let c = NavyaClient::new("http://localhost:8000".to_string(), true, false);
+        let c = AmaaraClient::new("http://localhost:8000".to_string(), true, false);
         let res = c.api_key();
         assert!(res.is_err());
     }

@@ -3,7 +3,7 @@
  *
  *   Sidecars — live status of the studio's subprocesses (render worker,
  *              preview server, sd-server), from the store.
- *   MCP — the built-in `navya-studio-tools` server (navya-mcp): where it
+ *   MCP — the built-in `amaara-studio-tools` server (amaara-mcp): where it
  *         lives, whether its runtime (uv) is installed, what it proxies to,
  *         and the tools it exposes. Below it, the user's *additional* MCP
  *         servers (config.mcp_servers): add / edit / toggle / remove,
@@ -21,7 +21,7 @@ function statusTone(s: string): string {
   return 'text-ink-faint'
 }
 
-/** The tools the built-in navya-mcp server exposes (navya_mcp/server.py). */
+/** The tools the built-in amaara-mcp server exposes (amaara_mcp/server.py). */
 const BUILTIN_TOOLS = [
   {id: 'generate_image', kind: 'image'},
   {id: 'render_to_video', kind: 'video'},
@@ -134,7 +134,7 @@ export function ToolsView() {
       {/* Built-in MCP server */}
       <section className="entry-section">
         <div className="entry-section__head">
-          <h2 className="entry-section__title">MCP — navya-studio-tools (built-in)</h2>
+          <h2 className="entry-section__title">MCP — amaara-studio-tools (built-in)</h2>
           <div className="entry-section__actions">
             <button className="entry-section__action" onClick={() => void refresh()}>
               Refresh →
@@ -231,7 +231,7 @@ export function ToolsView() {
           <div className="list-card__body">
             {servers.length === 0 && !adding && (
               <div style={{padding: '14px 18px', color: 'var(--text-faint)', fontSize: 12}}>
-                No additional MCP servers. The built-in navya-studio-tools server is always
+                No additional MCP servers. The built-in amaara-studio-tools server is always
                 available to MCP-capable harnesses.
               </div>
             )}
@@ -387,7 +387,7 @@ function McpServerForm({
       <textarea
         className="input input-sm mono"
         rows={2}
-        placeholder={'NAVYA_CONTROL_URL=http://…\nANOTHER_KEY=value'}
+        placeholder={'AMAARA_CONTROL_URL=http://…\nANOTHER_KEY=value'}
         value={envText}
         onChange={(e) => {
           const env: [string, string][] = e.target.value

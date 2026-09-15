@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "src-tauri",
-    "crates/navya-tools",
+    "crates/amaara-tools",
 ]
 
 [profile.dev]

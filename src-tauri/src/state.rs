@@ -13,12 +13,12 @@ use std::sync::Arc;
 use parking_lot::Mutex as PMutex;
 use serde::{Deserialize, Serialize};
 
-use crate::config::{self, NavyaConfig};
+use crate::amaara::AmaaraClient;
+use crate::config::{self, AmaaraConfig};
 use crate::engine::EngineClient;
 use crate::harness::{Capabilities, HarnessRegistry};
-use crate::navya::NavyaClient;
-use crate::render::RenderQueue;
 use crate::preview::{preview_state, PreviewState};
+use crate::render::RenderQueue;
 use crate::sidecar::{SidecarStatus, Supervisor};
 use crate::store::{ProjectRow, ProjectStore};
 
@@ -38,7 +38,7 @@ impl Default for Session {
             current_project_id: None,
             current_composition_id: None,
             harness: "a-coder-cli".to_string(),
-            model: "navya/auto".to_string(),
+            model: "amaara/auto".to_string(),
             source: "cloud".to_string(),
         }
     }
@@ -56,7 +56,7 @@ pub struct SidecarHealth {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StateSnapshot {
     pub session: Session,
-    pub config: NavyaConfig,
+    pub config: AmaaraConfig,
     pub projects: Vec<ProjectRow>,
     pub models: Vec<ModelEntry>,
     pub sidecars: Vec<SidecarHealth>,
@@ -75,7 +75,7 @@ pub struct StateSnapshot {
 pub struct ModelEntry {
     pub id: String,
     pub name: String,
-    pub kind: String, // chat | image | video
+    pub kind: String,   // chat | image | video
     pub source: String, // cloud | local
     pub active: bool,
 }
@@ -106,11 +106,11 @@ pub struct HarnessInfo {
 /// cloned cheaply into background tasks.
 pub struct AppState {
     pub session: PMutex<Session>,
-    pub config: PMutex<NavyaConfig>,
+    pub config: PMutex<AmaaraConfig>,
     pub config_path: PathBuf,
     pub store: Arc<PMutex<ProjectStore>>,
     pub render_queue: PMutex<RenderQueue>,
-    pub navya: PMutex<NavyaClient>,
+    pub amaara: PMutex<AmaaraClient>,
     pub engine: PMutex<EngineClient>,
     pub supervisor: Arc<Supervisor>,
     pub harness_registry: PMutex<HarnessRegistry>,
@@ -137,9 +137,9 @@ pub struct AppState {
 
 impl AppState {
     /// `save_config` can persist back to the same file.
-    pub fn new(config: NavyaConfig, config_path: PathBuf, store: ProjectStore) -> Self {
-        let navya = NavyaClient::new(
-            config.navya_base_url.clone(),
+    pub fn new(config: AmaaraConfig, config_path: PathBuf, store: ProjectStore) -> Self {
+        let amaara = AmaaraClient::new(
+            config.amaara_base_url.clone(),
             config.use_auto_router,
             config.byok,
         );
@@ -159,12 +159,12 @@ impl AppState {
             config_path,
             store: Arc::new(PMutex::new(store)),
             render_queue: PMutex::new(RenderQueue::default()),
-            navya: PMutex::new(navya),
+            amaara: PMutex::new(amaara),
             engine: PMutex::new(engine),
             supervisor: Arc::new(Supervisor::new()),
             harness_registry: PMutex::new(registry),
-        preview: preview_state(),
-        sd: Arc::new(crate::sd::SdServerSupervisor::new()),
+            preview: preview_state(),
+            sd: Arc::new(crate::sd::SdServerSupervisor::new()),
             pump_harness: PMutex::new(None),
             pump_handle: PMutex::new(None),
             render_children: PMutex::new(HashMap::new()),
@@ -202,7 +202,7 @@ impl AppState {
             .map(|id| harness_info(&id, &config, registry.get(&id).map(|h| h.capabilities())))
             .collect();
 
-        // Models: cloud (Navya) + local (llama.cpp / sd-server).
+        // Models: cloud (Amaara) + local (llama.cpp / sd-server).
         let mut models = cloud_models(&session.model);
         if config.sd_server_url.is_some() {
             models.push(ModelEntry {
@@ -267,12 +267,14 @@ fn detect_sidecar_health(name: &str, bin: &str) -> SidecarHealth {
         SidecarHealth {
             name: name.to_string(),
             status: "not_installed".to_string(),
-            detail: Some(format!("{bin} not on PATH. Install it to enable local {name}.")),
+            detail: Some(format!(
+                "{bin} not on PATH. Install it to enable local {name}."
+            )),
         }
     }
 }
 
-fn harness_info(id: &str, _cfg: &NavyaConfig, caps: Option<Capabilities>) -> HarnessInfo {
+fn harness_info(id: &str, _cfg: &AmaaraConfig, caps: Option<Capabilities>) -> HarnessInfo {
     // Descriptor-driven (harness/registry.rs): label + install/docs metadata
     // come from the static table; availability comes from binary detection
     // (PATH scan incl. fallback bins, plus a bounded `--version` probe).
@@ -281,10 +283,7 @@ fn harness_info(id: &str, _cfg: &NavyaConfig, caps: Option<Capabilities>) -> Har
     let caps = caps.unwrap_or_default();
     HarnessInfo {
         id: id.to_string(),
-        label: descriptor
-            .map(|d| d.label)
-            .unwrap_or(id)
-            .to_string(),
+        label: descriptor.map(|d| d.label).unwrap_or(id).to_string(),
         enabled: false,
         steer: caps.steer,
         abort: caps.abort,
@@ -303,11 +302,11 @@ fn harness_info(id: &str, _cfg: &NavyaConfig, caps: Option<Capabilities>) -> Har
 pub fn cloud_models(active_model: &str) -> Vec<ModelEntry> {
     vec![
         ModelEntry {
-            id: "navya/auto".to_string(),
-            name: "Navya Auto Router".to_string(),
+            id: "amaara/auto".to_string(),
+            name: "Amaara Auto Router".to_string(),
             kind: "chat".to_string(),
             source: "cloud".to_string(),
-            active: active_model == "navya/auto",
+            active: active_model == "amaara/auto",
         },
         ModelEntry {
             id: "qwen3-32b".to_string(),
@@ -328,10 +327,10 @@ pub fn cloud_models(active_model: &str) -> Vec<ModelEntry> {
 
 /// Resolve the config file path in the app data dir, loading it if present or
 /// falling back to defaults (and writing the default so the user can edit it).
-pub fn load_config(config_path: PathBuf) -> NavyaConfig {
+pub fn load_config(config_path: PathBuf) -> AmaaraConfig {
     if config_path.exists() {
         if let Ok(raw) = std::fs::read_to_string(&config_path) {
-            if let Ok(c) = serde_json::from_str::<NavyaConfig>(&raw) {
+            if let Ok(c) = serde_json::from_str::<AmaaraConfig>(&raw) {
                 return c;
             }
         }
@@ -339,6 +338,9 @@ pub fn load_config(config_path: PathBuf) -> NavyaConfig {
     let d = config::default_config();
     // Best-effort persist the default so Settings shows a real file.
     let _ = std::fs::create_dir_all(config_path.parent().unwrap_or(&PathBuf::from(".")));
-    let _ = std::fs::write(&config_path, serde_json::to_string_pretty(&d).unwrap_or_default());
+    let _ = std::fs::write(
+        &config_path,
+        serde_json::to_string_pretty(&d).unwrap_or_default(),
+    );
     d
 }

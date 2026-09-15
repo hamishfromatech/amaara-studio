@@ -2,7 +2,7 @@
 //!
 //! Installs a global `tracing` subscriber that writes one JSON line per event
 //! to a daily-rotating file under the app-data `logs/` dir
-//! (`navya.<YYYY-MM-DD>.log`). JSON keeps the logs machine-parseable for the
+//! (`amaara.<YYYY-MM-DD>.log`). JSON keeps the logs machine-parseable for the
 //! "send feedback" packager (Phase 15) and the per-sidecar log drawer.
 //!
 //! The install is best-effort: if the log dir can't be created (headless,
@@ -15,12 +15,12 @@ use std::path::Path;
 use tracing_appender::rolling;
 use tracing_subscriber::EnvFilter;
 
-/// Default level filter when `RUST_LOG` is unset. `navya_studio=debug` gives the
+/// Default level filter when `RUST_LOG` is unset. `amaara_studio=debug` gives the
 /// app itself slightly more verbosity than the (loud) third-party crates.
-const DEFAULT_FILTER: &str = "info,navya_studio=debug";
+const DEFAULT_FILTER: &str = "info,amaara_studio=debug";
 
 /// Install the global tracing subscriber writing daily-rotating JSON logs to
-/// `<log_dir>/navya.<YYYY-MM-DD>.log`. Best-effort: falls back to stderr if the
+/// `<log_dir>/amaara.<YYYY-MM-DD>.log`. Best-effort: falls back to stderr if the
 /// dir can't be created or a subscriber is already installed.
 pub fn init(log_dir: &Path) {
     if install_file(log_dir).is_err() {
@@ -31,7 +31,7 @@ pub fn init(log_dir: &Path) {
 fn install_file(log_dir: &Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     std::fs::create_dir_all(log_dir)?;
     // `rolling::daily` rotates once per day (prefix.YYYY-MM-DD).
-    let appender = rolling::daily(log_dir, "navya");
+    let appender = rolling::daily(log_dir, "amaara");
     let filter = env_filter();
     tracing_subscriber::fmt()
         .with_env_filter(filter)
@@ -62,7 +62,7 @@ mod tests {
     #[test]
     fn init_falls_back_to_stderr_when_dir_unwritable() {
         // An unwritable path (a file, not a dir) forces the stderr fallback.
-        let tmp = std::env::temp_dir().join(format!("navya-log-bad-{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("amaara-log-bad-{}", std::process::id()));
         std::fs::write(&tmp, b"x").ok();
         // Must not panic even though the file install fails.
         init(&tmp);
@@ -71,7 +71,7 @@ mod tests {
 
     #[test]
     fn init_writes_json_to_log_dir() {
-        let dir = std::env::temp_dir().join(format!("navya-log-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("amaara-log-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         init(&dir);
         // Emit an event and confirm a JSON log line lands in the dir.

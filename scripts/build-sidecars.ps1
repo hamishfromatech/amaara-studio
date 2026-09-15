@@ -4,9 +4,9 @@
 # Stages:
 #   1. render-worker.mjs     — already in src-tauri/binaries (verified here).
 #   2. sd-server-<triple>.*  — resolved from, in order:
-#        a. $env:NAVYA_SD_SERVER_BIN   (explicit path to a built sd-server)
+#        a. $env:AMAARA_SD_SERVER_BIN   (explicit path to a built sd-server)
 #        b. a local stable-diffusion.cpp build tree (third_party/)
-#        c. $env:NAVYA_SD_RELEASE_URL  (direct download)
+#        c. $env:AMAARA_SD_RELEASE_URL  (direct download)
 #      The staged binary gets a `<file>.sha256` sidecar (hex digest) which
 #      sidecar::bootstrap verifies at runtime before use.
 #
@@ -51,9 +51,9 @@ function Write-Sha256([string]$Path) {
 }
 
 # a) explicit env override
-if ($env:NAVYA_SD_SERVER_BIN -and (Test-Path $env:NAVYA_SD_SERVER_BIN)) {
-  Copy-Item $env:NAVYA_SD_SERVER_BIN $sdDest -Force
-  Write-Host "[build-sidecars] copied sd-server from $($env:NAVYA_SD_SERVER_BIN)"
+if ($env:AMAARA_SD_SERVER_BIN -and (Test-Path $env:AMAARA_SD_SERVER_BIN)) {
+  Copy-Item $env:AMAARA_SD_SERVER_BIN $sdDest -Force
+  Write-Host "[build-sidecars] copied sd-server from $($env:AMAARA_SD_SERVER_BIN)"
 }
 else {
   # b) local stable-diffusion.cpp build tree
@@ -67,10 +67,10 @@ else {
     Copy-Item $src $sdDest -Force
     Write-Host "[build-sidecars] copied sd-server from $src"
   }
-  elseif ($env:NAVYA_SD_RELEASE_URL) {
+  elseif ($env:AMAARA_SD_RELEASE_URL) {
     # c) direct download (e.g. a known-good release asset URL)
-    Write-Host "[build-sidecars] downloading $env:NAVYA_SD_RELEASE_URL"
-    Invoke-WebRequest -Uri $env:NAVYA_SD_RELEASE_URL -OutFile $sdDest
+    Write-Host "[build-sidecars] downloading $env:AMAARA_SD_RELEASE_URL"
+    Invoke-WebRequest -Uri $env:AMAARA_SD_RELEASE_URL -OutFile $sdDest
   }
   else {
     # d) build from source if the repo is checked out
@@ -93,9 +93,9 @@ else {
       throw @"
 No sd-server binary could be staged for $Triple.
 Options:
-  1. Set NAVYA_SD_SERVER_BIN to a built sd-server.exe
+  1. Set AMAARA_SD_SERVER_BIN to a built sd-server.exe
   2. Check out stable-diffusion.cpp under third_party/ (script builds it)
-  3. Set NAVYA_SD_RELEASE_URL to a release asset URL
+  3. Set AMAARA_SD_RELEASE_URL to a release asset URL
 "@
     }
   }

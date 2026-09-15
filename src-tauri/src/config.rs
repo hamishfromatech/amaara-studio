@@ -1,7 +1,7 @@
 //! Typed studio settings + secret storage (Phase 1).
 //!
 //! Non-secret settings live in the JSON settings store (`tauri-plugin-store`,
-//! app data dir). Secrets — the Navya API key, control-server token, and any
+//! app data dir). Secrets — the Amaara API key, control-server token, and any
 //! llama.cpp / sd keys — live ONLY in the OS keyring and are never written to
 //! disk in plaintext (cross-cutting risk #4; headless/CI fallback per risk #33).
 
@@ -12,8 +12,7 @@ use std::path::PathBuf;
 /// UI density: comfortable (default) or compact for laptops.
 /// Wire contract: serialized lowercase — the TS side compares 'comfortable' |
 /// 'compact'. PascalCase aliases keep pre-rename config.json files parsing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Density {
     #[serde(alias = "Comfortable")]
@@ -23,11 +22,9 @@ pub enum Density {
     Compact,
 }
 
-
 /// Theme mode. Dark is the studio default (design.md §11).
 /// Wire contract: serialized lowercase ('dark' | 'light'); see Density.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemeMode {
     #[serde(alias = "Dark")]
@@ -37,11 +34,9 @@ pub enum ThemeMode {
     Light,
 }
 
-
 /// GPU build flavor selected at BUNDLE time (not runtime) — CUDA/Vulkan/CPU.
 /// Wire contract: serialized lowercase ('cuda' | 'vulkan' | 'cpu'); see Density.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum SdGpuBackend {
     #[serde(alias = "Cuda")]
@@ -55,7 +50,7 @@ pub enum SdGpuBackend {
 
 /// One user-configured MCP server entry (Tools → MCP servers).
 ///
-/// The built-in `navya-studio-tools` server (navya-mcp) is always present and
+/// The built-in `amaara-studio-tools` server (amaara-mcp) is always present and
 /// managed by the harness adapters; these entries are *additional* servers the
 /// user wants exposed, persisted in the app-data config JSON.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -77,23 +72,22 @@ pub struct McpServerConfig {
     pub enabled: bool,
 }
 
-
 /// Non-secret studio settings persisted as JSON in the app data dir.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct NavyaConfig {
-    /// Navya Cloud base URL. Dev default `http://localhost:8000` (BUILD-GAPS B.7).
+pub struct AmaaraConfig {
+    /// Amaara Cloud base URL. Dev default `http://localhost:8000` (BUILD-GAPS B.7).
     #[serde(default = "default_base_url")]
-    pub navya_base_url: String,
+    pub amaara_base_url: String,
 
-    /// Default model id shown in the picker; `navya/auto` routes via the server.
+    /// Default model id shown in the picker; `amaara/auto` routes via the server.
     #[serde(default = "default_model")]
     pub default_model: String,
 
-    /// Use the `navya/auto` router (BUILD-GAPS B.10 / A.3 cloud-first).
+    /// Use the `amaara/auto` router (BUILD-GAPS B.10 / A.3 cloud-first).
     #[serde(default)]
     pub use_auto_router: bool,
 
-    /// BYOK to underlying providers (maps to Navya's byok_router).
+    /// BYOK to underlying providers (maps to Amaara's byok_router).
     #[serde(default)]
     pub byok: bool,
 
@@ -105,7 +99,7 @@ pub struct NavyaConfig {
     #[serde(default = "default_local_llama_url")]
     pub local_llama_url: String,
 
-    /// Navya Engine local proxy URL (OpenAI-compatible endpoint).
+    /// Amaara Engine local proxy URL (OpenAI-compatible endpoint).
     #[serde(default = "default_engine_url")]
     pub engine_url: String,
 
@@ -140,7 +134,7 @@ pub struct NavyaConfig {
     pub share_analytics: bool,
 
     /// User-configured additional MCP servers (Tools → MCP servers). The
-    /// built-in navya-studio-tools server is separate and always managed.
+    /// built-in amaara-studio-tools server is separate and always managed.
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
 }
@@ -149,7 +143,7 @@ fn default_base_url() -> String {
     "http://localhost:8000".to_string()
 }
 fn default_model() -> String {
-    "navya/auto".to_string()
+    "amaara/auto".to_string()
 }
 fn default_harnesses() -> Vec<String> {
     vec!["a-coder-cli".to_string()]
@@ -166,7 +160,7 @@ fn default_models_dir() -> PathBuf {
 
 /// Merge a partial JSON fragment (as typed in the Settings UI) onto the config.
 /// Unknown keys are ignored; missing values keep their current value.
-pub fn merge_config(raw: &str, base: &NavyaConfig) -> Result<NavyaConfig, ConfigError> {
+pub fn merge_config(raw: &str, base: &AmaaraConfig) -> Result<AmaaraConfig, ConfigError> {
     if raw.trim().is_empty() {
         return Ok(base.clone());
     }
@@ -178,19 +172,24 @@ pub fn merge_config(raw: &str, base: &NavyaConfig) -> Result<NavyaConfig, Config
 /// does not provide. Returns the merged result (not in place).
 fn apply_patch(
     patch: &serde_json::Value,
-    base: &NavyaConfig,
-) -> Result<NavyaConfig, ConfigError> {
+    base: &AmaaraConfig,
+) -> Result<AmaaraConfig, ConfigError> {
     let mut out = base.clone();
     if let Some(obj) = patch.as_object() {
         for (k, v) in obj {
             match k.as_str() {
-                "navya_base_url" => out.navya_base_url = string_val(v)?,
+                "amaara_base_url" => out.amaara_base_url = string_val(v)?,
                 "default_model" => out.default_model = string_val(v)?,
                 "use_auto_router" => out.use_auto_router = bool_val(v),
                 "byok" => out.byok = bool_val(v),
                 "enabled_harnesses" => {
-                    let arr: Vec<String> = v.as_array()
-                        .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
+                    let arr: Vec<String> = v
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|x| x.as_str().map(String::from))
+                                .collect()
+                        })
                         .unwrap_or_default();
                     out.enabled_harnesses = arr;
                 }
@@ -256,9 +255,9 @@ fn path_val(v: &serde_json::Value) -> PathBuf {
     v.as_str().map(PathBuf::from).unwrap_or_default()
 }
 
-pub fn default_config() -> NavyaConfig {
-    NavyaConfig {
-        navya_base_url: default_base_url(),
+pub fn default_config() -> AmaaraConfig {
+    AmaaraConfig {
+        amaara_base_url: default_base_url(),
         default_model: default_model(),
         use_auto_router: true,
         byok: false,
@@ -292,8 +291,8 @@ pub enum ConfigError {
 // ---------------------------------------------------------------------------
 
 /// Secret service identifiers. These are never stored on disk.
-pub const SERVICE_NAVYA: &str = "navya-api";
-pub const SERVICE_CONTROL: &str = "navya-control-token";
+pub const SERVICE_AMAARA: &str = "amaara-api";
+pub const SERVICE_CONTROL: &str = "amaara-control-token";
 
 #[derive(Debug, thiserror::Error)]
 pub enum SecretError {
@@ -325,7 +324,7 @@ impl FakeKeyring {
 thread_local! {
     /// When true, all secret calls go through the in-memory fake backend.
     /// This avoids env-var races between tests and works on machines that
-    /// have a real OS keyring (the real keyring may already contain a Navya
+    /// have a real OS keyring (the real keyring may already contain a Amaara
     /// key, which would make the "errors when unset" test fail).
     static FAKE_KEYRING: std::cell::RefCell<(bool, FakeKeyring)> =
         std::cell::RefCell::new((false, FakeKeyring::default()));
@@ -371,7 +370,9 @@ pub fn set_secret(service: &str, user: &str, value: String) -> Result<(), Secret
         return Ok(());
     }
     let entry = keyring::Entry::new(service, user).map_err(|_| SecretError::BackendUnavailable)?;
-    entry.set_password(&value).map_err(|_| SecretError::BackendUnavailable)
+    entry
+        .set_password(&value)
+        .map_err(|_| SecretError::BackendUnavailable)
 }
 
 #[cfg(test)]
@@ -380,10 +381,8 @@ mod tests {
 
     #[test]
     fn density_and_theme_serde_aliases() {
-        let compact: NavyaConfig = serde_json::from_str(
-            r#"{ "density": "compact", "theme": "light" }"#,
-        )
-        .unwrap();
+        let compact: AmaaraConfig =
+            serde_json::from_str(r#"{ "density": "compact", "theme": "light" }"#).unwrap();
         assert_eq!(compact.density, Density::Compact);
         assert_eq!(compact.theme, ThemeMode::Light);
     }
@@ -409,8 +408,8 @@ mod tests {
         let mut base = default_config();
         base.default_model = "custom-model".to_string();
         // Patch only changes the model; everything else must survive.
-        let merged = merge_config(r#"{ "default_model": "navya/qwen" }"#, &base).unwrap();
-        assert_eq!(merged.default_model, "navya/qwen");
+        let merged = merge_config(r#"{ "default_model": "amaara/qwen" }"#, &base).unwrap();
+        assert_eq!(merged.default_model, "amaara/qwen");
         assert_eq!(merged.density, Density::Comfortable); // unchanged from base
         assert_eq!(merged.enabled_harnesses, default_harnesses());
     }
@@ -424,25 +423,32 @@ mod tests {
     #[test]
     fn secret_round_trip_via_fake_backend() {
         set_fake_keyring(true);
-        let _ = get_secret(SERVICE_NAVYA, "api-key").unwrap(); // empty first
-        set_secret(SERVICE_NAVYA, "api-key", "sk-test-123".to_string()).unwrap();
-        assert_eq!(get_secret(SERVICE_NAVYA, "api-key").unwrap().unwrap(), "sk-test-123");
+        let _ = get_secret(SERVICE_AMAARA, "api-key").unwrap(); // empty first
+        set_secret(SERVICE_AMAARA, "api-key", "sk-test-123".to_string()).unwrap();
+        assert_eq!(
+            get_secret(SERVICE_AMAARA, "api-key").unwrap().unwrap(),
+            "sk-test-123"
+        );
     }
 
-    // Phase 15: a Navya key written via the keyring must never land on disk in
+    // Phase 15: a Amaara key written via the keyring must never land on disk in
     // the app-data dir (config.json, logs, sqlite, …). Persist a config to a
     // temp app-data dir and grep every file for the plaintext secret.
     #[test]
     fn secret_never_writes_to_app_data_dir() {
         set_fake_keyring(true);
         const LEAK: &str = "LEAK-TEST-SECRET-abc123xyz";
-        set_secret(SERVICE_NAVYA, "api-key", LEAK.to_string()).unwrap();
+        set_secret(SERVICE_AMAARA, "api-key", LEAK.to_string()).unwrap();
 
-        let dir = std::env::temp_dir().join(format!("navya-leak-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("amaara-leak-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         // Simulate the app persisting its config to app-data.
-        let cfg_path = dir.join("navya-config.json");
-        std::fs::write(&cfg_path, serde_json::to_string_pretty(&default_config()).unwrap()).unwrap();
+        let cfg_path = dir.join("amaara-config.json");
+        std::fs::write(
+            &cfg_path,
+            serde_json::to_string_pretty(&default_config()).unwrap(),
+        )
+        .unwrap();
         std::fs::write(dir.join("sidecar.log"), b"sidecar started ok\n").unwrap();
 
         let mut found = false;
@@ -477,20 +483,23 @@ mod tests {
         .unwrap();
         assert_eq!(merged.mcp_servers.len(), 1);
         assert_eq!(merged.mcp_servers[0].name, "extra");
-        assert_eq!(merged.mcp_servers[0].env, vec![("K".to_string(), "V".to_string())]);
+        assert_eq!(
+            merged.mcp_servers[0].env,
+            vec![("K".to_string(), "V".to_string())]
+        );
         assert!(merged.mcp_servers[0].enabled);
 
         let kept = merge_config(r#"{ "theme": "light" }"#, &merged).unwrap();
         assert_eq!(kept.mcp_servers.len(), 1); // untouched by an unrelated patch
 
         // Old configs without the key deserialize to an empty list.
-        let old: NavyaConfig = serde_json::from_str(r#"{ "theme": "dark" }"#).unwrap();
+        let old: AmaaraConfig = serde_json::from_str(r#"{ "theme": "dark" }"#).unwrap();
         assert!(old.mcp_servers.is_empty());
     }
 
     #[test]
     fn gpu_backend_serde() {
-        let cfg: NavyaConfig = serde_json::from_str(r#"{ "sd_gpu_backend": "vulkan" }"#).unwrap();
+        let cfg: AmaaraConfig = serde_json::from_str(r#"{ "sd_gpu_backend": "vulkan" }"#).unwrap();
         assert_eq!(cfg.sd_gpu_backend, SdGpuBackend::Vulkan);
     }
 
@@ -502,19 +511,37 @@ mod tests {
     #[test]
     fn wire_contract_enums_serialize_lowercase() {
         assert_eq!(serde_json::to_string(&ThemeMode::Dark).unwrap(), "\"dark\"");
-        assert_eq!(serde_json::to_string(&ThemeMode::Light).unwrap(), "\"light\"");
-        assert_eq!(serde_json::to_string(&Density::Comfortable).unwrap(), "\"comfortable\"");
-        assert_eq!(serde_json::to_string(&Density::Compact).unwrap(), "\"compact\"");
-        assert_eq!(serde_json::to_string(&SdGpuBackend::Cuda).unwrap(), "\"cuda\"");
-        assert_eq!(serde_json::to_string(&SdGpuBackend::Vulkan).unwrap(), "\"vulkan\"");
-        assert_eq!(serde_json::to_string(&SdGpuBackend::Cpu).unwrap(), "\"cpu\"");
+        assert_eq!(
+            serde_json::to_string(&ThemeMode::Light).unwrap(),
+            "\"light\""
+        );
+        assert_eq!(
+            serde_json::to_string(&Density::Comfortable).unwrap(),
+            "\"comfortable\""
+        );
+        assert_eq!(
+            serde_json::to_string(&Density::Compact).unwrap(),
+            "\"compact\""
+        );
+        assert_eq!(
+            serde_json::to_string(&SdGpuBackend::Cuda).unwrap(),
+            "\"cuda\""
+        );
+        assert_eq!(
+            serde_json::to_string(&SdGpuBackend::Vulkan).unwrap(),
+            "\"vulkan\""
+        );
+        assert_eq!(
+            serde_json::to_string(&SdGpuBackend::Cpu).unwrap(),
+            "\"cpu\""
+        );
     }
 
     #[test]
     fn wire_contract_enums_still_parse_legacy_pascal_case() {
         // Configs written by older builds carry PascalCase variants; aliases
         // must keep them parsing so users don't silently lose settings.
-        let old: NavyaConfig = serde_json::from_str(
+        let old: AmaaraConfig = serde_json::from_str(
             r#"{ "theme": "Dark", "density": "Comfortable", "sd_gpu_backend": "Cuda" }"#,
         )
         .unwrap();

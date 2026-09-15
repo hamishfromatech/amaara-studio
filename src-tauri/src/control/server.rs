@@ -21,8 +21,8 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
-use tokio::sync::broadcast;
 use tauri::Manager;
+use tokio::sync::broadcast;
 
 use crate::config::SERVICE_CONTROL;
 use crate::events::StudioEvent;
@@ -98,7 +98,9 @@ pub async fn launch(
         Err(e) => return Err(format!("control server bind failed: {e}")),
     };
 
-    let addr = listener.local_addr().map_err(|e| format!("control server addr: {e}"))?;
+    let addr = listener
+        .local_addr()
+        .map_err(|e| format!("control server addr: {e}"))?;
     let url = format!("http://{addr}");
 
     // Store the URL + token in the app state.
@@ -216,10 +218,7 @@ async fn health() -> axum::response::Response {
 /// GET /config — return current config. Bearer-token authenticated like the
 /// tool route: the config embeds user MCP server env vars, which may hold API
 /// keys. No current consumer lacks the token (the extension gets it via env).
-async fn config_handler(
-    State(state): State<ServerState>,
-    headers: HeaderMap,
-) -> Response {
+async fn config_handler(State(state): State<ServerState>, headers: HeaderMap) -> Response {
     let expected = state.app.control_token.lock().clone();
     if !crate::control::dispatch::token_matches(&headers, expected.as_deref()) {
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
@@ -252,13 +251,13 @@ async fn shutdown_signal() {
 fn generate_token() -> String {
     let bytes: [u8; 32] = rand::random();
     let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-    format!("navya-{hex}")
+    format!("amaara-{hex}")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::NavyaConfig;
+    use crate::config::AmaaraConfig;
     use crate::state::AppState;
     use crate::store::ProjectStore;
     use axum::body::{to_bytes, Body};
@@ -266,12 +265,12 @@ mod tests {
     use tower::ServiceExt;
 
     /// The token the "harness" presents in tests.
-    const TEST_TOKEN: &str = "navya-test-token";
+    const TEST_TOKEN: &str = "amaara-test-token";
 
     fn test_state() -> ServerState {
         let store = ProjectStore::memory().expect("in-memory store");
         let app = AppState::new(
-            NavyaConfig::default(),
+            AmaaraConfig::default(),
             std::path::PathBuf::from(":memory:"),
             store,
         );
@@ -310,7 +309,10 @@ mod tests {
         let bytes = to_bytes(res.into_body(), usize::MAX).await.unwrap();
         let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(json["ok"], serde_json::json!(true));
-        assert!(json["result"]["cloud_models"].as_array().unwrap().len() > 0);
+        assert!(!json["result"]["cloud_models"]
+            .as_array()
+            .unwrap()
+            .is_empty());
     }
 
     #[tokio::test]
@@ -372,7 +374,7 @@ mod tests {
             .method(Method::POST)
             .uri("/tool/list_local_models")
             .header("content-type", "application/json")
-            .header("authorization", "Bearer navya-wrong-token")
+            .header("authorization", "Bearer amaara-wrong-token")
             .body(Body::from("{}"))
             .unwrap();
         let res = router(state).oneshot(req).await.unwrap();

@@ -1,10 +1,10 @@
-# Navya Studio — Design
+# Amaara Studio — Design
 
 How the app looks and feels. ASCII layouts for every surface, the interaction
 model, states, theming, and keyboard flow. See `ARCHITECTURE.md` for what's
 behind each panel.
 
-Navya Studio is a **desktop content-creation studio** (Tauri). The agent
+Amaara Studio is a **desktop content-creation studio** (Tauri). The agent
 (harness) does the work; the UI is a cockpit for directing it, watching it
 think, reviewing what it makes, and rendering it to video.
 
@@ -32,8 +32,8 @@ bar and a status strip.
 
 ```
 ╭──────────────────────────────────────────────────────────────────────────────────╮
-│ ⬢ Navya Studio          ◴ black-holes-explainer ▾      ⤓ Render  ◐ Stop         │
-│ Harness: a-coder-cli ▾  Model: navya/auto ▾  Source: ● Cloud   ☰ ⚙                 │
+│ ⬢ Amaara Studio          ◴ black-holes-explainer ▾      ⤓ Render  ◐ Stop         │
+│ Harness: a-coder-cli ▾  Model: amaara/auto ▾  Source: ● Cloud   ☰ ⚙                 │
 ├──────────────┬─────────────────────────────────────────────┬─────────────────────┤
 │              │                                             │                     │
 │   LEFT RAIL  │              CENTER (tabs)                  │     RIGHT RAIL      │
@@ -50,8 +50,8 @@ bar and a status strip.
 ### Top bar (always visible)
 
 ```
-⬢ Navya Studio          <project-name> ▾          ⤓ Render   ◐ Stop
-Harness: a-coder-cli ▾   Model: navya/auto ▾   Source: ● Cloud / ● Local   ☰  ⚙
+⬢ Amaara Studio          <project-name> ▾          ⤓ Render   ◐ Stop
+Harness: a-coder-cli ▾   Model: amaara/auto ▾   Source: ● Cloud / ● Local   ☰  ⚙
 ```
 
 - **Project switcher** (`<name> ▾`) — opens the project list (left rail
@@ -64,9 +64,9 @@ Harness: a-coder-cli ▾   Model: navya/auto ▾   Source: ● Cloud / ● Local
   Antigravity "no mid-stream steer"). Switching harness mid-project warns that
   chat history is harness-specific.
 - **Model** picker — lists models from the active harness's resolved set
-  (Navya Cloud models incl. `navya/auto`, plus local llama.cpp models). The
+  (Amaara Cloud models incl. `amaara/auto`, plus local llama.cpp models). The
   studio's adapter wrote the provider entries; this just calls `set_model`.
-- **Source** — `● Cloud` (Navya) / `● Local` (sd-server + llama.cpp). Drives
+- **Source** — `● Cloud` (Amaara) / `● Local` (sd-server + llama.cpp). Drives
   where `generate_image` routes. Affects the status strip's sidecar dots.
 
 ### Status strip (always visible)
@@ -127,8 +127,8 @@ Four stacked, collapsible sections. Default widths ~240px; user-draggable.
   ↑ thumbnail grid (generated images, imported footage)
   ↑ "+" = generate / import
 ╭─ MODELS ─────────────────────╮
-│ ▾ Cloud (Navya)              │
-│   ● navya/auto   ✓           │
+│ ▾ Cloud (Amaara)              │
+│   ● amaara/auto   ✓           │
 │   ○ Qwen3-32B-TEE            │
 │   ○ dall-e-3   (image)       │
 │   ○ sora-2     (video)       │
@@ -163,7 +163,7 @@ renders inline as a live card rather than disappearing into a log.
 ┇  you · 14:02                                                                   ┇
 ┇  make a 30s faceless explainer about black holes, calm tone, navy palette       ┇
 ┇                                                                                ┇
-┇  ◷ agent · a-coder-cli · navya/auto · thinking…                                ┇
+┇  ◷ agent · a-coder-cli · amaara/auto · thinking…                                ┇
 ┇  Routing to /faceless-explainer. Running the intent interview…                 ┇
 ┇  ┌─ 🛠 tool: write ──────────────────────────────────────────────────────┐    ┇
 ┇  │ BRIEF.md  ·  612 bytes                                                  │    ┇
@@ -302,7 +302,7 @@ a render). Default when nothing is selected: project summary.
 │   black-holes-explainer │
 │   30s · 1280×720 · 30fps│
 │   harness a-coder-cli   │
-│   model navya/auto      │
+│   model amaara/auto      │
 │   4 scenes · 6 assets   │
 │                         │
 │ ▸ Selected: scene2 clip │
@@ -316,7 +316,7 @@ a render). Default when nothing is selected: project summary.
 │   [edit in chat]        │
 │                         │
 │ ▸ Generation source     │
-│   ● Cloud (Navya)       │
+│   ● Cloud (Amaara)       │
 │   ○ Local (sd-server)   │
 │   ┌─ last image ──────┐ │
 │   │      [thumb]      │ │
@@ -338,11 +338,11 @@ Reached from the `⚙` in the top bar. Left-nav sections; right shows the form.
 
 ```
 ╭─ SETTINGS ───────────────────────────────────────────────────────────────────────╮
-│ ▸ Navya Cloud            │  Navya Cloud                                          │
-│ ▸ Local models           │  Endpoint   https://api.navya.cloud            [test] │
+│ ▸ Amaara Cloud            │  Amaara Cloud                                          │
+│ ▸ Local models           │  Endpoint   https://api.amaara.cloud            [test] │
 │ ▸ Harnesses              │  API key    ●●●●●●●●●●●●●●●●              [reveal] [rot]│
-│ ▸ Appearance             │  Default model  navya/auto  ▾                          │
-│ ▸ Shortcuts              │  ☑ Use navya/auto router                               │
+│ ▸ Appearance             │  Default model  amaara/auto  ▾                          │
+│ ▸ Shortcuts              │  ☑ Use amaara/auto router                               │
 │ ▸ Advanced               │  ☐ BYOK to underlying providers                         │
 │                          │  Usage this month  4.2M tokens · $3.40  [view usage]    │
 │                          │                                                       │
@@ -363,8 +363,8 @@ Reached from the `⚙` in the top bar. Left-nav sections; right shows the form.
 ╰──────────────────────────────────────────────────────────────────────────────────╯
 ```
 
-- **Navya Cloud** — endpoint, key (stored in the OS keyring, never echoed),
-  default model, router toggle, BYOK toggle (maps to Navya's `byok_router`),
+- **Amaara Cloud** — endpoint, key (stored in the OS keyring, never echoed),
+  default model, router toggle, BYOK toggle (maps to Amaara's `byok_router`),
   live usage pulled from the dashboard stats.
 - **Local models** — llama.cpp server URL + sd-server URL + binary/model
   paths + GPU backend. `[start]` launches the sidecar from the status strip.
@@ -375,18 +375,18 @@ Reached from the `⚙` in the top bar. Left-nav sections; right shows the form.
 
 ## 8. Empty / onboarding states
 
-### First launch (no project, no Navya key)
+### First launch (no project, no Amaara key)
 
 ```
 ╭──────────────────────────────────────────────────────────────────────────────────╮
 │                                                                                  │
-│                              ⬢  Navya Studio                                     │
+│                              ⬢  Amaara Studio                                     │
 │                                                                                  │
 │                  A content-creation studio powered by AI.                        │
 │             Direct an agent. Watch it make. Render to video.                     │
 │                                                                                  │
 │        ┌─────────────────────────┐    ┌─────────────────────────┐                 │
-│        │  Connect Navya Cloud    │    │   Start with a local     │                │
+│        │  Connect Amaara Cloud    │    │   Start with a local     │                │
 │        │  paste your API key  →  │    │   model  (sd.cpp + LLM)  │                │
 │        └─────────────────────────┘    └─────────────────────────┘                │
 │                                                                                  │
@@ -524,8 +524,8 @@ unless `data-theme` pins one).
   renders with per-row progress, fed from a CSV/JSON the user edits.
 - **Asset provenance graph** — which prompt → which image → which clip used
   it, for auditing generations.
-- **Cost / usage dashboard** — Navya token + image + video spend per project.
+- **Cost / usage dashboard** — Amaara token + image + video spend per project.
 - **Voiceover studio** — record or TTS a track and place it on the VO track
-  without leaving the app (uses Navya `/v1/audio` or local TTS).
+  without leaving the app (uses Amaara `/v1/audio` or local TTS).
 - **Multi-composition project** — if §6 question 5 resolves to "many
   compositions per project", the left rail gains a composition switcher.

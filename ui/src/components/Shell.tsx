@@ -1,5 +1,5 @@
 /**
- * Navya Studio shell — state-driven (production wiring).
+ * Amaara Studio shell — state-driven (production wiring).
  *
  * Post-onboarding layout (open-design EntryShell idiom):
  *   TopBar  ──  EntryNavRail  ──  CenterPane (Home/Projects/Models/Sources/Tools/Renders/Settings)  ──  RightRail
@@ -66,7 +66,7 @@ function TopBar() {
     <header className="flex h-11 shrink-0 select-none items-center justify-between gap-3 border-b border-line-soft bg-canvas px-3 text-ink">
       <div className="flex min-w-0 items-center gap-3">
         <span className="whitespace-nowrap text-[13px] font-bold tracking-tight text-ink-strong">
-          ⬢ Navya Studio
+          ⬢ Amaara Studio
         </span>
         <select
           className="input input-sm w-44"
@@ -322,7 +322,7 @@ function RightRail() {
               <div className="text-xs text-ink-muted">
                 base{' '}
                 <span style={{fontFamily: 'var(--mono)'}} className="text-ink">
-                  {config.navya_base_url}
+                  {config.amaara_base_url}
                 </span>
               </div>
               <div className="text-xs text-ink-muted">

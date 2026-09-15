@@ -1,6 +1,6 @@
 # /new-video
 
-Create a new video project in Navya Studio.
+Create a new video project in Amaara Studio.
 
 ## Intent Interview
 
@@ -16,7 +16,7 @@ Write `BRIEF.md` and `STORYBOARD.md`, then scaffold a HyperFrames project via `n
 
 # /render
 
-Queue a video render in Navya Studio's render queue.
+Queue a video render in Amaara Studio's render queue.
 
 ## Usage
 
@@ -30,18 +30,18 @@ Do NOT run raw `bash npx hyperframes render`. The studio's render sidecar handle
 
 # /use-local
 
-Switch generation source to Local in Navya Studio.
+Switch generation source to Local in Amaara Studio.
 
 ## Usage
 
-Call the studio tool `set_generation_source("local")` to route future `generate_image` calls to the local sd-server instead of Navya Cloud. The status strip will show the sd-server sidecar status (idle→busy→idle).
+Call the studio tool `set_generation_source("local")` to route future `generate_image` calls to the local sd-server instead of Amaara Cloud. The status strip will show the sd-server sidecar status (idle→busy→idle).
 
 ---
 
 # /use-cloud
 
-Switch generation source to Cloud in Navya Studio.
+Switch generation source to Cloud in Amaara Studio.
 
 ## Usage
 
-Call the studio tool `set_generation_source("cloud")` to route future `generate_image` calls to Navya Cloud `/v1/images/generations`. This is the default source on new projects (cloud-first).
+Call the studio tool `set_generation_source("cloud")` to route future `generate_image` calls to Amaara Cloud `/v1/images/generations`. This is the default source on new projects (cloud-first).

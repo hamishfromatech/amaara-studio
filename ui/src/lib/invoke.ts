@@ -20,8 +20,8 @@ export interface Session {
   source: string
 }
 
-export interface NavyaConfig {
-  navya_base_url: string
+export interface AmaaraConfig {
+  amaara_base_url: string
   default_model: string
   use_auto_router: boolean
   byok: boolean
@@ -49,7 +49,7 @@ export interface McpServerConfig {
   enabled: boolean
 }
 
-/** Built-in navya-mcp server + runtime status (mirrors commands::McpStatus). */
+/** Built-in amaara-mcp server + runtime status (mirrors commands::McpStatus). */
 export interface McpStatus {
   mcp_dir: string
   server_py: string
@@ -125,7 +125,7 @@ export interface ProjectRow {
 
 export interface StateSnapshot {
   session: Session
-  config: NavyaConfig
+  config: AmaaraConfig
   projects: ProjectRow[]
   models: ModelEntry[]
   sidecars: SidecarHealth[]
@@ -198,8 +198,8 @@ export interface RenderJob {
 
 export const Commands = {
   getState: () => invoke<StateSnapshot>('get_state'),
-  getConfig: () => invoke<NavyaConfig>('get_config'),
-  saveConfig: (config: NavyaConfig) => invoke<NavyaConfig>('save_config', {config}),
+  getConfig: () => invoke<AmaaraConfig>('get_config'),
+  saveConfig: (config: AmaaraConfig) => invoke<AmaaraConfig>('save_config', {config}),
   setApiKey: (key: string) => invoke<void>('set_api_key', {key}),
   clearApiKey: () => invoke<void>('clear_api_key'),
   hasApiKey: () => invoke<boolean>('has_api_key'),

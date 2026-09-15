@@ -43,7 +43,8 @@ pub fn compute_retry_backoff_ms(
     random: impl Fn() -> f64,
 ) -> u64 {
     let exponent = attempt_index.saturating_sub(1);
-    let raw = base_delay_ms(category).saturating_mul(RETRY_BACKOFF_MULTIPLIER.saturating_pow(exponent));
+    let raw =
+        base_delay_ms(category).saturating_mul(RETRY_BACKOFF_MULTIPLIER.saturating_pow(exponent));
     let capped = raw.min(MAX_RETRY_BACKOFF_DELAY_MS);
     let half = capped / 2;
     let sample = (random)().clamp(0.0, 1.0);

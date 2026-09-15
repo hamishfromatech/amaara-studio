@@ -4,9 +4,9 @@
  * Three real surfaces, all fed by live commands (no hardcoded state):
  *   Generation source — the Cloud/Local toggle the TopBar carries, with
  *                        what each means and whether it's ready.
- *   Navya Cloud       — endpoint, key status, router/BYOK flags, and a
+ *   Amaara Cloud       — endpoint, key status, router/BYOK flags, and a
  *                       live connection test (list_cloud_models).
- *   Navya Engine      — the local OpenAI-compatible proxy: URL, health
+ *   Amaara Engine      — the local OpenAI-compatible proxy: URL, health
  *                       (detect_engine), and its model catalog.
  *   Local (sd-server) — llama.cpp URL, sd-server URL/binary/models dir/GPU
  *                       backend, and the live sidecar status.
@@ -47,7 +47,7 @@ export function SourcesView() {
   const config = useStore((s) => s.config)
   const sidecars = useStore((s) => s.sidecars) ?? []
 
-  // --- Navya Cloud live test ------------------------------------------------
+  // --- Amaara Cloud live test ------------------------------------------------
   const [cloudTest, setCloudTest] = useState<{
     state: 'idle' | 'testing' | 'ok' | 'fail'
     detail: string
@@ -56,7 +56,7 @@ export function SourcesView() {
     detail: '',
   })
   const testCloud = async () => {
-    setCloudTest({state: 'testing', detail: 'reaching ' + (config?.navya_base_url ?? 'cloud')})
+    setCloudTest({state: 'testing', detail: 'reaching ' + (config?.amaara_base_url ?? 'cloud')})
     try {
       const models = await Commands.listCloudModels()
       setCloudTest({state: 'ok', detail: `${models.length} model(s) reachable`})
@@ -65,7 +65,7 @@ export function SourcesView() {
     }
   }
 
-  // --- Navya Engine health ---------------------------------------------------
+  // --- Amaara Engine health ---------------------------------------------------
   const [engine, setEngine] = useState<{state: 'idle' | 'checking' | 'ok' | 'down'; count: number}>(
     {
       state: 'idle',
@@ -129,11 +129,11 @@ export function SourcesView() {
                 ●
               </span>
               <span style={{fontSize: 14, fontWeight: 600, color: 'var(--text-strong)'}}>
-                Cloud (Navya)
+                Cloud (Amaara)
               </span>
             </div>
             <p style={{margin: 0, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6}}>
-              Render on Navya-managed GPUs. Requires an API key. Highest fidelity and the broadest
+              Render on Amaara-managed GPUs. Requires an API key. Highest fidelity and the broadest
               model catalog.
             </p>
             <div
@@ -196,10 +196,10 @@ export function SourcesView() {
         </div>
       </section>
 
-      {/* Navya Cloud */}
+      {/* Amaara Cloud */}
       <section className="entry-section">
         <div className="entry-section__head">
-          <h2 className="entry-section__title">Navya Cloud</h2>
+          <h2 className="entry-section__title">Amaara Cloud</h2>
           <div className="entry-section__actions">
             {cloudTest.state === 'idle' && (
               <button className="entry-section__action" onClick={() => void testCloud()}>
@@ -215,8 +215,8 @@ export function SourcesView() {
           <div className="list-card__body">
             <div className="list-card__row">
               <span className="list-card__row-title">Endpoint</span>
-              <span className="list-card__row-meta" title={config?.navya_base_url}>
-                {config?.navya_base_url ?? '—'}
+              <span className="list-card__row-meta" title={config?.amaara_base_url}>
+                {config?.amaara_base_url ?? '—'}
               </span>
             </div>
             <div className="list-card__row">
@@ -230,7 +230,7 @@ export function SourcesView() {
               <span className="list-card__row-meta">{config?.default_model ?? '—'}</span>
             </div>
             <div className="list-card__row">
-              <span className="list-card__row-title">Auto router (navya/auto)</span>
+              <span className="list-card__row-title">Auto router (amaara/auto)</span>
               <span className="list-card__row-meta">{config?.use_auto_router ? 'on' : 'off'}</span>
             </div>
             <div className="list-card__row">
@@ -240,15 +240,15 @@ export function SourcesView() {
           </div>
         </div>
         <p style={{marginTop: 8, fontSize: 11, color: 'var(--text-faint)', lineHeight: 1.6}}>
-          Change the endpoint and flags in Settings → Navya Cloud. The key lives in the OS keychain
+          Change the endpoint and flags in Settings → Amaara Cloud. The key lives in the OS keychain
           and is never written to disk.
         </p>
       </section>
 
-      {/* Navya Engine (local proxy) */}
+      {/* Amaara Engine (local proxy) */}
       <section className="entry-section">
         <div className="entry-section__head">
-          <h2 className="entry-section__title">Navya Engine (local proxy)</h2>
+          <h2 className="entry-section__title">Amaara Engine (local proxy)</h2>
           <div className="entry-section__actions">
             <button className="entry-section__action" onClick={() => void checkEngine()}>
               {engine.state === 'checking' ? 'checking…' : 'Re-check →'}

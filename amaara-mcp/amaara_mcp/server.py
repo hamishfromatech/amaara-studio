@@ -1,4 +1,4 @@
-# Navya Studio FastMCP Server (Phase 13).
+# Amaara Studio FastMCP Server (Phase 13).
 #
 # Complete FastMCP server with all studio tools registered via @mcp.tool,
 # each a thin httpx proxy to the control server.
@@ -9,15 +9,15 @@ import httpx
 import os
 
 # Control server URL and token from environment
-CONTROL_URL = os.environ.get("NAVYA_CONTROL_URL", "http://127.0.0.1:8080")
-CONTROL_TOKEN = os.environ.get("NAVYA_CONTROL_TOKEN")
+CONTROL_URL = os.environ.get("AMAARA_CONTROL_URL", "http://127.0.0.1:8080")
+CONTROL_TOKEN = os.environ.get("AMAARA_CONTROL_TOKEN")
 
-mcp = FastMCP("navya-studio-tools")
+mcp = FastMCP("amaara-studio-tools")
 
 async def call_tool_endpoint(tool_name: str, payload: dict) -> dict:
     """Call a tool endpoint on the control server."""
     if not CONTROL_TOKEN:
-        raise ValueError("NAVYA_CONTROL_TOKEN not set")
+        raise ValueError("AMAARA_CONTROL_TOKEN not set")
 
     url = f"{CONTROL_URL}/tool/{tool_name}"
     headers = {
@@ -47,7 +47,7 @@ async def generate_image(
     size: str | None = None,
     n: int = 1,
 ) -> dict:
-    """Generate an image via Navya Cloud or local sd-server."""
+    """Generate an image via Amaara Cloud or local sd-server."""
     await _report_progress(ctx, 0, 100, "queuing image generation")
     payload = {
         "project_id": project_id,

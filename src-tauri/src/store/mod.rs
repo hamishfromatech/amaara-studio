@@ -18,7 +18,7 @@ pub mod schema {
             dir TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             harness TEXT NOT NULL DEFAULT 'a-coder-cli',
-            model TEXT NOT NULL DEFAULT 'navya/auto',
+            model TEXT NOT NULL DEFAULT 'amaara/auto',
             source TEXT NOT NULL DEFAULT 'cloud'
         );
 
@@ -233,6 +233,7 @@ impl ProjectStore {
     /// - relative/placeholder dirs → relocated to `resolve(row)` (rewritten)
     /// - absolute-but-missing dirs → re-created in place (the user's recorded
     ///   location is kept; relocating would orphan their files)
+    ///
     /// Returns the rows whose dir was rewritten so callers can log/emit events.
     pub fn repair_project_dirs(
         &self,
@@ -283,7 +284,13 @@ impl ProjectStore {
     /// Count rows in a table (used by the generation-log / asset row counts).
     pub fn count(&self, table: &str) -> Result<i64, StoreError> {
         // Validate table name to prevent SQL injection (only allow known tables).
-        let allowed = ["projects", "compositions", "renders", "assets", "generation_log"];
+        let allowed = [
+            "projects",
+            "compositions",
+            "renders",
+            "assets",
+            "generation_log",
+        ];
         if !allowed.contains(&table) {
             return Err(StoreError::Sqlite(rusqlite::Error::InvalidQuery));
         }
@@ -314,7 +321,9 @@ impl ProjectStore {
                 format!("{:?}", job.status).to_lowercase(),
                 job.started_at_ms,
                 job.finished_at_ms,
-                job.output_path.as_ref().map(|p| p.to_string_lossy().to_string()),
+                job.output_path
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().to_string()),
                 job.error,
             ],
         )?;
@@ -429,7 +438,10 @@ impl RenderRow {
 
 fn now_ms() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 /// Deterministic 8-hex-char hash for derived ids (asset rows, etc.).
@@ -471,7 +483,11 @@ mod tests {
         let changed = store.reconcile_stale_renders().unwrap();
         assert_eq!(changed.len(), 1);
         assert_eq!(changed[0].status, RenderStatus::Failed);
-        assert!(changed[0].error.clone().unwrap_or_default().contains("restarted"));
+        assert!(changed[0]
+            .error
+            .clone()
+            .unwrap_or_default()
+            .contains("restarted"));
         // Second reconcile is a no-op.
         assert!(store.reconcile_stale_renders().unwrap().is_empty());
 
@@ -482,7 +498,10 @@ mod tests {
         store.upsert_render(&done).unwrap();
         let rows = store.list_renders().unwrap();
         assert_eq!(rows[0].status, RenderStatus::Done);
-        assert_eq!(rows[0].output_path.as_deref(), Some(std::path::Path::new("renders/out.mp4")));
+        assert_eq!(
+            rows[0].output_path.as_deref(),
+            Some(std::path::Path::new("renders/out.mp4"))
+        );
     }
 
     #[test]
@@ -490,7 +509,8 @@ mod tests {
         // WAL + foreign_keys + NORMAL sync — set by ProjectStore::new (lesson
         // B3 from open-design). In-memory connections report journal_mode
         // "memory", so verify via a real temp file DB.
-        let path = std::env::temp_dir().join(format!("navya-store-pragma-{}.db", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("amaara-store-pragma-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let store = ProjectStore::new(&path).unwrap();
         let journal: String = store
@@ -498,7 +518,10 @@ mod tests {
             .query_row("PRAGMA journal_mode", [], |r| r.get(0))
             .unwrap();
         assert_eq!(journal, "wal");
-        let fk: i64 = store.conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
+        let fk: i64 = store
+            .conn
+            .query_row("PRAGMA foreign_keys", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(fk, 1);
         drop(store);
         let _ = std::fs::remove_file(&path);
@@ -516,8 +539,19 @@ mod tests {
             .unwrap()
             .filter_map(Result::ok)
             .collect();
-        for expected in ["id", "name", "dir", "created_at", "harness", "model", "source"] {
-            assert!(cols.contains(&expected.to_string()), "projects missing {expected}: {cols:?}");
+        for expected in [
+            "id",
+            "name",
+            "dir",
+            "created_at",
+            "harness",
+            "model",
+            "source",
+        ] {
+            assert!(
+                cols.contains(&expected.to_string()),
+                "projects missing {expected}: {cols:?}"
+            );
         }
     }
 
@@ -527,7 +561,13 @@ mod tests {
         assert!(ProjectStore::migrate(&store.conn).is_ok());
         // Running again must not error or duplicate the tables.
         assert!(ProjectStore::migrate(&store.conn).is_ok());
-        for t in ["projects", "compositions", "renders", "assets", "generation_log"] {
+        for t in [
+            "projects",
+            "compositions",
+            "renders",
+            "assets",
+            "generation_log",
+        ] {
             assert_eq!(store.count(t).unwrap(), 0);
         }
     }
@@ -535,10 +575,14 @@ mod tests {
     #[test]
     fn delete_project_removes_row_and_cascades() {
         let store = ProjectStore::memory().unwrap();
-        store.create_project("p1", "doomed", "/x", "a-coder-cli", "m", "cloud").unwrap();
-        store.insert_asset("p1", None, "/x/a.png", "image", "local", None).unwrap();
-        assert_eq!(store.delete_project("missing").unwrap(), false);
-        assert_eq!(store.delete_project("p1").unwrap(), true);
+        store
+            .create_project("p1", "doomed", "/x", "a-coder-cli", "m", "cloud")
+            .unwrap();
+        store
+            .insert_asset("p1", None, "/x/a.png", "image", "local", None)
+            .unwrap();
+        assert!(!store.delete_project("missing").unwrap());
+        assert!(store.delete_project("p1").unwrap());
         assert!(store.list_projects().unwrap().is_empty());
         // FK cascade removed the orphaned asset row.
         assert_eq!(store.count("assets").unwrap(), 0);
@@ -546,18 +590,38 @@ mod tests {
 
     #[test]
     fn repair_project_dirs_fixes_placeholder_and_relative_dirs() {
-        let base = std::env::temp_dir().join(format!("navya-repair-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("amaara-repair-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
         let store = ProjectStore::memory().unwrap();
         // The historical onboarding bug: literal "." stored as the project dir.
-        store.create_project("p1", "My first video", ".", "a-coder-cli", "m", "cloud").unwrap();
+        store
+            .create_project("p1", "My first video", ".", "a-coder-cli", "m", "cloud")
+            .unwrap();
         // Relative path variant.
-        store.create_project("p2", "relative", "some/relative/path", "a-coder-cli", "m", "cloud").unwrap();
+        store
+            .create_project(
+                "p2",
+                "relative",
+                "some/relative/path",
+                "a-coder-cli",
+                "m",
+                "cloud",
+            )
+            .unwrap();
         // A valid absolute project must be left untouched.
         let good_dir = base.join("good");
         std::fs::create_dir_all(&good_dir).unwrap();
-        store.create_project("p3", "good", good_dir.to_str().unwrap(), "a-coder-cli", "m", "cloud").unwrap();
+        store
+            .create_project(
+                "p3",
+                "good",
+                good_dir.to_str().unwrap(),
+                "a-coder-cli",
+                "m",
+                "cloud",
+            )
+            .unwrap();
 
         let repaired = store
             .repair_project_dirs(|row| base.join("projects").join(&row.id))
@@ -570,18 +634,30 @@ mod tests {
         let p3 = after.iter().find(|p| p.id == "p3").unwrap();
         assert_eq!(p3.dir, good_dir.to_string_lossy());
         // Second run is a no-op (dirs now absolute + existing).
-        assert!(store.repair_project_dirs(|row| base.join("projects").join(&row.id)).unwrap().is_empty());
+        assert!(store
+            .repair_project_dirs(|row| base.join("projects").join(&row.id))
+            .unwrap()
+            .is_empty());
         let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
     fn repair_creates_missing_absolute_dir_instead_of_moving() {
-        let base = std::env::temp_dir().join(format!("navya-repair2-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("amaara-repair2-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
         let store = ProjectStore::memory().unwrap();
         let moved = base.join("moved-away");
-        store.create_project("p1", "gone", moved.to_str().unwrap(), "a-coder-cli", "m", "cloud").unwrap();
+        store
+            .create_project(
+                "p1",
+                "gone",
+                moved.to_str().unwrap(),
+                "a-coder-cli",
+                "m",
+                "cloud",
+            )
+            .unwrap();
         let repaired = store
             .repair_project_dirs(|row| base.join("projects").join(&row.id))
             .unwrap();
@@ -589,17 +665,32 @@ mod tests {
         // relocated, so files the user may restore land back in place.
         assert!(repaired.is_empty());
         assert!(moved.is_dir());
-        assert_eq!(store.list_projects().unwrap()[0].dir, moved.to_string_lossy());
+        assert_eq!(
+            store.list_projects().unwrap()[0].dir,
+            moved.to_string_lossy()
+        );
         let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
     fn project_round_trip() {
         let store = ProjectStore::memory().unwrap();
-        let row = store.create_project("p1", "black-holes-explainer", "/proj/abc", "a-coder-cli", "navya/auto", "cloud").unwrap();
+        let row = store
+            .create_project(
+                "p1",
+                "black-holes-explainer",
+                "/proj/abc",
+                "a-coder-cli",
+                "amaara/auto",
+                "cloud",
+            )
+            .unwrap();
         // The row was created at "now"; the clock can tick forward between the
         // insert and this assertion, so assert monotonicity, not strict ==.
-        assert!(row.created_at_ms <= now_ms(), "created_at_ms should be now or earlier");
+        assert!(
+            row.created_at_ms <= now_ms(),
+            "created_at_ms should be now or earlier"
+        );
 
         let list = store.list_projects().unwrap();
         assert_eq!(list.len(), 1);
@@ -610,8 +701,12 @@ mod tests {
     #[test]
     fn primary_key_conflict_fails() {
         let store = ProjectStore::memory().unwrap();
-        store.create_project("dup", "a", "/x", "a-coder-cli", "m", "cloud").unwrap();
-        let err = store.create_project("dup", "b", "/y", "a-coder-cli", "m", "cloud").unwrap_err();
+        store
+            .create_project("dup", "a", "/x", "a-coder-cli", "m", "cloud")
+            .unwrap();
+        let err = store
+            .create_project("dup", "b", "/y", "a-coder-cli", "m", "cloud")
+            .unwrap_err();
         assert!(matches!(err, StoreError::Sqlite(_)));
     }
 }

@@ -20,13 +20,17 @@ use tokio::sync::mpsc;
 use crate::harness::event::HarnessEvent;
 use crate::harness::HarnessError;
 
-/// Inject `NAVYA_CONTROL_URL` and `NAVYA_CONTROL_TOKEN` into a `Command`.
-pub fn inject_control_env(cmd: &mut Command, control_url: Option<&str>, control_token: Option<&str>) {
+/// Inject `AMAARA_CONTROL_URL` and `AMAARA_CONTROL_TOKEN` into a `Command`.
+pub fn inject_control_env(
+    cmd: &mut Command,
+    control_url: Option<&str>,
+    control_token: Option<&str>,
+) {
     if let Some(url) = control_url {
-        cmd.env("NAVYA_CONTROL_URL", url);
+        cmd.env("AMAARA_CONTROL_URL", url);
     }
     if let Some(token) = control_token {
-        cmd.env("NAVYA_CONTROL_TOKEN", token);
+        cmd.env("AMAARA_CONTROL_TOKEN", token);
     }
 }
 
@@ -54,8 +58,13 @@ pub fn spawn_command(
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
-    let mut child = cmd.spawn().map_err(|e| HarnessError::Process(format!("failed to spawn harness: {e}")))?;
-    let stdin = child.stdin.take().ok_or_else(|| HarnessError::Process("harness stdin pipe missing".into()))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| HarnessError::Process(format!("failed to spawn harness: {e}")))?;
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| HarnessError::Process("harness stdin pipe missing".into()))?;
     Ok((child, stdin))
 }
 
@@ -77,12 +86,12 @@ pub fn kill_process_tree(pid: u32) {
     }
 }
 
-/// Resolve the absolute path to the navya-mcp workspace directory.
-/// Looks first for `NAVYA_MCP_DIR` env var, then the bundled relative path
-/// `<src-tauri>/../navya-mcp` (works both in dev and in an installed app when
+/// Resolve the absolute path to the amaara-mcp workspace directory.
+/// Looks first for `AMAARA_MCP_DIR` env var, then the bundled relative path
+/// `<src-tauri>/../amaara-mcp` (works both in dev and in an installed app when
 /// the workspace is copied next to the binary).
 pub fn mcp_workspace_dir() -> PathBuf {
-    if let Some(dir) = std::env::var_os("NAVYA_MCP_DIR") {
+    if let Some(dir) = std::env::var_os("AMAARA_MCP_DIR") {
         return PathBuf::from(dir);
     }
     // Default: one level up from the compiled binary's directory.
@@ -91,16 +100,17 @@ pub fn mcp_workspace_dir() -> PathBuf {
         .parent()
         .unwrap_or(Path::new("."))
         .join("..")
-        .join("navya-mcp")
+        .join("amaara-mcp")
         .canonicalize()
-        .unwrap_or_else(|_| PathBuf::from("navya-mcp"))
+        .unwrap_or_else(|_| PathBuf::from("amaara-mcp"))
 }
 
 /// Write a text config file, creating parent directories as needed.
 pub fn write_config(path: &Path, content: &str) -> Result<(), HarnessError> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| HarnessError::Process(format!("creating config dir {}: {e}", parent.display())))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            HarnessError::Process(format!("creating config dir {}: {e}", parent.display()))
+        })?;
     }
     std::fs::write(path, content)
         .map_err(|e| HarnessError::Process(format!("writing config {}: {e}", path.display())))
@@ -115,8 +125,14 @@ pub fn broadcast(subscribers: &mut Vec<mpsc::Sender<HarnessEvent>>, event: Harne
 }
 
 /// Write one JSONL line to a harness's stdin.
-pub fn send_json_line(stdin: &mut ChildStdin, value: &serde_json::Value) -> Result<(), HarnessError> {
-    let line = format!("{}\n", serde_json::to_string(value).map_err(|e| HarnessError::Process(e.to_string()))?);
+pub fn send_json_line(
+    stdin: &mut ChildStdin,
+    value: &serde_json::Value,
+) -> Result<(), HarnessError> {
+    let line = format!(
+        "{}\n",
+        serde_json::to_string(value).map_err(|e| HarnessError::Process(e.to_string()))?
+    );
     stdin
         .write_all(line.as_bytes())
         .map_err(|e| HarnessError::Process(format!("write to harness stdin: {e}")))?;

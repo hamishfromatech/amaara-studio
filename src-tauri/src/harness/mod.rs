@@ -7,13 +7,13 @@
 
 pub(crate) mod aacoder;
 pub(crate) mod antigravity;
+pub(crate) mod approvals;
 pub(crate) mod claude;
 pub(crate) mod codex;
 pub(crate) mod common;
 pub(crate) mod event;
 pub(crate) mod hermes;
 pub(crate) mod openclaw;
-pub(crate) mod approvals;
 pub(crate) mod registry;
 
 use std::sync::Arc;
@@ -24,11 +24,11 @@ use crate::harness::event::{HarnessEvent, ModelInfo};
 /// Harness capabilities — what operations this harness supports natively.
 #[derive(Debug, Clone)]
 pub struct Capabilities {
-    pub steer: bool,         // mid-stream steering supported
-    pub abort: bool,         // can abort current turn
-    pub list_models: bool,   // can list available models
-    pub approvals: bool,     // supports approval/permission requests
-    pub persistent: bool,    // supports persistent sessions across turns
+    pub steer: bool,       // mid-stream steering supported
+    pub abort: bool,       // can abort current turn
+    pub list_models: bool, // can list available models
+    pub approvals: bool,   // supports approval/permission requests
+    pub persistent: bool,  // supports persistent sessions across turns
 }
 
 impl Default for Capabilities {
@@ -47,25 +47,25 @@ impl Default for Capabilities {
 #[async_trait::async_trait]
 pub trait Harness: Send + Sync {
     fn id(&self) -> &str;
-    
+
     /// Return the capabilities of this harness implementation.
     fn capabilities(&self) -> Capabilities;
-    
+
     /// Start the harness with the given context (project dir, settings, etc.).
     async fn start(&self, ctx: &HarnessCtx) -> Result<(), HarnessError>;
-    
+
     /// Send a prompt to the harness in the given mode.
     async fn prompt(&self, msg: &str, mode: PromptMode) -> Result<(), HarnessError>;
-    
+
     /// Steer the harness mid-turn (if supported). Returns Err(NoSteer) if not supported.
     async fn steer(&self, msg: &str) -> Result<(), HarnessError>;
-    
+
     /// Abort the current turn/process.
     async fn abort(&self) -> Result<(), HarnessError>;
-    
+
     /// Set the active model for the harness.
     async fn set_model(&self, model: &str) -> Result<(), HarnessError>;
-    
+
     /// List available models from the harness/provider.
     async fn available_models(&self) -> Result<Vec<ModelInfo>, HarnessError>;
 
@@ -84,11 +84,11 @@ pub trait Harness: Send + Sync {
         let _ = (request_id, approved, value);
         Err(HarnessError::NoApprovals)
     }
-    
+
     /// Subscribe to harness events (text deltas, tool calls, approvals, etc.).
     /// Returns an mpsc receiver for the event stream.
     fn subscribe(&self) -> Receiver<HarnessEvent>;
-    
+
     /// Stop the harness cleanly.
     async fn stop(&self) -> Result<(), HarnessError>;
 }
@@ -177,19 +177,37 @@ mod tests {
         struct MockHarness;
         #[async_trait::async_trait]
         impl Harness for MockHarness {
-            fn id(&self) -> &str { "mock-harness" }
-            fn capabilities(&self) -> Capabilities { Capabilities::default() }
-            async fn start(&self, _ctx: &HarnessCtx) -> Result<(), HarnessError> { Ok(()) }
-            async fn prompt(&self, _msg: &str, _mode: PromptMode) -> Result<(), HarnessError> { Ok(()) }
-            async fn steer(&self, _msg: &str) -> Result<(), HarnessError> { Err(HarnessError::NoSteer) }
-            async fn abort(&self) -> Result<(), HarnessError> { Ok(()) }
-            async fn set_model(&self, _model: &str) -> Result<(), HarnessError> { Ok(()) }
-            async fn available_models(&self) -> Result<Vec<ModelInfo>, HarnessError> { Ok(vec![]) }
+            fn id(&self) -> &str {
+                "mock-harness"
+            }
+            fn capabilities(&self) -> Capabilities {
+                Capabilities::default()
+            }
+            async fn start(&self, _ctx: &HarnessCtx) -> Result<(), HarnessError> {
+                Ok(())
+            }
+            async fn prompt(&self, _msg: &str, _mode: PromptMode) -> Result<(), HarnessError> {
+                Ok(())
+            }
+            async fn steer(&self, _msg: &str) -> Result<(), HarnessError> {
+                Err(HarnessError::NoSteer)
+            }
+            async fn abort(&self) -> Result<(), HarnessError> {
+                Ok(())
+            }
+            async fn set_model(&self, _model: &str) -> Result<(), HarnessError> {
+                Ok(())
+            }
+            async fn available_models(&self) -> Result<Vec<ModelInfo>, HarnessError> {
+                Ok(vec![])
+            }
             fn subscribe(&self) -> Receiver<HarnessEvent> {
                 let (_tx, rx) = tokio::sync::mpsc::channel(10);
                 rx
             }
-            async fn stop(&self) -> Result<(), HarnessError> { Ok(()) }
+            async fn stop(&self) -> Result<(), HarnessError> {
+                Ok(())
+            }
         }
 
         let mut reg = HarnessRegistry::new();

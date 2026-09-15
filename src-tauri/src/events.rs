@@ -36,20 +36,44 @@ pub enum StudioEvent {
 /// harness-specific shapes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum HarnessEvent {
-    AgentStart { model: String },
-    AgentEnd { success: bool, #[serde(default)] message: Option<String> },
+    AgentStart {
+        model: String,
+    },
+    AgentEnd {
+        success: bool,
+        #[serde(default)]
+        message: Option<String>,
+    },
     TextDelta(String),
     ThinkingDelta(String),
-    ToolStart { tool_id: String, name: String, args: serde_json::Value },
-    ToolUpdate { tool_id: String, partial: String },
+    ToolStart {
+        tool_id: String,
+        name: String,
+        args: serde_json::Value,
+    },
+    ToolUpdate {
+        tool_id: String,
+        partial: String,
+    },
     ToolEnd {
         tool_id: String,
-        #[serde(default)] result: Option<String>,
+        #[serde(default)]
+        result: Option<String>,
         is_error: bool,
     },
-    ApprovalRequest { id: String, kind: String, payload: serde_json::Value },
-    QueueUpdate { steer: bool, follow_up: bool },
-    Retry { attempt: u32, reason: String },
+    ApprovalRequest {
+        id: String,
+        kind: String,
+        payload: serde_json::Value,
+    },
+    QueueUpdate {
+        steer: bool,
+        follow_up: bool,
+    },
+    Retry {
+        attempt: u32,
+        reason: String,
+    },
     Error(String),
 }
 
@@ -57,33 +81,78 @@ pub enum HarnessEvent {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RenderEvent {
-    Started { job_id: String, target: String, quality: String },
-    Progress { job_id: String, stage: String, frame: u64, total_frames: Option<u64> },
-    Completed { job_id: String, output_path: String, #[serde(default)] duration_ms: Option<i64> },
-    Failed { job_id: String, error: String },
-    Cancelled { job_id: String },
+    Started {
+        job_id: String,
+        target: String,
+        quality: String,
+    },
+    Progress {
+        job_id: String,
+        stage: String,
+        frame: u64,
+        total_frames: Option<u64>,
+    },
+    Completed {
+        job_id: String,
+        output_path: String,
+        #[serde(default)]
+        duration_ms: Option<i64>,
+    },
+    Failed {
+        job_id: String,
+        error: String,
+    },
+    Cancelled {
+        job_id: String,
+    },
 }
 
 // --- Sidecar ---------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SidecarEvent {
-    Starting { name: String },
-    Ready { name: String },
-    Exit { name: String, code: i32 },
+    Starting {
+        name: String,
+    },
+    Ready {
+        name: String,
+    },
+    Exit {
+        name: String,
+        code: i32,
+    },
     /// One line appended to a sidecar log drawer (design.md status strip).
-    LogLine { name: String, level: String, message: String },
+    LogLine {
+        name: String,
+        level: String,
+        message: String,
+    },
 }
 
 // --- Project ---------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ProjectEvent {
-    Created { project_id: String, name: String },
-    Switched { project_id: String, name: String },
-    Updated { project_id: String, changed_at: i64 },
-    AssetAdded { project_id: String, asset_id: String, path: String },
-    Deleted { project_id: String },
+    Created {
+        project_id: String,
+        name: String,
+    },
+    Switched {
+        project_id: String,
+        name: String,
+    },
+    Updated {
+        project_id: String,
+        changed_at: i64,
+    },
+    AssetAdded {
+        project_id: String,
+        asset_id: String,
+        path: String,
+    },
+    Deleted {
+        project_id: String,
+    },
 }
 
 /// HyperFrames preview-server lifecycle (Timeline tab, Phase 10). The server
@@ -147,7 +216,11 @@ impl RenderEvent {
     fn describe(&self) -> String {
         match self {
             RenderEvent::Started { job_id, .. } => format!("render:start[{job_id}]"),
-            RenderEvent::Progress { frame, total_frames, .. } => {
+            RenderEvent::Progress {
+                frame,
+                total_frames,
+                ..
+            } => {
                 if let Some(t) = total_frames {
                     format!("render:progress{frame}/{t}")
                 } else {
@@ -175,10 +248,18 @@ impl SidecarEvent {
 impl ProjectEvent {
     fn describe(&self) -> String {
         match self {
-            ProjectEvent::Created { project_id, name } => format!("project:create[{project_id}] {name}"),
-            ProjectEvent::Switched { project_id, name } => format!("project:switch[{project_id}] {name}"),
+            ProjectEvent::Created { project_id, name } => {
+                format!("project:create[{project_id}] {name}")
+            }
+            ProjectEvent::Switched { project_id, name } => {
+                format!("project:switch[{project_id}] {name}")
+            }
             ProjectEvent::Updated { changed_at, .. } => format!("project:update@{changed_at}"),
-            ProjectEvent::AssetAdded { project_id, asset_id, .. } => format!("project:asset[{project_id}:{asset_id}]"),
+            ProjectEvent::AssetAdded {
+                project_id,
+                asset_id,
+                ..
+            } => format!("project:asset[{project_id}:{asset_id}]"),
             ProjectEvent::Deleted { project_id } => format!("project:delete[{project_id}]"),
         }
     }
@@ -204,9 +285,18 @@ mod tests {
     fn every_variant_serializes() {
         // Force the compiler to touch each variant; asserts all derive Serialize.
         let _ = StudioEvent::Harness(HarnessEvent::Error("x".into()));
-        let _ = StudioEvent::Render(RenderEvent::Failed { job_id: "r1".into(), error: "e".into() });
-        let _ = StudioEvent::Sidecar(SidecarEvent::Exit { name: "h".into(), code: 1 });
-        let _ = StudioEvent::Project(ProjectEvent::Created { project_id: "p".into(), name: "n".into() });
+        let _ = StudioEvent::Render(RenderEvent::Failed {
+            job_id: "r1".into(),
+            error: "e".into(),
+        });
+        let _ = StudioEvent::Sidecar(SidecarEvent::Exit {
+            name: "h".into(),
+            code: 1,
+        });
+        let _ = StudioEvent::Project(ProjectEvent::Created {
+            project_id: "p".into(),
+            name: "n".into(),
+        });
         let _ = StudioEvent::Preview(PreviewEvent::Started {
             url: "http://127.0.0.1:3002/".to_string(),
             port: 3002,
@@ -216,11 +306,24 @@ mod tests {
     #[test]
     fn describe_is_stable() {
         assert_eq!(
-            HarnessEvent::ToolStart { tool_id: "a".to_string(), name: "write".to_string(), args: serde_json::json!({}) }.describe(),
+            HarnessEvent::ToolStart {
+                tool_id: "a".to_string(),
+                name: "write".to_string(),
+                args: serde_json::json!({})
+            }
+            .describe(),
             "tool:start[write]"
         );
-        assert_eq!(RenderEvent::Progress { job_id: "j".to_string(), stage: "s".into(), frame: 5, total_frames: Some(10) }.describe(),
-            "render:progress5/10");
+        assert_eq!(
+            RenderEvent::Progress {
+                job_id: "j".to_string(),
+                stage: "s".into(),
+                frame: 5,
+                total_frames: Some(10)
+            }
+            .describe(),
+            "render:progress5/10"
+        );
     }
 
     #[test]

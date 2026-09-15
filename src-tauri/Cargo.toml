@@ -1,8 +1,8 @@
 [package]
-name = "navya-studio"
+name = "amaara-studio"
 version = "0.1.0"
-description = "Navya Studio — AI content-creation studio (Tauri + React)."
-authors = ["Navya Agent"]
+description = "Amaara Studio — AI content-creation studio (Tauri + React)."
+authors = ["Amaara Agent"]
 edition = "2021"
 rust-version = "1.85"
 
@@ -11,7 +11,7 @@ name = "app"
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "navya-studio"
+name = "amaara-studio"
 path = "src/main.rs"
 
 # Feature flags: the GUI app and (future) a headless test binary.
@@ -32,7 +32,7 @@ tauri-plugin-store = "2"
 # (BUILD-GAPS risk #32). The webview never touches SQL directly.
 rusqlite = { version = "0.35", features = ["bundled"] }
 
-# Secrets (Navya key, control token) live only here (keyring), never on disk.
+# Secrets (Amaara key, control token) live only here (keyring), never on disk.
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -45,18 +45,18 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["e
 # on crates.io is 4.x); `>=2` stays flexible across releases. Default features
 # pull in the platform backend.
 # automatically (Windows Credential Manager / macOS Keychain / Linux Secret
-# Service); headless/CI falls back to NAVYA_KEYRING_FAKE so no keychain is
+# Service); headless/CI falls back to AMAARA_KEYRING_FAKE so no keychain is
 # touched during tests (BUILD-GAPS risk #33).
 keyring = { version = ">=2" }
 
-# Async runtime + HTTP (control server Phase 3; Navya client Phase 8).
+# Async runtime + HTTP (control server Phase 3; Amaara client Phase 8).
 tokio = { version = "1", features = ["full"] }
 axum = { version = "0.7", features = ["ws", "macros"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors"] }
 futures-util = "0.3"
 
-# HTTP client for Navya Cloud + sd-server (production wiring).
+# HTTP client for Amaara Cloud + sd-server (production wiring).
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 
 # Fast sync mutex for managed state.
@@ -75,8 +75,8 @@ async-trait = "0.1"
 # attributes from a HyperFrames composition's HTML.
 regex = "1"
 
-# navya-tools shared crate (Phase 3)
-navya-tools = { path = "../crates/navya-tools" }
+# amaara-tools shared crate (Phase 3)
+amaara-tools = { path = "../crates/amaara-tools" }
 
 # "Send feedback" packager (Phase 15): zip redacted logs + session summary.
 zip = { version = "2", default-features = false, features = ["deflate"] }

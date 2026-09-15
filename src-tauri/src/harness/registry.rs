@@ -85,11 +85,20 @@ fn hermes_fallback_models() -> Vec<ModelInfo> {
         chat_model("default", "Default"),
         chat_model("grok-4.3", "grok-4.3 (xAI · default)"),
         chat_model("grok-4.20-reasoning", "grok-4.20-reasoning (xAI · deep)"),
-        chat_model("grok-4.20-non-reasoning", "grok-4.20-non-reasoning (xAI · fast)"),
-        chat_model("grok-4.20-multi-agent", "grok-4.20-multi-agent (xAI · orchestration)"),
+        chat_model(
+            "grok-4.20-non-reasoning",
+            "grok-4.20-non-reasoning (xAI · fast)",
+        ),
+        chat_model(
+            "grok-4.20-multi-agent",
+            "grok-4.20-multi-agent (xAI · orchestration)",
+        ),
         chat_model("openai-codex:gpt-5.5", "gpt-5.5 (openai-codex:gpt-5.5)"),
         chat_model("openai-codex:gpt-5.4", "gpt-5.4 (openai-codex:gpt-5.4)"),
-        chat_model("openai-codex:gpt-5.4-mini", "gpt-5.4-mini (openai-codex:gpt-5.4-mini)"),
+        chat_model(
+            "openai-codex:gpt-5.4-mini",
+            "gpt-5.4-mini (openai-codex:gpt-5.4-mini)",
+        ),
     ]
 }
 
@@ -101,7 +110,10 @@ fn antigravity_fallback_models() -> Vec<ModelInfo> {
         chat_model("Gemini 3.5 Flash (High)", "Gemini 3.5 Flash (High)"),
         chat_model("Gemini 3.5 Flash (Medium)", "Gemini 3.5 Flash (Medium)"),
         chat_model("Gemini 3.5 Flash (Low)", "Gemini 3.5 Flash (Low)"),
-        chat_model("Claude Sonnet 4.6 (Thinking)", "Claude Sonnet 4.6 (Thinking)"),
+        chat_model(
+            "Claude Sonnet 4.6 (Thinking)",
+            "Claude Sonnet 4.6 (Thinking)",
+        ),
         chat_model("Claude Opus 4.6 (Thinking)", "Claude Opus 4.6 (Thinking)"),
         chat_model("GPT-OSS 120B (Medium)", "GPT-OSS 120B (Medium)"),
     ]
@@ -245,15 +257,13 @@ pub fn detect(descriptor: &HarnessDescriptor) -> HarnessDetection {
     };
 
     let mut guard = DETECTION_CACHE.lock();
-    guard
-        .get_or_insert_with(HashMap::new)
-        .insert(
-            descriptor.id.to_string(),
-            CacheEntry {
-                detection: detection.clone(),
-                cached_at: Instant::now(),
-            },
-        );
+    guard.get_or_insert_with(HashMap::new).insert(
+        descriptor.id.to_string(),
+        CacheEntry {
+            detection: detection.clone(),
+            cached_at: Instant::now(),
+        },
+    );
     detection
 }
 
@@ -270,8 +280,7 @@ pub fn is_available(id: &str) -> bool {
 /// `bin, fallback_bins…` found on PATH. Pure filesystem scan, no process
 /// spawn. Returns the absolute candidate path.
 fn resolve_path(descriptor: &HarnessDescriptor) -> Option<PathBuf> {
-    let names = std::iter::once(descriptor.bin)
-        .chain(descriptor.fallback_bins.iter().copied());
+    let names = std::iter::once(descriptor.bin).chain(descriptor.fallback_bins.iter().copied());
     for name in names {
         if let Some(path) = which_path(name) {
             return Some(path);
@@ -288,7 +297,10 @@ pub fn which_path(name: &str) -> Option<PathBuf> {
         return None;
     }
     // An explicit path (absolute or containing a separator) is used as-is.
-    if Path::new(name).is_absolute() || name.contains(std::path::MAIN_SEPARATOR) || name.contains('/') {
+    if Path::new(name).is_absolute()
+        || name.contains(std::path::MAIN_SEPARATOR)
+        || name.contains('/')
+    {
         return if Path::new(name).is_file() {
             Some(PathBuf::from(name))
         } else {
@@ -398,7 +410,9 @@ pub(crate) fn probe_version(path: &Path, args: &[&str]) -> Option<String> {
 
 /// Fallback models for a harness id (empty when the id is unknown).
 pub fn fallback_models(id: &str) -> Vec<ModelInfo> {
-    descriptor_for(id).map(|d| (d.fallback_models)()).unwrap_or_default()
+    descriptor_for(id)
+        .map(|d| (d.fallback_models)())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -440,8 +454,8 @@ mod tests {
         let bogus = HarnessDescriptor {
             id: "test-bogus",
             label: "Bogus",
-            bin: "navya-definitely-not-a-real-binary-xyz",
-            fallback_bins: &["navya-also-not-real-xyz"],
+            bin: "amaara-definitely-not-a-real-binary-xyz",
+            fallback_bins: &["amaara-also-not-real-xyz"],
             version_args: &["--version"],
             install_url: None,
             docs_url: None,
@@ -455,8 +469,8 @@ mod tests {
 
     #[test]
     fn explicit_missing_path_does_not_resolve() {
-        assert!(which_path("C:\\navya\\not-here\\bin-xyz.exe").is_none());
-        assert!(which_path("/navya/not-here/bin-xyz").is_none());
+        assert!(which_path("C:\\amaara\\not-here\\bin-xyz.exe").is_none());
+        assert!(which_path("/amaara/not-here/bin-xyz").is_none());
     }
 
     #[test]
@@ -471,7 +485,7 @@ mod tests {
         let bogus = HarnessDescriptor {
             id: "test-cache",
             label: "Cache",
-            bin: "navya-not-real-cache-test",
+            bin: "amaara-not-real-cache-test",
             fallback_bins: &[],
             version_args: &["--version"],
             install_url: None,

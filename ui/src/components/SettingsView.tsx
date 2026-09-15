@@ -1,9 +1,9 @@
 /**
  * SettingsView — all studio settings, persisted through save_config.
  *
- *   Navya Cloud  — endpoint, default model, auto-router + BYOK flags,
+ *   Amaara Cloud  — endpoint, default model, auto-router + BYOK flags,
  *                  and the API key (OS keychain, never echoed).
- *   Local models — llama.cpp server URL, Navya Engine URL, sd-server
+ *   Local models — llama.cpp server URL, Amaara Engine URL, sd-server
  *                  URL/binary/models dir, GPU backend (design.md §7).
  *   Harness      — which CLI the studio spawns.
  *   Appearance   — theme + density.
@@ -16,10 +16,10 @@
 
 import {useEffect, useState} from 'react'
 import {useStore} from '../lib/store'
-import {harnessHint, Commands, type NavyaConfig} from '../lib/invoke'
+import {harnessHint, Commands, type AmaaraConfig} from '../lib/invoke'
 
 interface Draft {
-  navya_base_url: string
+  amaara_base_url: string
   default_model: string
   use_auto_router: boolean
   byok: boolean
@@ -31,9 +31,9 @@ interface Draft {
   sd_gpu_backend: 'cuda' | 'vulkan' | 'cpu'
 }
 
-function draftFrom(config: NavyaConfig | undefined): Draft {
+function draftFrom(config: AmaaraConfig | undefined): Draft {
   return {
-    navya_base_url: config?.navya_base_url ?? '',
+    amaara_base_url: config?.amaara_base_url ?? '',
     default_model: config?.default_model ?? '',
     use_auto_router: config?.use_auto_router ?? false,
     byok: config?.byok ?? false,
@@ -80,7 +80,7 @@ export function SettingsView() {
 
   const dirty =
     !!config &&
-    (draft.navya_base_url !== config.navya_base_url ||
+    (draft.amaara_base_url !== config.amaara_base_url ||
       draft.default_model !== config.default_model ||
       draft.use_auto_router !== config.use_auto_router ||
       draft.byok !== config.byok ||
@@ -97,7 +97,7 @@ export function SettingsView() {
     try {
       await saveConfig({
         ...config,
-        navya_base_url: draft.navya_base_url,
+        amaara_base_url: draft.amaara_base_url,
         default_model: draft.default_model,
         use_auto_router: draft.use_auto_router,
         byok: draft.byok,
@@ -117,10 +117,10 @@ export function SettingsView() {
 
   return (
     <div className="entry-main__scroll-inner entry-main__scroll-inner--narrow">
-      {/* Navya Cloud */}
+      {/* Amaara Cloud */}
       <section className="entry-section">
         <div className="entry-section__head">
-          <h2 className="entry-section__title">Navya Cloud</h2>
+          <h2 className="entry-section__title">Amaara Cloud</h2>
           <div className="entry-section__actions">
             <span
               style={{
@@ -142,8 +142,8 @@ export function SettingsView() {
               Endpoint
               <input
                 className="input input-sm mono"
-                value={draft.navya_base_url}
-                onChange={(e) => setDraft({...draft, navya_base_url: e.target.value})}
+                value={draft.amaara_base_url}
+                onChange={(e) => setDraft({...draft, amaara_base_url: e.target.value})}
                 placeholder="http://localhost:8000"
               />
             </label>
@@ -153,7 +153,7 @@ export function SettingsView() {
                 className="input input-sm mono"
                 value={draft.default_model}
                 onChange={(e) => setDraft({...draft, default_model: e.target.value})}
-                placeholder="navya/auto"
+                placeholder="amaara/auto"
               />
             </label>
             <div style={{display: 'flex', gap: 16}}>
@@ -172,7 +172,7 @@ export function SettingsView() {
                   checked={draft.use_auto_router}
                   onChange={(e) => setDraft({...draft, use_auto_router: e.target.checked})}
                 />
-                Use navya/auto router
+                Use amaara/auto router
               </label>
               <label
                 style={{
@@ -209,13 +209,13 @@ export function SettingsView() {
               >
                 <input
                   className="input input-sm"
-                  placeholder="navya-…"
+                  placeholder="amaara-…"
                   value={keyInput}
                   onChange={(e) => setKeyInput(e.target.value)}
                   type="password"
                   style={{flex: 1}}
                   autoFocus
-                  aria-label="Navya API key"
+                  aria-label="Amaara API key"
                 />
                 <button
                   type="submit"
@@ -229,7 +229,7 @@ export function SettingsView() {
             {hasApiKey && (
               <div className="list-card__row">
                 <span className="list-card__row-title">
-                  <span style={{fontFamily: 'var(--mono)'}}>navya-••••••••</span>
+                  <span style={{fontFamily: 'var(--mono)'}}>amaara-••••••••</span>
                 </span>
                 <button
                   className="btn btn-ghost btn-sm"
@@ -273,7 +273,7 @@ export function SettingsView() {
               />
             </label>
             <label style={labelStyle}>
-              Navya Engine (local proxy) URL
+              Amaara Engine (local proxy) URL
               <input
                 className="input input-sm mono"
                 value={draft.engine_url}
@@ -500,7 +500,7 @@ export function SettingsView() {
         <div className="list-card">
           <div className="list-card__body">
             <div className="list-card__row">
-              <span className="list-card__row-title">Navya Studio</span>
+              <span className="list-card__row-title">Amaara Studio</span>
               <span className="list-card__row-meta">v0.1.0</span>
             </div>
             <div className="list-card__row">

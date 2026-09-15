@@ -3,7 +3,7 @@
 # src-tauri/binaries/ so `cargo tauri build` can bundle them (externalBin).
 #
 # Same contract as build-sidecars.ps1 (see that file for resolution order):
-#   NAVYA_SD_SERVER_BIN > third_party build tree > NAVYA_SD_RELEASE_URL >
+#   AMAARA_SD_SERVER_BIN > third_party build tree > AMAARA_SD_RELEASE_URL >
 #   build stable-diffusion.cpp from source. Writes a .sha256 sidecar.
 #
 # Usage: ./scripts/build-sidecars.sh [target-triple]   # default: host triple
@@ -36,9 +36,9 @@ write_sha256() {
   echo "[build-sidecars] sha256 $(basename "$p"): ${digest:0:16}…"
 }
 
-if [ -n "${NAVYA_SD_SERVER_BIN:-}" ] && [ -f "$NAVYA_SD_SERVER_BIN" ]; then
-  cp -f "$NAVYA_SD_SERVER_BIN" "$sd_dest"
-  echo "[build-sidecars] copied sd-server from $NAVYA_SD_SERVER_BIN"
+if [ -n "${AMAARA_SD_SERVER_BIN:-}" ] && [ -f "$AMAARA_SD_SERVER_BIN" ]; then
+  cp -f "$AMAARA_SD_SERVER_BIN" "$sd_dest"
+  echo "[build-sidecars] copied sd-server from $AMAARA_SD_SERVER_BIN"
 else
   # b) local stable-diffusion.cpp build tree
   candidate=""
@@ -51,9 +51,9 @@ else
   if [ -n "$candidate" ]; then
     cp -f "$candidate" "$sd_dest"
     echo "[build-sidecars] copied sd-server from $candidate"
-  elif [ -n "${NAVYA_SD_RELEASE_URL:-}" ]; then
-    echo "[build-sidecars] downloading $NAVYA_SD_RELEASE_URL"
-    curl -fL "$NAVYA_SD_RELEASE_URL" -o "$sd_dest"
+  elif [ -n "${AMAARA_SD_RELEASE_URL:-}" ]; then
+    echo "[build-sidecars] downloading $AMAARA_SD_RELEASE_URL"
+    curl -fL "$AMAARA_SD_RELEASE_URL" -o "$sd_dest"
   else
     # d) build from source if the repo is checked out
     src="$root/third_party/stable-diffusion.cpp"
@@ -69,9 +69,9 @@ else
       cat >&2 <<'EOS'
 No sd-server binary could be staged.
 Options:
-  1. Set NAVYA_SD_SERVER_BIN to a built sd-server binary
+  1. Set AMAARA_SD_SERVER_BIN to a built sd-server binary
   2. Check out stable-diffusion.cpp under third_party/ (script builds it)
-  3. Set NAVYA_SD_RELEASE_URL to a release asset URL
+  3. Set AMAARA_SD_RELEASE_URL to a release asset URL
 EOS
       exit 1
     fi

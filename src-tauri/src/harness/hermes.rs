@@ -2,26 +2,20 @@
 //!
 //! Drives Hermes `tui_gateway/entry.py` over stdio JSON-RPC. The gateway emits
 //! `gateway.ready` first, then accepts dispatches. Hermes has native MCP support
-//! (`ctx.call_mcp`) so the adapter only needs to wire the Navya MCP server into
-//! its config and translate normalized Navya commands to JSON-RPC dispatches.
+//! (`ctx.call_mcp`) so the adapter only needs to wire the Amaara MCP server into
+//! its config and translate normalized Amaara commands to JSON-RPC dispatches.
 //!
 //! The adapter writes `hermes-config.yaml` (or `hermes-config.json`) into the
-//! project directory pointing at the Navya MCP server.
+//! project directory pointing at the Amaara MCP server.
 
 use async_trait::async_trait;
-use std::{
-    collections::HashMap,
-    io::BufRead,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::HashMap, io::BufRead, path::PathBuf, sync::Arc};
 use tokio::sync::{mpsc, mpsc::Receiver};
 
 use crate::harness::{
     common::{self, ChildState},
     event::{HarnessEvent, ModelInfo},
-    registry,
-    Capabilities, HarnessCtx, HarnessError, Harness as HarnessTrait, PromptMode,
+    registry, Capabilities, Harness as HarnessTrait, HarnessCtx, HarnessError, PromptMode,
 };
 
 /// Hermes harness implementation.
@@ -64,11 +58,7 @@ impl HermesHarness {
     }
 
     /// Send a JSON-RPC dispatch to the gateway stdin.
-    fn send_rpc(
-        &self,
-        method: &str,
-        params: serde_json::Value,
-    ) -> Result<u64, HarnessError> {
+    fn send_rpc(&self, method: &str, params: serde_json::Value) -> Result<u64, HarnessError> {
         let mut inner = self.inner.lock().unwrap();
         if !inner.state.started || !inner.ready {
             return Err(HarnessError::NotStarted);
@@ -95,14 +85,14 @@ impl HermesHarness {
         control_token: Option<&str>,
     ) -> Result<(), HarnessError> {
         let mcp_dir = common::mcp_workspace_dir();
-        let server_py = mcp_dir.join("navya_mcp").join("server.py");
+        let server_py = mcp_dir.join("amaara_mcp").join("server.py");
         let server_py_abs = server_py.to_string_lossy().to_string();
 
         let config = serde_json::json!({
             "mcp": {
                 "servers": [
                     {
-                        "name": "navya-studio-tools",
+                        "name": "amaara-studio-tools",
                         "command": "uv",
                         "args": [
                             "run",
@@ -113,8 +103,8 @@ impl HermesHarness {
                             server_py_abs
                         ],
                         "env": {
-                            "NAVYA_CONTROL_URL": control_url.unwrap_or("http://127.0.0.1:8080"),
-                            "NAVYA_CONTROL_TOKEN": control_token.unwrap_or("")
+                            "AMAARA_CONTROL_URL": control_url.unwrap_or("http://127.0.0.1:8080"),
+                            "AMAARA_CONTROL_TOKEN": control_token.unwrap_or("")
                         }
                     }
                 ]
@@ -164,8 +154,12 @@ impl HarnessTrait for HermesHarness {
             }
         }
 
-        let Some(binary) = registry::descriptor_for(&self.id).and_then(|d| registry::detect(d).path) else {
-            return Err(HarnessError::Process("hermes binary not found on PATH".into()));
+        let Some(binary) =
+            registry::descriptor_for(&self.id).and_then(|d| registry::detect(d).path)
+        else {
+            return Err(HarnessError::Process(
+                "hermes binary not found on PATH".into(),
+            ));
         };
 
         self.write_project_config(
@@ -176,7 +170,10 @@ impl HarnessTrait for HermesHarness {
 
         let args = vec![
             "--config".to_string(),
-            ctx.project_dir.join("hermes-config.yaml").to_string_lossy().to_string(),
+            ctx.project_dir
+                .join("hermes-config.yaml")
+                .to_string_lossy()
+                .to_string(),
         ];
 
         let (mut child, stdin) = common::spawn_command(
@@ -248,10 +245,7 @@ impl HarnessTrait for HermesHarness {
 
     async fn steer(&self, msg: &str) -> Result<(), HarnessError> {
         // Hermes steering: send an interrupt then a corrected user message.
-        self.send_rpc(
-            "gateway.dispatch",
-            serde_json::json!({"type": "interrupt"}),
-        )?;
+        self.send_rpc("gateway.dispatch", serde_json::json!({"type": "interrupt"}))?;
         self.send_rpc(
             "gateway.dispatch",
             serde_json::json!({"type": "user_message", "text": msg}),
@@ -260,10 +254,7 @@ impl HarnessTrait for HermesHarness {
     }
 
     async fn abort(&self) -> Result<(), HarnessError> {
-        self.send_rpc(
-            "gateway.dispatch",
-            serde_json::json!({"type": "abort"}),
-        )?;
+        self.send_rpc("gateway.dispatch", serde_json::json!({"type": "abort"}))?;
         Ok(())
     }
 
@@ -334,59 +325,135 @@ fn handle_stdout_line(inner: &Arc<std::sync::Mutex<Inner>>, json: &serde_json::V
                 let mut g = inner.lock().unwrap();
                 common::broadcast(
                     &mut g.state.subscribers,
-                    HarnessEvent::AgentStart { model: "default".to_string() },
+                    HarnessEvent::AgentStart {
+                        model: "default".to_string(),
+                    },
                 );
             }
             "agent.text_delta" => {
-                if let Some(delta) = json.get("params").and_then(|p| p.get("delta")).and_then(|v| v.as_str()) {
+                if let Some(delta) = json
+                    .get("params")
+                    .and_then(|p| p.get("delta"))
+                    .and_then(|v| v.as_str())
+                {
                     let mut g = inner.lock().unwrap();
-                    common::broadcast(&mut g.state.subscribers, HarnessEvent::TextDelta(delta.to_string()));
+                    common::broadcast(
+                        &mut g.state.subscribers,
+                        HarnessEvent::TextDelta(delta.to_string()),
+                    );
                 }
             }
             "agent.thinking_delta" => {
-                if let Some(delta) = json.get("params").and_then(|p| p.get("delta")).and_then(|v| v.as_str()) {
+                if let Some(delta) = json
+                    .get("params")
+                    .and_then(|p| p.get("delta"))
+                    .and_then(|v| v.as_str())
+                {
                     let mut g = inner.lock().unwrap();
-                    common::broadcast(&mut g.state.subscribers, HarnessEvent::ThinkingDelta(delta.to_string()));
+                    common::broadcast(
+                        &mut g.state.subscribers,
+                        HarnessEvent::ThinkingDelta(delta.to_string()),
+                    );
                 }
             }
             "agent.tool_call" => {
                 if let Some(tool) = json.get("params").and_then(|p| p.get("tool_call")) {
-                    let id = tool.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let name = tool.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let args = tool.get("arguments").cloned().unwrap_or(serde_json::Value::Null);
+                    let id = tool
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let name = tool
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let args = tool
+                        .get("arguments")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null);
                     let mut g = inner.lock().unwrap();
-                    common::broadcast(&mut g.state.subscribers, HarnessEvent::ToolStart { tool_id: id, name, args });
+                    common::broadcast(
+                        &mut g.state.subscribers,
+                        HarnessEvent::ToolStart {
+                            tool_id: id,
+                            name,
+                            args,
+                        },
+                    );
                 }
             }
             "agent.tool_result" => {
                 if let Some(result) = json.get("params").and_then(|p| p.get("tool_result")) {
-                    let id = result.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let id = result
+                        .get("tool_call_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     let content = result.get("content").and_then(content_text);
-                    let is_error = result.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+                    let is_error = result
+                        .get("is_error")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
                     let mut g = inner.lock().unwrap();
-                    common::broadcast(&mut g.state.subscribers, HarnessEvent::ToolEnd { tool_id: id, result: content, is_error });
+                    common::broadcast(
+                        &mut g.state.subscribers,
+                        HarnessEvent::ToolEnd {
+                            tool_id: id,
+                            result: content,
+                            is_error,
+                        },
+                    );
                 }
             }
             "agent.end" => {
                 let mut g = inner.lock().unwrap();
-                common::broadcast(&mut g.state.subscribers, HarnessEvent::AgentEnd { success: true, message: None });
+                common::broadcast(
+                    &mut g.state.subscribers,
+                    HarnessEvent::AgentEnd {
+                        success: true,
+                        message: None,
+                    },
+                );
             }
             "agent.error" => {
-                if let Some(err) = json.get("params").and_then(|p| p.get("error")).and_then(|v| v.as_str()) {
+                if let Some(err) = json
+                    .get("params")
+                    .and_then(|p| p.get("error"))
+                    .and_then(|v| v.as_str())
+                {
                     let mut g = inner.lock().unwrap();
-                    common::broadcast(&mut g.state.subscribers, HarnessEvent::Error(err.to_string()));
+                    common::broadcast(
+                        &mut g.state.subscribers,
+                        HarnessEvent::Error(err.to_string()),
+                    );
                 }
             }
             "approval.request" => {
                 if let Some(req) = json.get("params").and_then(|p| p.get("request")) {
-                    let id = req.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let kind = req.get("kind").and_then(|v| v.as_str()).unwrap_or("confirm").to_string();
+                    let id = req
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let kind = req
+                        .get("kind")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("confirm")
+                        .to_string();
                     {
                         let mut g = inner.lock().unwrap();
                         g.pending_approvals.insert(id.clone(), req.clone());
                     }
                     let mut g = inner.lock().unwrap();
-                    common::broadcast(&mut g.state.subscribers, HarnessEvent::ApprovalRequest { id, kind, payload: req.clone() });
+                    common::broadcast(
+                        &mut g.state.subscribers,
+                        HarnessEvent::ApprovalRequest {
+                            id,
+                            kind,
+                            payload: req.clone(),
+                        },
+                    );
                 }
             }
             _ => {}
@@ -438,6 +505,8 @@ mod tests {
         let inner = Arc::clone(&h.inner);
         let call = serde_json::json!({"jsonrpc":"2.0","method":"agent.tool_call","params":{"tool_call":{"id":"tc1","name":"Bash","arguments":{"command":"ls"}}}});
         handle_stdout_line(&inner, &call);
-        assert!(matches!(rx.try_recv(), Ok(HarnessEvent::ToolStart { tool_id, name, .. }) if tool_id == "tc1" && name == "Bash"));
+        assert!(
+            matches!(rx.try_recv(), Ok(HarnessEvent::ToolStart { tool_id, name, .. }) if tool_id == "tc1" && name == "Bash")
+        );
     }
 }

@@ -1,7 +1,7 @@
 //! Sidecar bootstrap (Phase 14).
 //!
 //! Download-on-first-run for the `sd-server` binary (per NOTES.md): if the
-//! configured binary is missing, fetch it from `NAVYA_SD_RELEASE_BASE`,
+//! configured binary is missing, fetch it from `AMAARA_SD_RELEASE_BASE`,
 //! verify its SHA256, and write atomically. Progress/failures surface through
 //! the `on_progress` callback so command callers can route them into
 //! `SidecarEvent::LogLine` (status-strip log drawer) — the module itself
@@ -25,10 +25,7 @@ use sha2::{Digest, Sha256};
 pub fn hex_sha256(bytes: &[u8]) -> String {
     let mut h = Sha256::new();
     h.update(bytes);
-    h.finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Hex-encoded SHA256 of a file's contents.
@@ -130,7 +127,9 @@ pub async fn download_to(
         .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
     let tmp = parent.join(format!(
         ".{}.part",
-        dest.file_name().and_then(|n| n.to_str()).unwrap_or("sidecar")
+        dest.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("sidecar")
     ));
     std::fs::write(&tmp, &bytes).map_err(|e| format!("cannot write {}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, dest).map_err(|e| format!("cannot finalize {}: {e}", dest.display()))?;
@@ -140,7 +139,7 @@ pub async fn download_to(
 /// Ensure the sd-server binary is present and checksum-verified.
 ///
 /// Order: existing binary (verify `.sha256` sidecar if present) →
-/// download-on-first-run from `NAVYA_SD_RELEASE_BASE` at
+/// download-on-first-run from `AMAARA_SD_RELEASE_BASE` at
 /// `{base}/{flavor}/sd-server-{triple}[.exe]` (checksum taken from
 /// `{base}/.../sd-server-{triple}[.exe].sha256` when available).
 ///
@@ -155,15 +154,19 @@ pub async fn ensure_sd_server_binary(
         return verify_sidecar_checksum(bin_path);
     }
 
-    let base = std::env::var("NAVYA_SD_RELEASE_BASE").unwrap_or_default();
+    let base = std::env::var("AMAARA_SD_RELEASE_BASE").unwrap_or_default();
     if base.trim().is_empty() {
         return Err(
-            "sd-server binary not found for local image generation. Point Settings → sd_binary_path at an installed sd-server, or set NAVYA_SD_RELEASE_BASE to enable download-on-first-run."
+            "sd-server binary not found for local image generation. Point Settings → sd_binary_path at an installed sd-server, or set AMAARA_SD_RELEASE_BASE to enable download-on-first-run."
                 .to_string(),
         );
     }
     let triple = host_triple();
-    let ext = if cfg!(target_os = "windows") { ".exe" } else { "" };
+    let ext = if cfg!(target_os = "windows") {
+        ".exe"
+    } else {
+        ""
+    };
     let stem = format!("sd-server-{triple}{ext}");
     let url = format!("{}/{flavor}/{stem}", base.trim_end_matches('/'));
 
@@ -212,7 +215,11 @@ pub fn ensure_render_deps(worker_path: &Path) -> Result<(), String> {
 }
 
 fn lookup_bin() -> &'static str {
-    if cfg!(windows) { "where" } else { "which" }
+    if cfg!(windows) {
+        "where"
+    } else {
+        "which"
+    }
 }
 
 fn node_on_path() -> bool {
@@ -247,7 +254,7 @@ mod tests {
 
     #[test]
     fn sha256_file_reads_disk() {
-        let tmp = std::env::temp_dir().join(format!("navya-bootstrap-{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("amaara-bootstrap-{}", std::process::id()));
         std::fs::create_dir_all(&tmp).unwrap();
         let f = tmp.join("blob.bin");
         std::fs::write(&f, b"hello").unwrap();
@@ -260,7 +267,8 @@ mod tests {
 
     #[tokio::test]
     async fn existing_binary_with_bad_sidecar_fails() {
-        let tmp = std::env::temp_dir().join(format!("navya-bootstrap-side-{}", std::process::id()));
+        let tmp =
+            std::env::temp_dir().join(format!("amaara-bootstrap-side-{}", std::process::id()));
         std::fs::create_dir_all(&tmp).unwrap();
         let bin = tmp.join("sd-server.exe");
         std::fs::write(&bin, b"payload").unwrap();
@@ -281,7 +289,7 @@ mod tests {
     #[tokio::test]
     async fn existing_binary_with_good_sidecar_passes() {
         let tmp =
-            std::env::temp_dir().join(format!("navya-bootstrap-side-ok-{}", std::process::id()));
+            std::env::temp_dir().join(format!("amaara-bootstrap-side-ok-{}", std::process::id()));
         std::fs::create_dir_all(&tmp).unwrap();
         let bin = tmp.join("sd-server.exe");
         std::fs::write(&bin, b"payload").unwrap();
@@ -298,14 +306,15 @@ mod tests {
 
     #[tokio::test]
     async fn missing_binary_without_release_base_errors_with_action() {
-        let tmp = std::env::temp_dir().join(format!("navya-bootstrap-miss-{}", std::process::id()));
+        let tmp =
+            std::env::temp_dir().join(format!("amaara-bootstrap-miss-{}", std::process::id()));
         let bin = tmp.join("missing").join("sd-server.exe");
-        std::env::remove_var("NAVYA_SD_RELEASE_BASE");
+        std::env::remove_var("AMAARA_SD_RELEASE_BASE");
         let mut progress: Vec<String> = Vec::new();
         let err = ensure_sd_server_binary(&bin, "cpu", &mut |m: &str| progress.push(m.into()))
             .await
             .unwrap_err();
-        assert!(err.contains("sd_binary_path") && err.contains("NAVYA_SD_RELEASE_BASE"));
+        assert!(err.contains("sd_binary_path") && err.contains("AMAARA_SD_RELEASE_BASE"));
     }
 
     #[test]

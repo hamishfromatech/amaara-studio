@@ -1,4 +1,4 @@
-//! Navya Studio shared tool-backend lib (Phase 3).
+//! Amaara Studio shared tool-backend lib (Phase 3).
 //!
 //! Pure-ish async fns that take a `ToolContext`. No transport code (HTTP/MCP) here —
 //! those live in the control server (`src-tauri/src/control/`) and MCP bindings.
@@ -9,7 +9,7 @@ use std::path::PathBuf;
 /// Non-secret config view passed to tool fns.
 #[derive(Debug, Clone)]
 pub struct ConfigRef {
-    pub navya_base_url: String,
+    pub amaara_base_url: String,
     pub default_model: String,
     pub use_auto_router: bool,
     pub byok: bool,
@@ -130,14 +130,20 @@ pub struct Snapshot {
     pub timecode_ms: i64,
 }
 
-/// --- Tool Functions -------------------------------------------------------------
+// --- Tool Functions -------------------------------------------------------------
 
 /// Generate an image. Routes to cloud or local based on ctx.config and source preference.
 /// Returns GeneratedImage with asset record created in the store.
-pub async fn generate_image(ctx: &ToolContext, req: GenerateImageReq) -> anyhow::Result<GeneratedImage> {
-    // In a real impl, this would call Navya Cloud /v1/images/generations or sd-server.
+pub async fn generate_image(
+    ctx: &ToolContext,
+    req: GenerateImageReq,
+) -> anyhow::Result<GeneratedImage> {
+    // In a real impl, this would call Amaara Cloud /v1/images/generations or sd-server.
     // For M0 scaffold, we return a stub generated image with a mock asset path.
-    let model_used = req.model.clone().unwrap_or_else(|| ctx.config.default_model.clone());
+    let model_used = req
+        .model
+        .clone()
+        .unwrap_or_else(|| ctx.config.default_model.clone());
     let source = if model_used.starts_with("sd-") || model_used.contains("local") {
         "local".to_string()
     } else {
@@ -146,12 +152,16 @@ pub async fn generate_image(ctx: &ToolContext, req: GenerateImageReq) -> anyhow:
 
     // Generate a mock asset id and path.
     let asset_id = format!("img-{}", uuid_or_hash(&req.prompt));
-    let asset_path = ctx.project_dir.join("assets").join("img").join(format!("{}.png", asset_id));
+    let asset_path = ctx
+        .project_dir
+        .join("assets")
+        .join("img")
+        .join(format!("{}.png", asset_id));
 
     // Insert into store (mock successful insert).
     ctx.store.insert_asset(
         &req.project_id,
-        req.composition_id.as_ref().map(|s| s.as_str()),
+        req.composition_id.as_deref(),
         &asset_path.to_string_lossy(),
         "image",
         &source,
@@ -170,9 +180,15 @@ pub async fn generate_image(ctx: &ToolContext, req: GenerateImageReq) -> anyhow:
 }
 
 /// Render to video via the render queue / sidecar. Returns a RenderJob id.
-pub async fn render_to_video(_ctx: &ToolContext, req: RenderToVideoReq) -> anyhow::Result<RenderJob> {
-    let job_id = format!("render-{}", uuid_or_hash(&format!("{}-{}", req.project_id, req.composition_id)));
-    
+pub async fn render_to_video(
+    _ctx: &ToolContext,
+    req: RenderToVideoReq,
+) -> anyhow::Result<RenderJob> {
+    let job_id = format!(
+        "render-{}",
+        uuid_or_hash(&format!("{}-{}", req.project_id, req.composition_id))
+    );
+
     Ok(RenderJob {
         job_id,
         project_id: req.project_id,
@@ -186,7 +202,7 @@ pub async fn render_to_video(_ctx: &ToolContext, req: RenderToVideoReq) -> anyho
 /// List available models (cloud + local). Mock implementation for M0.
 pub async fn list_local_models(_ctx: &ToolContext) -> anyhow::Result<ModelList> {
     Ok(ModelList {
-        cloud_models: vec!["navya/auto".to_string(), "qwen3-32b".to_string()],
+        cloud_models: vec!["amaara/auto".to_string(), "qwen3-32b".to_string()],
         local_models: vec!["llama3-8b".to_string(), "sd-xl".to_string()],
     })
 }
@@ -199,13 +215,24 @@ pub async fn set_generation_source(_ctx: &ToolContext, _source: String) -> anyho
 /// Get current project state from store + config.
 pub async fn get_project_state(ctx: &ToolContext) -> anyhow::Result<ProjectState> {
     let projects = ctx.store.list_projects()?;
-    let first = projects.first().map(|p| p.id.clone()).unwrap_or_else(|| "default".to_string());
-    let name = projects.first().map(|p| p.name.clone()).unwrap_or_else(|| "default-project".to_string());
+    let first = projects
+        .first()
+        .map(|p| p.id.clone())
+        .unwrap_or_else(|| "default".to_string());
+    let name = projects
+        .first()
+        .map(|p| p.name.clone())
+        .unwrap_or_else(|| "default-project".to_string());
 
     Ok(ProjectState {
         project_id: first,
         name,
-        harness: ctx.config.enabled_harnesses.first().cloned().unwrap_or("a-coder-cli".to_string()),
+        harness: ctx
+            .config
+            .enabled_harnesses
+            .first()
+            .cloned()
+            .unwrap_or("a-coder-cli".to_string()),
         model: ctx.config.default_model.clone(),
         source: "cloud".to_string(), // default per A.3
         compositions_count: 0,       // mock
@@ -216,10 +243,14 @@ pub async fn get_project_state(ctx: &ToolContext) -> anyhow::Result<ProjectState
 /// Snapshot a frame at timecode t (ms) from the current composition. Mock for M0.
 pub async fn snapshot(ctx: &ToolContext, t_ms: i64) -> anyhow::Result<Snapshot> {
     let asset_id = format!("snap-{}", uuid_or_hash(&format!("{}", t_ms)));
-    let path = ctx.project_dir.join("assets").join("img").join(format!("snapshot-{}.png", asset_id));
+    let path = ctx
+        .project_dir
+        .join("assets")
+        .join("img")
+        .join(format!("snapshot-{}.png", asset_id));
 
     ctx.store.insert_asset(
-        &"default".to_string(),
+        "default",
         None,
         &path.to_string_lossy(),
         "image",

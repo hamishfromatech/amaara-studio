@@ -1,6 +1,6 @@
-//! Navya Engine client (local llama.cpp proxy).
+//! Amaara Engine client (local llama.cpp proxy).
 //!
-//! Discovers and talks to the Navya Engine OpenAI-compatible HTTP proxy
+//! Discovers and talks to the Amaara Engine OpenAI-compatible HTTP proxy
 //! running on localhost (default port 7685). The Engine aggregates models
 //! from multiple local backends (llama.cpp, FastFlowLM, MeshLLM, vLLM).
 //!
@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 const DEFAULT_ENGINE_URL: &str = "http://127.0.0.1:7685";
 
-/// Client for the Navya Engine local proxy.
+/// Client for the Amaara Engine local proxy.
 #[derive(Debug, Clone)]
 pub struct EngineClient {
     base_url: String,
@@ -76,7 +76,7 @@ impl EngineClient {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineModel {
     pub id: String,
-    pub name: String,           // human-friendly (derived from id + meta)
+    pub name: String, // human-friendly (derived from id + meta)
     pub aliases: Vec<String>,
     pub size_bytes: Option<u64>,
     pub param_count: Option<u64>,
@@ -103,8 +103,7 @@ struct RawModel {
     owned_by: String,
 }
 
-#[derive(Debug, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Deserialize, Default)]
 struct ModelMeta {
     #[serde(default)]
     size: Option<u64>,
@@ -136,7 +135,6 @@ impl From<RawModel> for EngineModel {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,6 +153,9 @@ mod tests {
 
     #[test]
     fn format_model_id_for_harness() {
-        assert_eq!(EngineClient::format_model_id("qwen-coder"), "openai/qwen-coder");
+        assert_eq!(
+            EngineClient::format_model_id("qwen-coder"),
+            "openai/qwen-coder"
+        );
     }
 }

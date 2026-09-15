@@ -45,7 +45,7 @@ fn recent_logs(log_dir: &Path) -> Vec<PathBuf> {
         .filter(|p| {
             p.file_name()
                 .and_then(|n| n.to_str())
-                .map(|n| n.starts_with("navya.") && n.ends_with(".log"))
+                .map(|n| n.starts_with("amaara.") && n.ends_with(".log"))
                 .unwrap_or(false)
         })
         .filter_map(|p| {
@@ -54,10 +54,14 @@ fn recent_logs(log_dir: &Path) -> Vec<PathBuf> {
         })
         .collect();
     files.sort_by_key(|(m, _)| std::cmp::Reverse(*m));
-    files.into_iter().take(MAX_LOG_FILES).map(|(_, p)| p).collect()
+    files
+        .into_iter()
+        .take(MAX_LOG_FILES)
+        .map(|(_, p)| p)
+        .collect()
 }
 
-/// Build `navya-feedback-<timestamp>.zip` in `out_dir` containing the
+/// Build `amaara-feedback-<timestamp>.zip` in `out_dir` containing the
 /// redacted recent logs and an optional session summary. Returns the zip path.
 pub fn package(
     data_dir: &Path,
@@ -76,7 +80,7 @@ pub fn package(
         }
     }
 
-    let zip_path = out_dir.join(format!("navya-feedback-{}.zip", chrono_stamp()));
+    let zip_path = out_dir.join(format!("amaara-feedback-{}.zip", chrono_stamp()));
     let file = std::fs::File::create(&zip_path)
         .map_err(|e| format!("cannot create {}: {e}", zip_path.display()))?;
     let mut zip = zip::ZipWriter::new(file);
@@ -86,7 +90,10 @@ pub fn package(
     // Redacted session summary (config has no secrets — they live in the
     // keyring, enforced by the leak test in config.rs).
     if let Some(summary) = session_summary {
-        let redacted = redact(&serde_json::to_string_pretty(summary).unwrap_or_default(), &roots);
+        let redacted = redact(
+            &serde_json::to_string_pretty(summary).unwrap_or_default(),
+            &roots,
+        );
         zip.start_file("session.json", options)
             .map_err(|e| format!("zip write failed: {e}"))?;
         let _ = zip.write_all(redacted.as_bytes());
@@ -96,7 +103,7 @@ pub fn package(
         let name = log
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("navya.log")
+            .unwrap_or("amaara.log")
             .to_string();
         let body = std::fs::read_to_string(&log).unwrap_or_default();
         let redacted = redact(&body, &roots);
@@ -141,21 +148,24 @@ mod tests {
 
     #[test]
     fn redact_strips_raw_and_escaped_paths() {
-        let data = PathBuf::from(r"C:\Users\me\AppData\Roaming\navya");
+        let data = PathBuf::from(r"C:\Users\me\AppData\Roaming\amaara");
         let home = PathBuf::from(r"C:\Users\me");
         let roots = vec![data.clone(), home];
 
         // Raw path (Windows separator preserved after the ~).
         assert_eq!(
-            redact(r"opened C:\Users\me\AppData\Roaming\navya\navya.db", &roots),
-            r"opened ~\navya.db"
+            redact(
+                r"opened C:\Users\me\AppData\Roaming\amaara\amaara.db",
+                &roots
+            ),
+            r"opened ~\amaara.db"
         );
         // JSON-escaped form inside a log line.
-        let line = r#"{\"path\":\"C:\\Users\\me\\AppData\\Roaming\\navya\\x\"}"#;
+        let line = r#"{\"path\":\"C:\\Users\\me\\AppData\\Roaming\\amaara\\x\"}"#;
         assert_eq!(redact(line, &roots), r#"{\"path\":\"~\\x\"}"#);
         // Forward-slash form.
         assert_eq!(
-            redact("at C:/Users/me/AppData/Roaming/navya/out.mp4", &roots),
+            redact("at C:/Users/me/AppData/Roaming/amaara/out.mp4", &roots),
             "at ~/out.mp4"
         );
         // Home-only path (app-data replaced first, then home).
@@ -173,15 +183,18 @@ mod tests {
 
     #[test]
     fn package_writes_zip_with_redacted_logs() {
-        let tmp = std::env::temp_dir().join(format!("navya-feedback-test-{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("amaara-feedback-test-{}", std::process::id()));
         let data_dir = tmp.join("data");
         let logs = data_dir.join("logs");
         std::fs::create_dir_all(&logs).unwrap();
         // JSON-escaped path under the real data_dir (as tracing JSON would
         // emit it) so the packager's redaction roots actually match.
-        let fake_db = data_dir.join("navya.db").to_string_lossy().replace('\\', "\\\\");
+        let fake_db = data_dir
+            .join("amaara.db")
+            .to_string_lossy()
+            .replace('\\', "\\\\");
         std::fs::write(
-            logs.join("navya.2026-08-27.log"),
+            logs.join("amaara.2026-08-27.log"),
             format!(r#"{{"message":"loaded {fake_db}"}}"#),
         )
         .unwrap();
@@ -192,23 +205,24 @@ mod tests {
 
         let zip_path = package(&data_dir, &out_dir, Some(&summary)).expect("package");
         assert!(zip_path.exists());
-        assert!(
-            zip_path
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .starts_with("navya-feedback-")
-        );
+        assert!(zip_path
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .starts_with("amaara-feedback-"));
 
         let f = std::fs::File::open(&zip_path).unwrap();
         let mut archive = zip::ZipArchive::new(f).unwrap();
         let names: Vec<String> = (0..archive.len())
             .map(|i| archive.by_index(i).unwrap().name().to_string())
             .collect();
-        assert!(names.iter().any(|n| n == "session.json"), "names: {names:?}");
         assert!(
-            names.iter().any(|n| n.starts_with("logs/navya.")),
+            names.iter().any(|n| n == "session.json"),
+            "names: {names:?}"
+        );
+        assert!(
+            names.iter().any(|n| n.starts_with("logs/amaara.")),
             "names: {names:?}"
         );
 
@@ -224,7 +238,7 @@ mod tests {
         // The log line must not leak the home path either.
         let log_name = names
             .iter()
-            .find(|n| n.starts_with("logs/navya."))
+            .find(|n| n.starts_with("logs/amaara."))
             .unwrap()
             .clone();
         let mut logf = archive.by_name(&log_name).unwrap();

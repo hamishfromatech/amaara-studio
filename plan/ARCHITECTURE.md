@@ -1,8 +1,8 @@
-# Navya Studio — Architecture
+# Amaara Studio — Architecture
 
 A Tauri desktop app that is a content-creation studio powered by AI. An agent
 (harness) orchestrates the work: it writes scripts/storyboards, generates
-images, and assembles + renders video. Intelligence comes from **Navya Cloud**
+images, and assembles + renders video. Intelligence comes from **Amaara Cloud**
 AI models (remote, OpenAI-compatible) **or** local models (local LLM +
 stable-diffusion.cpp). Video is authored in **HyperFrames/Remotion** and
 rendered locally.
@@ -16,7 +16,7 @@ This document is the synthesis of the context7 research pass. See
 
 ```
  ┌──────────────────────────────────────────────────────────────────────┐
- │                       Navya Studio (Tauri desktop app)              │
+ │                       Amaara Studio (Tauri desktop app)              │
  │                                                                      │
  │  ┌──────────────────────┐        ┌───────────────────────────────┐  │
  │  │  Web UI (webview)     │  IPC   │  Rust core (tauri::Builder)    │  │
@@ -39,7 +39,7 @@ This document is the synthesis of the context7 research pass. See
              │ tool calls route to the studio MCP tool server, which calls:
      ┌───────┴────────┬─────────────────────┐
      ▼                ▼                     ▼
- Navya Cloud      llama.cpp server      sd-server (local)
+ Amaara Cloud      llama.cpp server      sd-server (local)
  /v1/chat,        (local LLM,           local image gen
  /v1/images,      OpenAI-compatible)
  /v1/videos
@@ -55,7 +55,7 @@ Five roles, each a separate process the Rust core supervises:
 | **Render sidecar** | A bundled Node 22 runtime that runs `npx hyperframes …` and `@remotion/renderer` | HyperFrames/Remotion need Node + headless Chrome + FFmpeg. Isolated from the agent so a render crash can't kill the conversation. |
 | **SD.cpp sidecar** | `sd-server` (HTTP) or `sd-cli` (one-shot) | Local image generation. Started lazily when the user picks "local" generation. |
 
-Navya Cloud and a local llama.cpp server are **not** sidecars — they are remote
+Amaara Cloud and a local llama.cpp server are **not** sidecars — they are remote
 (or user-run) OpenAI-compatible endpoints the harness talks to over HTTP.
 
 ---
@@ -85,7 +85,7 @@ turns up two structural facts that fix the design:
 
 So `trait Harness` in Rust is a **protocol translator**, not a shared wire
 format. Each adapter: (a) spawns/connects the harness, (b) injects our MCP
-server into the harness's MCP config, (c) translates normalized Navya commands
+server into the harness's MCP config, (c) translates normalized Amaara commands
 (`prompt` / `steer` / `abort` / `set_model`) to the native protocol,
 (d) emits a normalized `HarnessEvent` stream the UI renders, (e) routes the
 harness's approval/permission requests to native Tauri dialogs.
@@ -112,8 +112,8 @@ Capability differences degrade **explicitly**, not silently:
   OpenClaw as just another MCP server. Both are valid adapter shapes.
 - Provider/model config is per-harness (a-coder-cli `models.json`, Claude
   `--model` / `settings.json`, Codex per-thread `model`, …). The adapter
-  writes the right config for its harness from the studio's single Navya/Local
-  settings — the user configures Navya Cloud + local llama.cpp **once**, and
+  writes the right config for its harness from the studio's single Amaara/Local
+  settings — the user configures Amaara Cloud + local llama.cpp **once**, and
   each adapter materializes it in its harness's native format.
 
 #### Why a-coder-cli is the reference impl
@@ -130,17 +130,17 @@ available if we later run the agent in a Node sidecar we control end-to-end.
 > server. A studio project opened in any of these harnesses is also a valid
 > native project for that harness.
 
-### 2.2 Navya Cloud + local LLM are just "providers" to the harness
+### 2.2 Amaara Cloud + local LLM are just "providers" to the harness
 Every harness in the matrix has a model/provider config mechanism, and all of
 them treat an OpenAI-compatible endpoint as a first-class provider. The
-studio's single settings (Navya endpoint + key, local llama.cpp URL) are
+studio's single settings (Amaara endpoint + key, local llama.cpp URL) are
 materialized by the active adapter into its harness's native format:
 
-- **Navya Cloud** → an OpenAI-compatible provider entry pointing at the user's
-  Navya `baseUrl`, authed by the user's Navya API key (OS keyring, injected as
-  a runtime key). Navya already speaks OpenAI: `/v1/chat/completions`,
+- **Amaara Cloud** → an OpenAI-compatible provider entry pointing at the user's
+  Amaara `baseUrl`, authed by the user's Amaara API key (OS keyring, injected as
+  a runtime key). Amaara already speaks OpenAI: `/v1/chat/completions`,
   `/v1/images/generations`, `/v1/videos/generations`, `/v1/audio`,
-  `/v1/embeddings`, plus `navya/auto` routing (see `provider-api/backend/
+  `/v1/embeddings`, plus `amaara/auto` routing (see `provider-api/backend/
   routers/media.py` and `main.py`).
 - **Local LLM** → a llama.cpp server (OpenAI-compatible `/v1/chat/completions`)
   as another provider entry, `baseUrl http://localhost:PORT`.
@@ -159,7 +159,7 @@ command. This keeps generation streaming/progress visible in the UI without a
 process-per-image cost. Build flavors per machine: `-DSD_CUDA=ON` (NVIDIA),
 `-GGML_VULKAN=ON`, CPU fallback — the installer ships the matching binary.
 
-Cloud image gen, by contrast, is just a tool that POSTs to Navya
+Cloud image gen, by contrast, is just a tool that POSTs to Amaara
 `/v1/images/generations`.
 
 ### 2.4 Video = HyperFrames authored by the agent, rendered by a Node sidecar
@@ -176,7 +176,7 @@ sidecar** rather than inside the harness process:
 
 - The harness writes/edits the composition files (it has `read`/`write`/
   `edit`/`bash` tools).
-- When the agent decides to render, a custom **Navya tool** (registered on the
+- When the agent decides to render, a custom **Amaara tool** (registered on the
   harness) hands the render job to the Rust core, which forwards it to the
   render sidecar. Progress streams back to the UI as render-queue events.
 - For heavy/cloud renders HyperFrames also offers `lambda`, `cloudrun`, and
@@ -192,14 +192,14 @@ From the context7 pass on Tauri 2.9 / plugins-workspace:
   runtime, and `sd-server`/`sd-cli` per-target triple. Platform suffixes
   (`-x86_64-pc-windows-msvc.exe`) follow Tauri's sidecar convention.
 - `tauri-plugin-sql` (SQLite) for project/asset/render history, and
-  `tauri-plugin-store` or the OS keyring for the Navya key + local model paths.
+  `tauri-plugin-store` or the OS keyring for the Amaara key + local model paths.
 
 ---
 
 ## 3. Project layout
 
 ```
-navya-studio/
+amaara-studio/
 ├── concept.md                  # the brief
 ├── ARCHITECTURE.md             # this file
 ├── RESEARCH.md                 # raw context7 findings
@@ -217,16 +217,16 @@ navya-studio/
 │   │   │                       #   HermesHarness (JSON-RPC), OpenClawHarness (WS)
 │   │   ├── control/            # loopback HTTP+WS control server = tool LOGIC
 │   │   ├── tools/              # #[tauri::command] wrappers over the same logic
-│   │   ├── navya/              # Navya Cloud HTTP client (chat/images/video)
+│   │   ├── amaara/              # Amaara Cloud HTTP client (chat/images/video)
 │   │   ├── sd/                 # sd-server HTTP client + lifecycle
 │   │   ├── render/             # render-queue, forwards to Node sidecar
 │   │   ├── store/              # SQLite models + settings/secrets
 │   │   └── events.rs           # emit Tauri events to the webview
 │   └── binaries/               # bundled sidecar binaries (git-lfs or build step)
-├── navya-mcp/                 # FastMCP (Python) MCP server: stdio binding,
+├── amaara-mcp/                 # FastMCP (Python) MCP server: stdio binding,
 │                              #   proxies each tool to src-tauri/control
 │   pyproject.toml requirements.txt (fastmcp, httpx)
-│   navya_mcp/server.py        # @mcp.tool for each studio tool
+│   amaara_mcp/server.py        # @mcp.tool for each studio tool
 ├── ui/                         # React + Vite + Tailwind (the webview SPA)
 │   ├── package.json
 │   ├── src/
@@ -246,11 +246,11 @@ navya-studio/
     └── openclaw/              # gateway token + mcp serve args
 ```
 
-`navya-mcp/` (FastMCP) is the MCP binding for the five MCP-capable harnesses;
+`amaara-mcp/` (FastMCP) is the MCP binding for the five MCP-capable harnesses;
 `src-tauri/control/` is the single source of tool logic. `harness-pack/<harness>/`
 is the small per-harness config the adapter writes (provider entries,
 permissions, hooks, MCP wiring: e.g. the `mcpServers` JSON pointing at
-`uv run --with fastmcp ... navya_mcp/server.py` with `NAVYA_CONTROL_*` env).
+`uv run --with fastmcp ... amaara_mcp/server.py` with `AMAARA_CONTROL_*` env).
 A project opened in the studio is also a valid native project for whichever
 harness is selected.
 
@@ -261,13 +261,13 @@ harness is selected.
 ## 4. The request loop (one concrete run)
 
 User types "make a 30s faceless explainer about black holes" and picks
-Navya Cloud.
+Amaara Cloud.
 
 1. UI calls Rust `send_prompt(text)`.
 2. Rust `HarnessAdapter` (the selected harness's adapter; a-coder-cli by
    default) spawns the harness with `cwd = <project dir>`, injects our MCP
    tool server into the harness's MCP config, and materializes the harness's
-   native model/permission config from the user's Navya/Local settings. It
+   native model/permission config from the user's Amaara/Local settings. It
    then sends the normalized `prompt` command in the harness's native protocol.
 3. The harness loads its skills — `/hyperframes` routes to the faceless-
    explainer workflow, which runs the intent interview and writes `BRIEF.md`.
@@ -275,7 +275,7 @@ Navya Cloud.
    events):
    - `bash`/`write`/`edit` to scaffold the HyperFrames project and author HTML.
    - `generate_image` (an MCP tool) → Rust picks Cloud or Local. Cloud:
-     POST Navya `/v1/images/generations`; Local: ensure `sd-server` sidecar is
+     POST Amaara `/v1/images/generations`; Local: ensure `sd-server` sidecar is
      up, POST to it. Image saved into the project assets dir.
    - `npx hyperframes lint` / `check` / `preview --background` via `bash`.
 5. Agent calls `render_to_video` (an MCP tool) → Rust enqueues a render
@@ -294,11 +294,11 @@ protocol in `docs/rpc.md`.
 
 | | Cloud | Local |
 |---|---|---|
-| LLM | Navya `/v1/chat/completions` (incl. `navya/auto`) | llama.cpp server, OpenAI-compatible |
-| Images | Navya `/v1/images/generations` | `sd-server` sidecar (CUDA/Vulkan/CPU) |
-| Video gen (optional) | Navya `/v1/videos/generations` | not supported locally |
+| LLM | Amaara `/v1/chat/completions` (incl. `amaara/auto`) | llama.cpp server, OpenAI-compatible |
+| Images | Amaara `/v1/images/generations` | `sd-server` sidecar (CUDA/Vulkan/CPU) |
+| Video gen (optional) | Amaara `/v1/videos/generations` | not supported locally |
 | Video render | local HyperFrames/Remotion sidecar (same for both) | same |
-| Cost | billed by Navya | free, user's GPU/CPU |
+| Cost | billed by Amaara | free, user's GPU/CPU |
 
 The studio does not hard-code either path. The `generate_image` and
 `set_generation_source` tools, plus the model picker, route at runtime.
@@ -318,9 +318,9 @@ The studio does not hard-code either path. The `generate_image` and
    MCP tool server means a second harness (claude-code or codex) is cheap to
    add since tools are shared. Decide the launch set and whether OpenClaw's
    WebSocket adapter is in v1 or deferred.
-4. **Navya Cloud endpoint + auth flow** — confirm base URL, whether the studio
-   embeds Navya API key entry / OAuth, and whether BYOK to underlying providers
-   (the `byok_router` exists in Navya) is exposed.
+4. **Amaara Cloud endpoint + auth flow** — confirm base URL, whether the studio
+   embeds Amaara API key entry / OAuth, and whether BYOK to underlying providers
+   (the `byok_router` exists in Amaara) is exposed.
 5. **Project model** — **resolved (kick-off): a studio project holds many compositions.** SQLite has a `compositions` table; the left rail has a composition switcher (promoted into v1 from design.md §12); the timeline/preview and renders are per-composition.
 
 ---
@@ -335,7 +335,7 @@ A vertical slice that proves the loop without the hard packaging:
    tool (`generate_image`, cloud path only) so the tool path is proven
    harness-agnostic from day one. Hard-code `a-coder-cli` from PATH; assume
    Node + hyperframes installed on the dev machine.
-3. Navya Cloud registered as a provider in the adapter's `models.json`; key
+3. Amaara Cloud registered as a provider in the adapter's `models.json`; key
    from env.
 4. Add a **second harness adapter stub** (claude-code print/stream mode) that
    reuses the same MCP tool server — this is the cheap proof that the

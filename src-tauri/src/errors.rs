@@ -20,8 +20,8 @@ pub enum ErrorCode {
     SdServerUnavailable,
     /// llama-server health probe failed.
     LlamaServerUnavailable,
-    /// Navya Cloud API error (rate limit, auth failure, etc.).
-    NavyaApiError,
+    /// Amaara Cloud API error (rate limit, auth failure, etc.).
+    AmaaraApiError,
 }
 
 impl ErrorCode {
@@ -34,7 +34,7 @@ impl ErrorCode {
             ErrorCode::RenderFailed => "RenderFailed",
             ErrorCode::SdServerUnavailable => "SdServerUnavailable",
             ErrorCode::LlamaServerUnavailable => "LlamaServerUnavailable",
-            ErrorCode::NavyaApiError => "NavyaApiError",
+            ErrorCode::AmaaraApiError => "AmaaraApiError",
         }
     }
 
@@ -47,7 +47,7 @@ impl ErrorCode {
             ErrorCode::RenderFailed => "render failed",
             ErrorCode::SdServerUnavailable => "sd-server unavailable",
             ErrorCode::LlamaServerUnavailable => "llama-server unavailable",
-            ErrorCode::NavyaApiError => "navya api error",
+            ErrorCode::AmaaraApiError => "amaara api error",
         }
     }
 }
@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn error_codes_have_stable_identifiers() {
         assert_eq!(ErrorCode::SidecarCrash.code_name(), "SidecarCrash");
-        assert_eq!(ErrorCode::NavyaApiError.label(), "navya api error");
+        assert_eq!(ErrorCode::AmaaraApiError.label(), "amaara api error");
     }
 
     #[test]

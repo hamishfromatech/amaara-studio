@@ -112,14 +112,10 @@ impl SdServerSupervisor {
         // 1. Binary: verify checksums (or download-on-first-run).
         on_progress("checking sd-server binary");
         let resolved = resolve_binary(bin)
-            .ok_or_else(|| "sd-server binary not found. Point Settings → sd_binary_path at the staged binary or set NAVYA_SD_RELEASE_BASE.".to_string())?;
-        crate::sidecar::bootstrap::ensure_sd_server_binary(
-            &resolved,
-            flavor.flavor(),
-            on_progress,
-        )
-        .await
-        .map_err(|e| format!("sd-server bootstrap: {e}"))?;
+            .ok_or_else(|| "sd-server binary not found. Point Settings → sd_binary_path at the staged binary or set AMAARA_SD_RELEASE_BASE.".to_string())?;
+        crate::sidecar::bootstrap::ensure_sd_server_binary(&resolved, flavor.flavor(), on_progress)
+            .await
+            .map_err(|e| format!("sd-server bootstrap: {e}"))?;
 
         // 2. Model: the server loads one pipeline at startup — without
         //    weights it has nothing to serve. Fail with guidance.
@@ -232,7 +228,11 @@ fn resolve_binary(configured: &Path) -> Option<PathBuf> {
     // Bundled externalBin name (sd-server-<triple>[.exe]) staged by
     // scripts/build-sidecars.*.
     let triple = crate::sidecar::bootstrap::host_triple();
-    let ext = if cfg!(target_os = "windows") { ".exe" } else { "" };
+    let ext = if cfg!(target_os = "windows") {
+        ".exe"
+    } else {
+        ""
+    };
     let staged = manifest_dir
         .join("binaries")
         .join(format!("sd-server-{triple}{ext}"));
@@ -246,15 +246,12 @@ fn resolve_binary(configured: &Path) -> Option<PathBuf> {
 fn find_model(models_dir: &Path) -> Option<PathBuf> {
     const EXTS: [&str; 3] = ["gguf", "safetensors", "ckpt"];
     let entries = std::fs::read_dir(models_dir).ok()?;
-    entries
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .find(|p| {
-            p.extension()
-                .and_then(|x| x.to_str())
-                .map(|x| EXTS.contains(&x.to_lowercase().as_str()))
-                .unwrap_or(false)
-        })
+    entries.filter_map(|e| e.ok()).map(|e| e.path()).find(|p| {
+        p.extension()
+            .and_then(|x| x.to_str())
+            .map(|x| EXTS.contains(&x.to_lowercase().as_str()))
+            .unwrap_or(false)
+    })
 }
 
 /// Poll `/sdcpp/v1/capabilities` until the server answers 2xx.
@@ -266,7 +263,11 @@ async fn poll_ready(url: &str, timeout: std::time::Duration) -> Result<(), Strin
         .map_err(|e| e.to_string())?;
     let deadline = Instant::now() + timeout;
     loop {
-        if let Ok(resp) = client.get(format!("{url}/sdcpp/v1/capabilities")).send().await {
+        if let Ok(resp) = client
+            .get(format!("{url}/sdcpp/v1/capabilities"))
+            .send()
+            .await
+        {
             if resp.status().is_success() {
                 return Ok(());
             }
@@ -339,9 +340,7 @@ async fn generate_via_http(url: &str, prompt: &str) -> Result<String, String> {
             _ => {}
         }
         if std::time::Instant::now() >= deadline {
-            return Err(format!(
-                "sd-server job {job_id} timed out after 10 minutes"
-            ));
+            return Err(format!("sd-server job {job_id} timed out after 10 minutes"));
         }
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
@@ -365,7 +364,7 @@ mod tests {
 
     #[test]
     fn find_model_ignores_non_weight_files() {
-        let tmp = std::env::temp_dir().join(format!("navya-sd-model-{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("amaara-sd-model-{}", std::process::id()));
         std::fs::create_dir_all(&tmp).unwrap();
         std::fs::write(tmp.join("readme.txt"), "not a model").unwrap();
         assert!(find_model(&tmp).is_none());
@@ -380,9 +379,11 @@ mod tests {
         let sup = SdServerSupervisor::new();
         // Empty models dir: bootstrap may pass (binary staged on dev machines)
         // but model discovery must fail with actionable guidance either way.
-        let empty = std::env::temp_dir().join(format!("navya-sd-empty-{}", std::process::id()));
+        let empty = std::env::temp_dir().join(format!("amaara-sd-empty-{}", std::process::id()));
         std::fs::create_dir_all(&empty).unwrap();
-        let bin = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("binaries").join("sd-server.exe");
+        let bin = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("binaries")
+            .join("sd-server.exe");
         let mut progress: Vec<String> = Vec::new();
         let err = sup
             .ensure_running(&bin, &empty, SdGpuBackend::Cpu, None, &mut |m: &str| {

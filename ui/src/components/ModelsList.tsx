@@ -1,7 +1,7 @@
 /**
  * Models List Component (Phase 9).
  *
- * UI ModelsList groups Cloud (Navya) vs Local (llama.cpp + sd-server), tags
+ * UI ModelsList groups Cloud (Amaara) vs Local (llama.cpp + sd-server), tags
  * image/video models, marks the active model with ✓.
  */
 
@@ -43,9 +43,9 @@ export function ModelsList({
 
   return (
     <div className="space-y-5">
-      {/* Cloud (Navya) section */}
+      {/* Cloud (Amaara) section */}
       <div>
-        <h3 className="rail-label">Cloud (Navya)</h3>
+        <h3 className="rail-label">Cloud (Amaara)</h3>
         <div className="space-y-0.5">{cloudModels.map(renderRow)}</div>
       </div>
 

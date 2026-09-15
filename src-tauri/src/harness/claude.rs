@@ -23,22 +23,16 @@
 //!   {"is_error":false,"duration_api_ms":...,"num_turns":N,"stop_reason":...}  (final result line — NO "type" field)
 //!
 //! The adapter writes the per-project `.claude/settings.json` so Claude picks
-//! up the Navya MCP tool server (navya-mcp) with the live control-server URL/token.
+//! up the Amaara MCP tool server (amaara-mcp) with the live control-server URL/token.
 
 use async_trait::async_trait;
-use std::{
-    collections::HashMap,
-    io::BufRead,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::HashMap, io::BufRead, sync::Arc};
 use tokio::sync::{mpsc, mpsc::Receiver};
 
 use crate::harness::{
     common::{self, ChildState},
     event::{HarnessEvent, ModelInfo},
-    registry,
-    Capabilities, HarnessCtx, HarnessError, Harness as HarnessTrait, PromptMode,
+    registry, Capabilities, Harness as HarnessTrait, HarnessCtx, HarnessError, PromptMode,
 };
 
 /// Claude Code harness implementation.
@@ -92,7 +86,7 @@ impl ClaudeCodeHarness {
         common::send_json_line(child_stdin, &cmd)
     }
 
-    /// Write the per-project `.claude/settings.json` that wires the Navya MCP
+    /// Write the per-project `.claude/settings.json` that wires the Amaara MCP
     /// server and a permission policy. User-authored keys in an existing file
     /// are preserved; only `permissions` + `mcpServers` are studio-owned.
     fn write_project_config(
@@ -105,7 +99,7 @@ impl ClaudeCodeHarness {
         let settings_path = settings_dir.join("settings.json");
 
         let mcp_dir = common::mcp_workspace_dir();
-        let server_py = mcp_dir.join("navya_mcp").join("server.py");
+        let server_py = mcp_dir.join("amaara_mcp").join("server.py");
         let server_py_abs = server_py.to_string_lossy().to_string();
 
         let mut settings = serde_json::json!({
@@ -114,7 +108,7 @@ impl ClaudeCodeHarness {
                 "deny": ["WebFetch", "WebSearch"]
             },
             "mcpServers": {
-                "navya-studio-tools": {
+                "amaara-studio-tools": {
                     "command": "uv",
                     "args": [
                         "run",
@@ -125,8 +119,8 @@ impl ClaudeCodeHarness {
                         server_py_abs
                     ],
                     "env": {
-                        "NAVYA_CONTROL_URL": control_url.unwrap_or("http://127.0.0.1:8080"),
-                        "NAVYA_CONTROL_TOKEN": control_token.unwrap_or("")
+                        "AMAARA_CONTROL_URL": control_url.unwrap_or("http://127.0.0.1:8080"),
+                        "AMAARA_CONTROL_TOKEN": control_token.unwrap_or("")
                     }
                 }
             }
@@ -149,7 +143,9 @@ impl ClaudeCodeHarness {
         }
 
         common::write_config(
-            &settings_path, &serde_json::to_string_pretty(&settings).unwrap_or_default())
+            &settings_path,
+            &serde_json::to_string_pretty(&settings).unwrap_or_default(),
+        )
     }
 }
 
@@ -188,12 +184,19 @@ impl HarnessTrait for ClaudeCodeHarness {
             }
         }
 
-        let Some(binary) = registry::descriptor_for(&self.id).and_then(|d| registry::detect(d).path) else {
-            return Err(HarnessError::Process("claude binary not found on PATH".into()));
+        let Some(binary) =
+            registry::descriptor_for(&self.id).and_then(|d| registry::detect(d).path)
+        else {
+            return Err(HarnessError::Process(
+                "claude binary not found on PATH".into(),
+            ));
         };
 
         self.write_project_config(
-            &ctx.project_dir, ctx.control_url.as_deref(), ctx.control_token.as_deref())?;
+            &ctx.project_dir,
+            ctx.control_url.as_deref(),
+            ctx.control_token.as_deref(),
+        )?;
 
         // Spawn Claude in persistent bidirectional stream-json mode.
         // Permission prompts that the user's settings don't pre-allow arrive
@@ -203,11 +206,14 @@ impl HarnessTrait for ClaudeCodeHarness {
         // approval flow entirely.
         let args = vec![
             "-p".to_string(),
-            "--output-format".to_string(), "stream-json".to_string(),
+            "--output-format".to_string(),
+            "stream-json".to_string(),
             "--verbose".to_string(),
-            "--permission-mode".to_string(), "manual".to_string(),
+            "--permission-mode".to_string(),
+            "manual".to_string(),
             "--include-partial-messages".to_string(),
-            "--input-format".to_string(), "stream-json".to_string(),
+            "--input-format".to_string(),
+            "stream-json".to_string(),
         ];
 
         let (mut child, stdin) = common::spawn_command(
@@ -260,7 +266,9 @@ impl HarnessTrait for ClaudeCodeHarness {
             if notify {
                 let mut g = inner.lock().unwrap();
                 common::broadcast(
-                    &mut g.state.subscribers, HarnessEvent::Error("Claude Code process exited".into()));
+                    &mut g.state.subscribers,
+                    HarnessEvent::Error("Claude Code process exited".into()),
+                );
             }
         });
 
@@ -404,8 +412,7 @@ fn handle_stdout_line(inner: &Arc<std::sync::Mutex<Inner>>, json: &serde_json::V
                     .to_string();
                 let mut g = inner.lock().unwrap();
                 g.emitted_tools.clear();
-                common::broadcast(
-                    &mut g.state.subscribers, HarnessEvent::AgentStart { model });
+                common::broadcast(&mut g.state.subscribers, HarnessEvent::AgentStart { model });
             }
         }
         "stream_event" => {
@@ -429,7 +436,11 @@ fn handle_stdout_line(inner: &Arc<std::sync::Mutex<Inner>>, json: &serde_json::V
             let mut starts = Vec::new();
             for block in blocks.iter() {
                 if block.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
-                    let id = block.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let id = block
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     starts.push((id, block.clone()));
                 }
             }
@@ -445,8 +456,15 @@ fn handle_stdout_line(inner: &Arc<std::sync::Mutex<Inner>>, json: &serde_json::V
                     &mut g.state.subscribers,
                     HarnessEvent::ToolStart {
                         tool_id: id,
-                        name: block.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                        args: block.get("input").cloned().unwrap_or(serde_json::Value::Null),
+                        name: block
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        args: block
+                            .get("input")
+                            .cloned()
+                            .unwrap_or(serde_json::Value::Null),
                     },
                 );
             }
@@ -474,7 +492,10 @@ fn handle_stdout_line(inner: &Arc<std::sync::Mutex<Inner>>, json: &serde_json::V
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let is_error = tool_result.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+                let is_error = tool_result
+                    .get("is_error")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 let content = tool_result.get("content");
                 let text = match content {
                     Some(serde_json::Value::String(s)) => Some(s.clone()),
@@ -483,7 +504,11 @@ fn handle_stdout_line(inner: &Arc<std::sync::Mutex<Inner>>, json: &serde_json::V
                 };
                 common::broadcast(
                     &mut g.state.subscribers,
-                    HarnessEvent::ToolEnd { tool_id: id, result: text, is_error },
+                    HarnessEvent::ToolEnd {
+                        tool_id: id,
+                        result: text,
+                        is_error,
+                    },
                 );
             }
         }
@@ -511,7 +536,11 @@ fn handle_stdout_line(inner: &Arc<std::sync::Mutex<Inner>>, json: &serde_json::V
             g.pending_permissions.insert(id.clone(), json.clone());
             common::broadcast(
                 &mut g.state.subscribers,
-                HarnessEvent::ApprovalRequest { id, kind: tool_name, payload: json.clone() },
+                HarnessEvent::ApprovalRequest {
+                    id,
+                    kind: tool_name,
+                    payload: json.clone(),
+                },
             );
         }
         // Acknowledgements of OUR control requests — nothing to surface.
@@ -530,10 +559,18 @@ fn parse_stream_event(event: &serde_json::Value) -> Option<HarnessEvent> {
             let delta = event.get("delta")?;
             match delta.get("type").and_then(|v| v.as_str())? {
                 "text_delta" => Some(HarnessEvent::TextDelta(
-                    delta.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    delta
+                        .get("text")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                 )),
                 "thinking_delta" => Some(HarnessEvent::ThinkingDelta(
-                    delta.get("thinking").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    delta
+                        .get("thinking")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                 )),
                 _ => None, // input_json_delta / signature_delta — not surfaced
             }
@@ -545,10 +582,17 @@ fn parse_stream_event(event: &serde_json::Value) -> Option<HarnessEvent> {
         "message_stop" => {
             // End of the assistant turn. Success is refined by the final
             // result line; here we optimistically mark the turn complete.
-            Some(HarnessEvent::AgentEnd { success: true, message: None })
+            Some(HarnessEvent::AgentEnd {
+                success: true,
+                message: None,
+            })
         }
         "error" => Some(HarnessEvent::Error(
-            event.get("message").and_then(|v| v.as_str()).unwrap_or("Claude error").to_string(),
+            event
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Claude error")
+                .to_string(),
         )),
         _ => None, // message_start / content_block_start / content_block_stop
     }
@@ -628,7 +672,10 @@ mod tests {
     #[test]
     fn message_stop_yields_agent_end() {
         let ev = parse_stream_event(&serde_json::json!({"type": "message_stop"}));
-        assert!(matches!(ev, Some(HarnessEvent::AgentEnd { success: true, .. })));
+        assert!(matches!(
+            ev,
+            Some(HarnessEvent::AgentEnd { success: true, .. })
+        ));
     }
 
     #[test]
@@ -645,7 +692,11 @@ mod tests {
         });
         handle_stdout_line(&inner, &json);
         match rx.try_recv() {
-            Ok(HarnessEvent::ToolEnd { tool_id, result, is_error }) => {
+            Ok(HarnessEvent::ToolEnd {
+                tool_id,
+                result,
+                is_error,
+            }) => {
                 assert_eq!(tool_id, "tu_9");
                 assert_eq!(result.as_deref(), Some("studio-probe-42\n"));
                 assert!(!is_error);
@@ -667,7 +718,11 @@ mod tests {
         });
         handle_stdout_line(&inner, &json);
         match rx.try_recv() {
-            Ok(HarnessEvent::ToolStart { tool_id, name, args }) => {
+            Ok(HarnessEvent::ToolStart {
+                tool_id,
+                name,
+                args,
+            }) => {
                 assert_eq!(tool_id, "call_1");
                 assert_eq!(name, "Bash");
                 assert_eq!(args["command"], "echo studio-probe-123");
@@ -695,13 +750,19 @@ mod tests {
             Ok(HarnessEvent::ApprovalRequest { id, kind, payload }) => {
                 assert_eq!(id, "req-7");
                 assert_eq!(kind, "WebFetch");
-                assert_eq!(payload.pointer("/control_request/request/tool_name").and_then(|v| v.as_str()), Some("WebFetch"));
+                assert_eq!(
+                    payload
+                        .pointer("/control_request/request/tool_name")
+                        .and_then(|v| v.as_str()),
+                    Some("WebFetch")
+                );
             }
             other => panic!("expected ApprovalRequest, got {other:?}"),
         }
         // The result line (no "type") must not panic or emit.
         let inner2 = Arc::clone(&h.inner);
-        let no_type = serde_json::json!({"is_error": false, "num_turns": 1, "stop_reason": "end_turn"});
+        let no_type =
+            serde_json::json!({"is_error": false, "num_turns": 1, "stop_reason": "end_turn"});
         handle_stdout_line(&inner2, &no_type);
         assert!(rx.try_recv().is_err());
     }
@@ -711,8 +772,11 @@ mod tests {
         let h = ClaudeCodeHarness::new();
         let mut rx = h.subscribe();
         let inner = Arc::clone(&h.inner);
-        let json = serde_json::json!({"type":"system","subtype":"init","model":"claude-sonnet-4-5"});
+        let json =
+            serde_json::json!({"type":"system","subtype":"init","model":"claude-sonnet-4-5"});
         handle_stdout_line(&inner, &json);
-        assert!(matches!(rx.try_recv(), Ok(HarnessEvent::AgentStart { model }) if model == "claude-sonnet-4-5"));
+        assert!(
+            matches!(rx.try_recv(), Ok(HarnessEvent::AgentStart { model }) if model == "claude-sonnet-4-5")
+        );
     }
 }

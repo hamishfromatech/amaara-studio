@@ -272,7 +272,7 @@ export const useStore = create<AppState>((set, get) => ({
       // Apply the persisted theme to the DOM (light/dark tokens).
       if (snap.config?.theme) applyTheme(snap.config.theme)
       if (snap.config?.density) applyDensity(snap.config.density)
-      // Refresh engine models (discovered via the Navya Engine proxy).
+      // Refresh engine models (discovered via the Amaara Engine proxy).
       void get().refreshModels()
       // Subscribe once to the event stream. The synchronous `subscribing`
       // flag closes the StrictMode race (see note above).

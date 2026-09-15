@@ -42,8 +42,8 @@ pub async fn get_timeline(
     composition_id: String,
 ) -> Result<crate::timeline::TimelineState, String> {
     let dir = project_dir_for(&state, &project_id)?;
-    let mut parsed = crate::timeline::load_timeline(&dir, &composition_id)
-        .map_err(|e| e.to_string())?;
+    let mut parsed =
+        crate::timeline::load_timeline(&dir, &composition_id).map_err(|e| e.to_string())?;
     parsed.project_id = project_id;
     Ok(parsed)
 }
@@ -73,8 +73,7 @@ pub async fn snapshot_core(
 
     let secs = (t_ms as f64 / 1000.0).round();
     let output_dir = dir.join("snapshots");
-    std::fs::create_dir_all(&output_dir)
-        .map_err(|e| format!("creating snapshots dir: {e}"))?;
+    std::fs::create_dir_all(&output_dir).map_err(|e| format!("creating snapshots dir: {e}"))?;
 
     // `npx` on Windows resolves npx.cmd automatically through the runtime.
     let mut cmd = tokio::process::Command::new("npx");
@@ -107,11 +106,7 @@ pub async fn snapshot_core(
     let png = newest_png(&output_dir)
         .ok_or_else(|| "hyperframes snapshot produced no PNG output".to_string())?;
 
-    let asset_id = format!(
-        "snap-{:x}-{}",
-        (t_ms & 0xFFFF_FFFF) as u32,
-        project_id
-    );
+    let asset_id = format!("snap-{:x}-{}", (t_ms & 0xFFFF_FFFF) as u32, project_id);
 
     // Surface the snapshot to the UI so it can be pinned to the Assets grid.
     let _ = app.emit(

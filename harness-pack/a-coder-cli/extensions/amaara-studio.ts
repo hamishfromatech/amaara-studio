@@ -1,5 +1,5 @@
 /**
- * Navya Studio Extension for a-coder-cli (Phase 5).
+ * Amaara Studio Extension for a-coder-cli (Phase 5).
  *
  * Registers the studio tools via pi.registerTool and proxies each call to the
  * control server's HTTP API (127.0.0.1:<port>/tool/<name>) with bearer token auth.
@@ -16,14 +16,14 @@
  */
 
 // Control server URL and token from environment (set by the harness adapter).
-const CONTROL_URL = process.env.NAVYA_CONTROL_URL || "http://127.0.0.1:8080";
-const CONTROL_TOKEN = process.env.NAVYA_CONTROL_TOKEN;
+const CONTROL_URL = process.env.AMAARA_CONTROL_URL || "http://127.0.0.1:8080";
+const CONTROL_TOKEN = process.env.AMAARA_CONTROL_TOKEN;
 
-// Tool definitions matching crates/navya-tools (the control server dispatch).
+// Tool definitions matching crates/amaara-tools (the control server dispatch).
 const TOOLS = [
   {
     name: "generate_image",
-    description: "Generate an image via Navya Cloud or local sd-server.",
+    description: "Generate an image via Amaara Cloud or local sd-server.",
     parameters: {
       type: "object",
       properties: {
@@ -85,7 +85,7 @@ const TOOLS = [
  */
 async function executeTool(toolName: string, args: any) {
   if (!CONTROL_TOKEN) {
-    throw new Error("NAVYA_CONTROL_TOKEN not set; ensure the harness adapter is active.");
+    throw new Error("AMAARA_CONTROL_TOKEN not set; ensure the harness adapter is active.");
   }
 
   const url = `${CONTROL_URL}/tool/${toolName}`;

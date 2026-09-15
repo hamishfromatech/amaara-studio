@@ -4,7 +4,7 @@
 //!   - `POST /tool/:name` — dispatches tool calls from the harness extension / MCP server
 //!   - `WS /events` — streams `StudioEvent`s to all connected clients
 //!   - `GET /health` — liveness probe
-//!   - `GET /config` — returns the current NavyaConfig
+//!   - `GET /config` — returns the current AmaaraConfig
 //!
 //! The server binds to `127.0.0.1:0` (ephemeral port), generates a random
 //! bearer token, writes it to the OS keyring, and makes the URL + token

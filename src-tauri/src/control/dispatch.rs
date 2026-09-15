@@ -3,20 +3,20 @@
 //! `dispatch_tool` is the axum handler for `POST /tool/:name`. It is
 //! bearer-token authenticated and routes each tool to the SAME implementation
 //! the UI uses (`commands::generate_image_core`, `render_to_video_core`,
-//! `snapshot_core`, …) — the earlier navya-tools stubs returned fabricated
+//! `snapshot_core`, …) — the earlier amaara-tools stubs returned fabricated
 //! success (fake asset rows / render jobs that never ran), so a harness
 //! calling a tool had no real effect. Now every tool does the real work.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use amaara_tools::{GenerateImageReq, RenderToVideoReq};
 use axum::{
     extract::{Path, State},
     http::{header::AUTHORIZATION, HeaderMap},
     response::IntoResponse,
     Json,
 };
-use navya_tools::{GenerateImageReq, RenderToVideoReq};
 
 use crate::state::AppState;
 
@@ -29,7 +29,7 @@ use super::server::ServerState;
 /// POST /tool/:name — dispatch a tool call to the real backend.
 ///
 /// Bearer-token authenticated: the harness extension sends the token the
-/// adapter passed to it via `NAVYA_CONTROL_TOKEN`. The server is loopback-
+/// adapter passed to it via `AMAARA_CONTROL_TOKEN`. The server is loopback-
 /// only, but the token is the documented contract and stops any other local
 /// process from driving the studio's tools.
 #[axum::debug_handler]
@@ -41,10 +41,13 @@ pub async fn dispatch_tool(
 ) -> impl IntoResponse {
     let expected = state.app.control_token.lock().clone();
     if !token_matches(&headers, expected.as_deref()) {
-        return (axum::http::StatusCode::UNAUTHORIZED, Json(serde_json::json!({
-            "ok": false,
-            "error": "unauthorized: missing or invalid bearer token",
-        })));
+        return (
+            axum::http::StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({
+                "ok": false,
+                "error": "unauthorized: missing or invalid bearer token",
+            })),
+        );
     }
 
     let out: Result<serde_json::Value, String> = match name.as_str() {
@@ -86,11 +89,16 @@ async fn dispatch_generate_image(
     if let Some(err) = out.error {
         return Err(err);
     }
-    let url = out.url.ok_or_else(|| "generation returned no image".to_string())?;
-    let model_used = req
-        .model
-        .clone()
-        .unwrap_or_else(|| if out.source == "local" { "sd-xl".into() } else { "dall-e-3".into() });
+    let url = out
+        .url
+        .ok_or_else(|| "generation returned no image".to_string())?;
+    let model_used = req.model.clone().unwrap_or_else(|| {
+        if out.source == "local" {
+            "sd-xl".into()
+        } else {
+            "dall-e-3".into()
+        }
+    });
 
     // Materialize the image into the project's assets dir + asset row so the
     // harness gets a real, referenceable file (the old stub wrote a path that
@@ -105,7 +113,7 @@ async fn dispatch_generate_image(
     )
     .await?;
 
-    let resp = navya_tools::GeneratedImage {
+    let resp = amaara_tools::GeneratedImage {
         asset_id,
         path: PathBuf::from(&path),
         prompt: req.prompt,
@@ -162,7 +170,14 @@ async fn save_generated_image(
                 let asset_id = {
                     let store_guard = state.store.lock();
                     store_guard
-                        .insert_asset(project_id, composition_id, url, "image", source, Some(prompt))
+                        .insert_asset(
+                            project_id,
+                            composition_id,
+                            url,
+                            "image",
+                            source,
+                            Some(prompt),
+                        )
                         .map_err(|e| e.to_string())?
                 };
                 emit_asset_added(state, project_id, &asset_id, url);
@@ -189,7 +204,14 @@ async fn save_generated_image(
     let asset_id = {
         let store_guard = state.store.lock();
         store_guard
-            .insert_asset(project_id, composition_id, &path_str, "image", source, Some(prompt))
+            .insert_asset(
+                project_id,
+                composition_id,
+                &path_str,
+                "image",
+                source,
+                Some(prompt),
+            )
             .map_err(|e| e.to_string())?
     };
     emit_asset_added(state, project_id, &asset_id, &path_str);
@@ -231,7 +253,7 @@ async fn dispatch_render_to_video(
         fps: None,
     };
     let job_id = crate::commands::render_to_video_core(app, state, args).await?;
-    let resp = navya_tools::RenderJob {
+    let resp = amaara_tools::RenderJob {
         job_id,
         project_id: req.project_id,
         composition_id: req.composition_id,
@@ -243,13 +265,13 @@ async fn dispatch_render_to_video(
 }
 
 async fn dispatch_list_models(state: &Arc<AppState>) -> Result<serde_json::Value, String> {
-    // Real catalogs: Navya Cloud /v1/models + the local Engine proxy when up
+    // Real catalogs: Amaara Cloud /v1/models + the local Engine proxy when up
     // (the old stub returned a hardcoded list).
     let mut cloud_models: Vec<String> = Vec::new();
     let mut local_models: Vec<String> = Vec::new();
 
-    let navya = state.navya.lock().clone();
-    for m in navya.list_models().await.unwrap_or_default() {
+    let amaara = state.amaara.lock().clone();
+    for m in amaara.list_models().await.unwrap_or_default() {
         cloud_models.push(m.id);
     }
 
@@ -263,7 +285,7 @@ async fn dispatch_list_models(state: &Arc<AppState>) -> Result<serde_json::Value
         local_models.push("llama3-8b".to_string());
     }
 
-    let resp = navya_tools::ModelList {
+    let resp = amaara_tools::ModelList {
         cloud_models,
         local_models,
     };
@@ -304,7 +326,7 @@ async fn dispatch_project_state(state: &Arc<AppState>) -> Result<serde_json::Val
     drop(store);
 
     let config = state.config.lock().clone();
-    let resp = navya_tools::ProjectState {
+    let resp = amaara_tools::ProjectState {
         project_id,
         name,
         harness: session.harness.clone(),
@@ -336,7 +358,7 @@ async fn dispatch_snapshot(
         .clone()
         .ok_or_else(|| "no open project".to_string())?;
     let out = crate::commands::timeline::snapshot_core(app, state, &project_id, t_ms).await?;
-    let resp = navya_tools::Snapshot {
+    let resp = amaara_tools::Snapshot {
         asset_id: out.asset_id,
         path: out.path,
         timecode_ms: out.timecode_ms,
@@ -351,7 +373,9 @@ async fn dispatch_snapshot(
 /// Constant-time comparison of the `Authorization: Bearer <token>` header
 /// against the server's token. Missing token or missing server token → reject.
 pub(crate) fn token_matches(headers: &HeaderMap, expected: Option<&str>) -> bool {
-    let Some(expected) = expected else { return false };
+    let Some(expected) = expected else {
+        return false;
+    };
     let Some(auth) = headers.get(AUTHORIZATION).and_then(|v| v.to_str().ok()) else {
         return false;
     };
@@ -381,9 +405,9 @@ mod tests {
         // The dispatch auth path is exercised by control/server.rs tests; this
         // guards the constant-time compare helper directly.
         let mut h = HeaderMap::new();
-        h.insert(AUTHORIZATION, "Bearer navya-x".parse().unwrap());
-        assert!(token_matches(&h, Some("navya-x")));
-        assert!(!token_matches(&h, Some("navya-y")));
+        h.insert(AUTHORIZATION, "Bearer amaara-x".parse().unwrap());
+        assert!(token_matches(&h, Some("amaara-x")));
+        assert!(!token_matches(&h, Some("amaara-y")));
         assert!(!token_matches(&h, None));
     }
 }

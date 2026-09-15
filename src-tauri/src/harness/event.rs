@@ -10,20 +10,44 @@ use serde::{Deserialize, Serialize};
 /// harness-specific shapes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum HarnessEvent {
-    AgentStart { model: String },
-    AgentEnd { success: bool, #[serde(default)] message: Option<String> },
+    AgentStart {
+        model: String,
+    },
+    AgentEnd {
+        success: bool,
+        #[serde(default)]
+        message: Option<String>,
+    },
     TextDelta(String),
     ThinkingDelta(String),
-    ToolStart { tool_id: String, name: String, args: serde_json::Value },
-    ToolUpdate { tool_id: String, partial: String },
+    ToolStart {
+        tool_id: String,
+        name: String,
+        args: serde_json::Value,
+    },
+    ToolUpdate {
+        tool_id: String,
+        partial: String,
+    },
     ToolEnd {
         tool_id: String,
-        #[serde(default)] result: Option<String>,
+        #[serde(default)]
+        result: Option<String>,
         is_error: bool,
     },
-    ApprovalRequest { id: String, kind: String, payload: serde_json::Value },
-    QueueUpdate { steer: bool, follow_up: bool },
-    Retry { attempt: u32, reason: String },
+    ApprovalRequest {
+        id: String,
+        kind: String,
+        payload: serde_json::Value,
+    },
+    QueueUpdate {
+        steer: bool,
+        follow_up: bool,
+    },
+    Retry {
+        attempt: u32,
+        reason: String,
+    },
     Error(String),
 }
 
@@ -75,7 +99,12 @@ mod tests {
     #[test]
     fn describe_is_stable() {
         assert_eq!(
-            HarnessEvent::ToolStart { tool_id: "a".into(), name: "write".into(), args: serde_json::json!({}) }.describe(),
+            HarnessEvent::ToolStart {
+                tool_id: "a".into(),
+                name: "write".into(),
+                args: serde_json::json!({})
+            }
+            .describe(),
             "tool:start[write]"
         );
     }

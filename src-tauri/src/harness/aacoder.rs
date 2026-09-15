@@ -31,7 +31,7 @@ use tokio::sync::{mpsc, mpsc::Receiver, oneshot};
 
 use crate::harness::{
     event::{HarnessEvent, ModelInfo},
-    Capabilities, HarnessCtx, HarnessError, Harness as HarnessTrait, PromptMode,
+    Capabilities, Harness as HarnessTrait, HarnessCtx, HarnessError, PromptMode,
 };
 
 /// a-coder-cli harness adapter.
@@ -45,9 +45,9 @@ pub struct AaaCoderCliHarness {
 /// Per-process mutable state for the a-coder-cli RPC session.
 struct Inner {
     started: bool,
-    stopping: bool, // stop() was requested — suppresses the EOF error event
+    stopping: bool,       // stop() was requested — suppresses the EOF error event
     project_dir: PathBuf, // project dir the child was spawned in
-    model: String,  // model from HarnessCtx, injected into AgentStart events
+    model: String,        // model from HarnessCtx, injected into AgentStart events
     stdin: std::sync::Mutex<Option<std::process::ChildStdin>>,
     child_handle: std::sync::Mutex<Option<std::process::Child>>,
     /// Every live subscriber gets every event (event pump + future consumers).
@@ -70,9 +70,10 @@ const MODELS_RPC_TIMEOUT: Duration = Duration::from_secs(90);
 /// Successful model listings are cached for the picker for this long.
 const MODELS_CACHE_TTL: Duration = Duration::from_secs(300);
 
-/// The navya-studio extension (tool bridge) source, compiled into the binary
+/// The amaara-studio extension (tool bridge) source, compiled into the binary
 /// so the installed app can stage it without packaging harness-pack.
-const STUDIO_EXTENSION_TS: &str = include_str!("../../../harness-pack/a-coder-cli/extensions/navya-studio.ts");
+const STUDIO_EXTENSION_TS: &str =
+    include_str!("../../../harness-pack/a-coder-cli/extensions/amaara-studio.ts");
 
 /// Stage the studio tool-bridge extension into the project-local a-coder-cli
 /// extensions dir (`.a-coder-cli/extensions/`, auto-discovered by the CLI).
@@ -84,7 +85,7 @@ const STUDIO_EXTENSION_TS: &str = include_str!("../../../harness-pack/a-coder-cl
 /// the bridge scoped to the project instead of touching the global config.
 fn stage_project_extension(project_dir: &std::path::Path) {
     let dir = project_dir.join(".a-coder-cli").join("extensions");
-    let file = dir.join("navya-studio.ts");
+    let file = dir.join("amaara-studio.ts");
     let needs_write = match std::fs::read_to_string(&file) {
         Ok(existing) => existing != STUDIO_EXTENSION_TS,
         Err(_) => true,
@@ -99,7 +100,7 @@ pub fn which(bin: &str) -> Option<PathBuf> {
     // Test/CI override (headless e2e): drive the adapter against a stub binary
     // without mutating PATH. Checked only for a-coder-cli.
     if bin == "a-coder-cli" {
-        if let Ok(over) = std::env::var("NAVYA_AACODER_BIN") {
+        if let Ok(over) = std::env::var("AMAARA_AACODER_BIN") {
             if !over.is_empty() {
                 return Some(PathBuf::from(over));
             }
@@ -214,17 +215,29 @@ impl HarnessTrait for AaaCoderCliHarness {
 
         let binary = match which("a-coder-cli") {
             Some(b) => b,
-            None => return Err(HarnessError::Process("a-coder-cli not found on PATH".into())),
+            None => {
+                return Err(HarnessError::Process(
+                    "a-coder-cli not found on PATH".into(),
+                ))
+            }
         };
 
         // On Windows the CLI is usually a .cmd/.bat shim which CreateProcess
         // cannot execute directly — run it through `cmd /c`.
-        let ext = binary.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-        let (prog, prefix): (PathBuf, Vec<String>) = if cfg!(windows) && matches!(ext.as_str(), "cmd" | "bat") {
-            ("cmd".into(), vec!["/c".into(), binary.to_string_lossy().into_owned()])
-        } else {
-            (binary, Vec::new())
-        };
+        let ext = binary
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let (prog, prefix): (PathBuf, Vec<String>) =
+            if cfg!(windows) && matches!(ext.as_str(), "cmd" | "bat") {
+                (
+                    "cmd".into(),
+                    vec!["/c".into(), binary.to_string_lossy().into_owned()],
+                )
+            } else {
+                (binary, Vec::new())
+            };
 
         // Spawn: `a-coder-cli --mode rpc` in the project directory.
         // Pass the control server URL + token as env vars so the harness
@@ -232,10 +245,10 @@ impl HarnessTrait for AaaCoderCliHarness {
         let mut command = std::process::Command::new(&prog);
         command.args(&prefix);
         if let Some(url) = &ctx.control_url {
-            command.env("NAVYA_CONTROL_URL", url);
+            command.env("AMAARA_CONTROL_URL", url);
         }
         if let Some(token) = &ctx.control_token {
-            command.env("NAVYA_CONTROL_TOKEN", token);
+            command.env("AMAARA_CONTROL_TOKEN", token);
         }
         let mut c = command
             .arg("--mode")
@@ -291,7 +304,10 @@ impl HarnessTrait for AaaCoderCliHarness {
                 was_started && !g.stopping
             };
             if notify {
-                broadcast(&inner, HarnessEvent::Error("a-coder-cli process exited".into()));
+                broadcast(
+                    &inner,
+                    HarnessEvent::Error("a-coder-cli process exited".into()),
+                );
             }
         });
 
@@ -319,7 +335,7 @@ impl HarnessTrait for AaaCoderCliHarness {
     }
 
     async fn set_model(&self, model: &str) -> Result<(), HarnessError> {
-        // Navya model ids are "provider/modelId"; rpc wants them split.
+        // Amaara model ids are "provider/modelId"; rpc wants them split.
         let cmd = match model.split_once('/') {
             Some((provider, model_id)) => {
                 serde_json::json!({ "type": "set_model", "provider": provider, "modelId": model_id })
@@ -384,7 +400,10 @@ impl HarnessTrait for AaaCoderCliHarness {
 
         let cmd = match (req, approved) {
             (Some(r), true) => {
-                let method = r.get("method").and_then(|v| v.as_str()).unwrap_or("confirm");
+                let method = r
+                    .get("method")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("confirm");
                 match method {
                     "confirm" => {
                         serde_json::json!({ "type": "extension_ui_response", "id": request_id, "confirmed": true })
@@ -474,7 +493,10 @@ fn handle_stdout_line(inner: &Arc<std::sync::Mutex<Inner>>, json: &serde_json::V
     match event_type {
         // Command ack — surface failures; resolve the models round-trip.
         "response" => {
-            let success = json.get("success").and_then(|v| v.as_bool()).unwrap_or(true);
+            let success = json
+                .get("success")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
             let command = json.get("command").and_then(|v| v.as_str()).unwrap_or("");
             if !success {
                 let err = json
@@ -506,8 +528,16 @@ fn handle_stdout_line(inner: &Arc<std::sync::Mutex<Inner>>, json: &serde_json::V
             if !is_dialog {
                 return;
             }
-            let id = json.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            inner.lock().unwrap().pending_ui.insert(id.clone(), json.clone());
+            let id = json
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            inner
+                .lock()
+                .unwrap()
+                .pending_ui
+                .insert(id.clone(), json.clone());
             broadcast(
                 inner,
                 HarnessEvent::ApprovalRequest {
@@ -559,43 +589,81 @@ fn parse_agent_event(json: &serde_json::Value, default_model: &str) -> Option<Ha
                 .and_then(|m| m.get("stopReason").and_then(|s| s.as_str()))
                 .map(|r| !matches!(r, "error" | "aborted"))
                 .unwrap_or(true);
-            Some(HarnessEvent::AgentEnd { success, message: None })
+            Some(HarnessEvent::AgentEnd {
+                success,
+                message: None,
+            })
         }
 
         "message_update" => {
             let delta = json.get("assistantMessageEvent")?;
             match delta.get("type").and_then(|v| v.as_str())? {
                 "text_delta" => Some(HarnessEvent::TextDelta(
-                    delta.get("delta").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    delta
+                        .get("delta")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                 )),
                 "thinking_delta" => Some(HarnessEvent::ThinkingDelta(
-                    delta.get("delta").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    delta
+                        .get("delta")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                 )),
                 "error" => Some(HarnessEvent::Error(
-                    delta.get("reason").and_then(|v| v.as_str()).unwrap_or("stream error").to_string(),
+                    delta
+                        .get("reason")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("stream error")
+                        .to_string(),
                 )),
                 _ => None, // start/text_start/text_end/toolcall_* etc. — not surfaced
             }
         }
 
         "tool_execution_start" => Some(HarnessEvent::ToolStart {
-            tool_id: json.get("toolCallId").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            name: json.get("toolName").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            tool_id: json
+                .get("toolCallId")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            name: json
+                .get("toolName")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             args: json.get("args").cloned().unwrap_or(serde_json::Value::Null),
         }),
 
         "tool_execution_update" => Some(HarnessEvent::ToolUpdate {
-            tool_id: json.get("toolCallId").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            tool_id: json
+                .get("toolCallId")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             partial: content_text(json.get("partialResult")),
         }),
 
         "tool_execution_end" => Some(HarnessEvent::ToolEnd {
-            tool_id: json.get("toolCallId").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            tool_id: json
+                .get("toolCallId")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             result: {
                 let t = content_text(json.get("result"));
-                if t.is_empty() { None } else { Some(t) }
+                if t.is_empty() {
+                    None
+                } else {
+                    Some(t)
+                }
             },
-            is_error: json.get("isError").and_then(|v| v.as_bool()).unwrap_or(false),
+            is_error: json
+                .get("isError")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
         }),
 
         "queue_update" => Some(HarnessEvent::QueueUpdate {
@@ -621,7 +689,10 @@ fn parse_agent_event(json: &serde_json::Value, default_model: &str) -> Option<Ha
         }),
 
         "extension_error" => Some(HarnessEvent::Error(
-            json.get("error").and_then(|v| v.as_str()).unwrap_or("extension error").to_string(),
+            json.get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("extension error")
+                .to_string(),
         )),
 
         // turn_start/turn_end/message_start/message_end/compaction_*/auto_retry_end —
@@ -671,9 +742,21 @@ fn parse_models(models: &[serde_json::Value]) -> Vec<ModelInfo> {
 /// Static fallback when the models round-trip fails or times out.
 fn fallback_models() -> Vec<ModelInfo> {
     vec![
-        ModelInfo { id: "anthropic/claude-sonnet-4-5".into(), name: Some("Claude Sonnet 4.5".into()), kind: "chat".into() },
-        ModelInfo { id: "openai/gpt-5".into(), name: Some("GPT-5".into()), kind: "chat".into() },
-        ModelInfo { id: "google/gemini-2.5-pro".into(), name: Some("Gemini 2.5 Pro".into()), kind: "chat".into() },
+        ModelInfo {
+            id: "anthropic/claude-sonnet-4-5".into(),
+            name: Some("Claude Sonnet 4.5".into()),
+            kind: "chat".into(),
+        },
+        ModelInfo {
+            id: "openai/gpt-5".into(),
+            name: Some("GPT-5".into()),
+            kind: "chat".into(),
+        },
+        ModelInfo {
+            id: "google/gemini-2.5-pro".into(),
+            name: Some("Gemini 2.5 Pro".into()),
+            kind: "chat".into(),
+        },
     ]
 }
 
@@ -701,7 +784,9 @@ mod tests {
     #[test]
     fn parse_message_update_text_delta() {
         // Exact shape from docs/rpc.md.
-        let json = v(r#"{"type":"message_update","message":{},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"Hello "}}"#);
+        let json = v(
+            r#"{"type":"message_update","message":{},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"Hello "}}"#,
+        );
         match parse_agent_event(&json, "m") {
             Some(HarnessEvent::TextDelta(t)) => assert_eq!(t, "Hello "),
             other => panic!("expected TextDelta, got {other:?}"),
@@ -710,7 +795,9 @@ mod tests {
 
     #[test]
     fn parse_message_update_thinking_delta() {
-        let json = v(r#"{"type":"message_update","message":{},"assistantMessageEvent":{"type":"thinking_delta","delta":"hm..."}}"#);
+        let json = v(
+            r#"{"type":"message_update","message":{},"assistantMessageEvent":{"type":"thinking_delta","delta":"hm..."}}"#,
+        );
         match parse_agent_event(&json, "m") {
             Some(HarnessEvent::ThinkingDelta(t)) => assert_eq!(t, "hm..."),
             other => panic!("expected ThinkingDelta, got {other:?}"),
@@ -719,15 +806,23 @@ mod tests {
 
     #[test]
     fn parse_message_update_other_deltas_skipped() {
-        let json = v(r#"{"type":"message_update","message":{},"assistantMessageEvent":{"type":"text_start","contentIndex":0}}"#);
+        let json = v(
+            r#"{"type":"message_update","message":{},"assistantMessageEvent":{"type":"text_start","contentIndex":0}}"#,
+        );
         assert!(parse_agent_event(&json, "m").is_none());
     }
 
     #[test]
     fn parse_tool_execution_lifecycle() {
-        let start = v(r#"{"type":"tool_execution_start","toolCallId":"call_1","toolName":"bash","args":{"command":"ls"}}"#);
+        let start = v(
+            r#"{"type":"tool_execution_start","toolCallId":"call_1","toolName":"bash","args":{"command":"ls"}}"#,
+        );
         match parse_agent_event(&start, "m") {
-            Some(HarnessEvent::ToolStart { tool_id, name, args }) => {
+            Some(HarnessEvent::ToolStart {
+                tool_id,
+                name,
+                args,
+            }) => {
                 assert_eq!(tool_id, "call_1");
                 assert_eq!(name, "bash");
                 assert_eq!(args["command"], "ls");
@@ -735,7 +830,9 @@ mod tests {
             other => panic!("expected ToolStart, got {other:?}"),
         }
 
-        let update = v(r#"{"type":"tool_execution_update","toolCallId":"call_1","partialResult":{"content":[{"type":"text","text":"partial out"}]}}"#);
+        let update = v(
+            r#"{"type":"tool_execution_update","toolCallId":"call_1","partialResult":{"content":[{"type":"text","text":"partial out"}]}}"#,
+        );
         match parse_agent_event(&update, "m") {
             Some(HarnessEvent::ToolUpdate { tool_id, partial }) => {
                 assert_eq!(tool_id, "call_1");
@@ -744,9 +841,15 @@ mod tests {
             other => panic!("expected ToolUpdate, got {other:?}"),
         }
 
-        let end = v(r#"{"type":"tool_execution_end","toolCallId":"call_1","result":{"content":[{"type":"text","text":"total 48"}]},"isError":false}"#);
+        let end = v(
+            r#"{"type":"tool_execution_end","toolCallId":"call_1","result":{"content":[{"type":"text","text":"total 48"}]},"isError":false}"#,
+        );
         match parse_agent_event(&end, "m") {
-            Some(HarnessEvent::ToolEnd { tool_id, result, is_error }) => {
+            Some(HarnessEvent::ToolEnd {
+                tool_id,
+                result,
+                is_error,
+            }) => {
                 assert_eq!(tool_id, "call_1");
                 assert_eq!(result.as_deref(), Some("total 48"));
                 assert!(!is_error);
@@ -769,7 +872,9 @@ mod tests {
 
     #[test]
     fn parse_auto_retry_start() {
-        let json = v(r#"{"type":"auto_retry_start","attempt":1,"maxAttempts":3,"delayMs":2000,"errorMessage":"529 overloaded"}"#);
+        let json = v(
+            r#"{"type":"auto_retry_start","attempt":1,"maxAttempts":3,"delayMs":2000,"errorMessage":"529 overloaded"}"#,
+        );
         match parse_agent_event(&json, "m") {
             Some(HarnessEvent::Retry { attempt, reason }) => {
                 assert_eq!(attempt, 1);
@@ -783,7 +888,9 @@ mod tests {
     fn parse_agent_start_uses_ctx_model() {
         let json = v(r#"{"type":"agent_start"}"#);
         match parse_agent_event(&json, "anthropic/claude-sonnet-4-5") {
-            Some(HarnessEvent::AgentStart { model }) => assert_eq!(model, "anthropic/claude-sonnet-4-5"),
+            Some(HarnessEvent::AgentStart { model }) => {
+                assert_eq!(model, "anthropic/claude-sonnet-4-5")
+            }
             other => panic!("expected AgentStart, got {other:?}"),
         }
     }
@@ -791,18 +898,30 @@ mod tests {
     #[test]
     fn parse_agent_end_success_from_stop_reason() {
         let ok = v(r#"{"type":"agent_end","messages":[{"role":"assistant","stopReason":"stop"}]}"#);
-        assert!(matches!(parse_agent_event(&ok, "m"), Some(HarnessEvent::AgentEnd { success: true, .. })));
+        assert!(matches!(
+            parse_agent_event(&ok, "m"),
+            Some(HarnessEvent::AgentEnd { success: true, .. })
+        ));
 
-        let aborted = v(r#"{"type":"agent_end","messages":[{"role":"assistant","stopReason":"aborted"}]}"#);
-        assert!(matches!(parse_agent_event(&aborted, "m"), Some(HarnessEvent::AgentEnd { success: false, .. })));
+        let aborted =
+            v(r#"{"type":"agent_end","messages":[{"role":"assistant","stopReason":"aborted"}]}"#);
+        assert!(matches!(
+            parse_agent_event(&aborted, "m"),
+            Some(HarnessEvent::AgentEnd { success: false, .. })
+        ));
 
         let empty = v(r#"{"type":"agent_end","messages":[]}"#);
-        assert!(matches!(parse_agent_event(&empty, "m"), Some(HarnessEvent::AgentEnd { success: true, .. })));
+        assert!(matches!(
+            parse_agent_event(&empty, "m"),
+            Some(HarnessEvent::AgentEnd { success: true, .. })
+        ));
     }
 
     #[test]
     fn parse_extension_error() {
-        let json = v(r#"{"type":"extension_error","extensionPath":"/x.ts","event":"tool_call","error":"boom"}"#);
+        let json = v(
+            r#"{"type":"extension_error","extensionPath":"/x.ts","event":"tool_call","error":"boom"}"#,
+        );
         match parse_agent_event(&json, "m") {
             Some(HarnessEvent::Error(e)) => assert_eq!(e, "boom"),
             other => panic!("expected Error, got {other:?}"),
@@ -812,7 +931,11 @@ mod tests {
     #[test]
     fn parse_unknown_event_skipped() {
         assert!(parse_agent_event(&v(r#"{"type":"turn_start"}"#), "m").is_none());
-        assert!(parse_agent_event(&v(r#"{"type":"compaction_start","reason":"threshold"}"#), "m").is_none());
+        assert!(parse_agent_event(
+            &v(r#"{"type":"compaction_start","reason":"threshold"}"#),
+            "m"
+        )
+        .is_none());
     }
 
     #[test]
@@ -844,7 +967,11 @@ mod tests {
     /// Live round-trip against a real `a-coder-cli --mode rpc` process.
     /// No LLM calls: only the get_available_models command/response cycle.
     /// Run explicitly: cargo test live_rpc_models_round_trip -- --ignored
-    #[tokio::test]
+    /// multi_thread (not the default current-thread): the adapter's stdout
+    /// reader blocks in read_line inside a spawned task — on a single-worker
+    /// runtime it starves the test future and the whole test deadlocks
+    /// (same lesson as e2e_prompt_completes_against_stub below).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[ignore = "requires a-coder-cli installed on PATH"]
     async fn live_rpc_models_round_trip() {
         if !is_available() {
@@ -853,7 +980,7 @@ mod tests {
         }
         eprintln!("[1] binary available");
         let h = AaaCoderCliHarness::new();
-        let tmp = std::env::temp_dir().join(format!("navya-rpc-test-{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("amaara-rpc-test-{}", std::process::id()));
         std::fs::create_dir_all(&tmp).unwrap();
         let ctx = HarnessCtx {
             project_dir: tmp.clone(),
@@ -867,7 +994,10 @@ mod tests {
         let models = h.available_models().await.expect("models round-trip");
         eprintln!("[3] models returned");
         assert!(!models.is_empty(), "expected at least one configured model");
-        eprintln!("live models: {:?}", models.iter().map(|m| m.id.clone()).collect::<Vec<_>>());
+        eprintln!(
+            "live models: {:?}",
+            models.iter().map(|m| m.id.clone()).collect::<Vec<_>>()
+        );
         h.stop().await.unwrap();
         eprintln!("[4] stopped");
         let _ = std::fs::remove_dir_all(&tmp);
@@ -911,10 +1041,10 @@ mod e2e_stub {
             let _ = std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755));
         }
         // Route the adapter's which("a-coder-cli") at the stub.
-        std::env::set_var("NAVYA_AACODER_BIN", &shim);
+        std::env::set_var("AMAARA_AACODER_BIN", &shim);
 
         let h = AaaCoderCliHarness::new();
-        let tmp = std::env::temp_dir().join(format!("navya-e2e-aacoder-{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("amaara-e2e-aacoder-{}", std::process::id()));
         std::fs::create_dir_all(&tmp).unwrap();
         let ctx = HarnessCtx {
             project_dir: tmp.clone(),
@@ -954,7 +1084,7 @@ mod e2e_stub {
         }
 
         h.stop().await.unwrap();
-        std::env::remove_var("NAVYA_AACODER_BIN");
+        std::env::remove_var("AMAARA_AACODER_BIN");
         let _ = std::fs::remove_dir_all(&tmp);
 
         assert!(saw_start, "no AgentStart event");
@@ -969,12 +1099,15 @@ mod extension_staging {
 
     #[test]
     fn stages_tool_bridge_extension_idempotently() {
-        let dir = std::env::temp_dir().join(format!("navya-ext-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("amaara-ext-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
         stage_project_extension(&dir);
-        let file = dir.join(".a-coder-cli").join("extensions").join("navya-studio.ts");
+        let file = dir
+            .join(".a-coder-cli")
+            .join("extensions")
+            .join("amaara-studio.ts");
         let staged = std::fs::read_to_string(&file).expect("extension should be staged");
         assert_eq!(staged, STUDIO_EXTENSION_TS);
         assert!(staged.contains("registerTool") && staged.contains("render_to_video"));
@@ -1002,8 +1135,7 @@ mod models_cache_tests {
             name: Some("Ollama Cloud: nemotron-3-super".into()),
             kind: "chat".into(),
         }];
-        h.inner.lock().unwrap().models_cache =
-            Some((std::time::Instant::now(), cached.clone()));
+        h.inner.lock().unwrap().models_cache = Some((std::time::Instant::now(), cached.clone()));
         let models = tokio::runtime::Runtime::new()
             .unwrap()
             .block_on(h.available_models())
@@ -1019,9 +1151,15 @@ mod models_cache_tests {
         // (NotStarted here) rather than serving stale data forever.
         h.inner.lock().unwrap().models_cache = Some((
             std::time::Instant::now() - MODELS_CACHE_TTL - Duration::from_secs(1),
-            vec![ModelInfo { id: "old".into(), name: None, kind: "chat".into() }],
+            vec![ModelInfo {
+                id: "old".into(),
+                name: None,
+                kind: "chat".into(),
+            }],
         ));
-        let res = tokio::runtime::Runtime::new().unwrap().block_on(h.available_models());
+        let res = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(h.available_models());
         assert!(matches!(res, Err(HarnessError::NotStarted)));
     }
 }

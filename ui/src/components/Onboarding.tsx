@@ -1,9 +1,9 @@
 /**
  * Onboarding (first launch) — production wiring.
  *
- * Per design.md §8: first launch shows Navya key entry OR start-local, plus a
+ * Per design.md §8: first launch shows Amaara key entry OR start-local, plus a
  * harness picker. The agent runs the intent interview in-chat later (no wizard).
- * Here the "Connect Navya Cloud" flow calls the real set_api_key command; the
+ * Here the "Connect Amaara Cloud" flow calls the real set_api_key command; the
  * harness picker calls set_harness; "Start with a local model" sets source=local.
  */
 
@@ -60,21 +60,21 @@ export function OnboardingScreen() {
 
   return (
     <div className="flex h-screen flex-col items-center justify-center bg-canvas p-8 text-ink">
-      <h1 className="mb-1.5 text-2xl font-bold tracking-tight text-ink-strong">⬢ Navya Studio</h1>
+      <h1 className="mb-1.5 text-2xl font-bold tracking-tight text-ink-strong">⬢ Amaara Studio</h1>
       <p className="mb-8 max-w-md text-center text-sm text-ink-muted">
         A content-creation studio powered by AI. Direct an agent. Watch it make. Render to video.
       </p>
 
       <div className="grid w-full max-w-2xl grid-cols-2 gap-4">
         <div className="rounded-xl border border-line-soft bg-panel p-5 shadow-[var(--shadow-xs)] transition-colors hover:border-line">
-          <h3 className="mb-1 text-sm font-semibold text-ink-strong">Connect Navya Cloud</h3>
+          <h3 className="mb-1 text-sm font-semibold text-ink-strong">Connect Amaara Cloud</h3>
           <p className="mb-3 text-[13px] text-ink-muted">
             Paste your API key to use hosted models.
           </p>
           <input
             type="password"
             className="input mb-3"
-            placeholder="Paste your Navya API key"
+            placeholder="Paste your Amaara API key"
             value={key}
             onChange={(e) => setKey(e.target.value)}
           />

@@ -1,5 +1,5 @@
 /**
- * Navya Studio App — production wiring.
+ * Amaara Studio App — production wiring.
  *
  * Loads real state from the Rust core on mount, subscribes to the event
  * stream, and renders either the onboarding screen (no API key / no project)
@@ -28,7 +28,7 @@ export default function App() {
       <div className="flex h-screen items-center justify-center bg-canvas text-ink">
         <div className="text-center">
           <div className="mb-1.5 text-xl font-bold tracking-tight text-ink-strong">
-            ⬢ Navya Studio
+            ⬢ Amaara Studio
           </div>
           <div className="animate-pulse text-[13px] text-ink-muted">Starting up…</div>
         </div>

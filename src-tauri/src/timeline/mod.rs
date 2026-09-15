@@ -118,9 +118,7 @@ fn data_attr_re() -> &'static Regex {
 
 fn class_attr_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| {
-        Regex::new(r#"class\s*=\s*("([^"]*)"|'([^']*)')"#).unwrap()
-    })
+    RE.get_or_init(|| Regex::new(r#"class\s*=\s*("([^"]*)"|'([^']*)')"#).unwrap())
 }
 
 /// Extract all `data-*` attributes from an attribute string into a map.
@@ -162,8 +160,14 @@ fn parse_clip(attrs: &str) -> Option<Clip> {
     let data = extract_data_attrs(attrs);
 
     // A clip must carry a composition id or a src reference.
-    let has_id = data.get("composition-id").map(|s| !s.is_empty()).unwrap_or(false);
-    let has_src = data.get("composition-src").map(|s| !s.is_empty()).unwrap_or(false);
+    let has_id = data
+        .get("composition-id")
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    let has_src = data
+        .get("composition-src")
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
     if !has_id && !has_src {
         return None;
     }
@@ -173,18 +177,15 @@ fn parse_clip(attrs: &str) -> Option<Clip> {
             .and_then(|v| v.parse::<f64>().ok())
             .unwrap_or(0.0)
     };
-    let integer = |k: &str| -> i32 {
-        data.get(k)
-            .and_then(|v| v.parse::<i32>().ok())
-            .unwrap_or(0)
-    };
-    let uint = |k: &str| -> Option<u32> {
-        data.get(k).and_then(|v| v.parse::<u32>().ok())
-    };
+    let integer = |k: &str| -> i32 { data.get(k).and_then(|v| v.parse::<i32>().ok()).unwrap_or(0) };
+    let uint = |k: &str| -> Option<u32> { data.get(k).and_then(|v| v.parse::<u32>().ok()) };
 
     Some(Clip {
         id: data.get("composition-id").cloned().unwrap_or_default(),
-        src: data.get("composition-src").cloned().filter(|s| !s.is_empty()),
+        src: data
+            .get("composition-src")
+            .cloned()
+            .filter(|s| !s.is_empty()),
         start_s: num("start"),
         duration_s: num("duration"),
         track_index: integer("track-index"),
@@ -228,7 +229,12 @@ pub fn clips_to_tracks(clips: &[Clip]) -> (Vec<TimelineTrack>, i64) {
 
     for (index, indices) in groups {
         let mut ordered = indices;
-        ordered.sort_by(|&a, &b| clips[a].start_s.partial_cmp(&clips[b].start_s).unwrap_or(std::cmp::Ordering::Equal));
+        ordered.sort_by(|&a, &b| {
+            clips[a]
+                .start_s
+                .partial_cmp(&clips[b].start_s)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         let first = &clips[ordered[0]];
         let start_ms = (first.start_s * 1000.0).round() as i64;
 
@@ -289,8 +295,13 @@ pub fn composition_candidates(project_dir: &Path, composition_id: &str) -> Vec<P
     vec![
         project_dir.join("composition.html"),
         project_dir.join("index.html"),
-        project_dir.join("compositions").join(format!("{composition_id}.html")),
-        project_dir.join("compositions").join(composition_id).join("index.html"),
+        project_dir
+            .join("compositions")
+            .join(format!("{composition_id}.html")),
+        project_dir
+            .join("compositions")
+            .join(composition_id)
+            .join("index.html"),
         project_dir.join(composition_id).join("index.html"),
     ]
 }
@@ -309,10 +320,7 @@ pub fn discover_composition_file(project_dir: &Path, composition_id: &str) -> Op
 /// echoes it back. Sub-compositions referenced via `data-composition-src` are
 /// resolved relative to the referencing file and parsed recursively up to
 /// `max_depth` levels deep, de-duplicated by resolved path.
-pub fn load_timeline(
-    project_dir: &Path,
-    composition_id: &str,
-) -> Result<TimelineState> {
+pub fn load_timeline(project_dir: &Path, composition_id: &str) -> Result<TimelineState> {
     let entry = discover_composition_file(project_dir, composition_id)
         .context("no composition file found in project directory")?;
 
@@ -324,7 +332,10 @@ pub fn load_timeline(
 
     // Canvas size: first non-zero clip dimension, else defaults.
     let width = clips.iter().find_map(|c| c.width).unwrap_or(DEFAULT_WIDTH);
-    let height = clips.iter().find_map(|c| c.height).unwrap_or(DEFAULT_HEIGHT);
+    let height = clips
+        .iter()
+        .find_map(|c| c.height)
+        .unwrap_or(DEFAULT_HEIGHT);
 
     let rel = entry
         .strip_prefix(project_dir)
@@ -469,7 +480,7 @@ mod tests {
 
     #[test]
     fn load_timeline_reads_file_from_disk() {
-        let dir = std::env::temp_dir().join(format!("navya-timeline-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("amaara-timeline-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("composition.html");
         std::fs::write(&file, SAMPLE).unwrap();
@@ -492,10 +503,7 @@ mod tests {
 
     #[test]
     fn resolves_referenced_sub_compositions_recursively() {
-        let dir = std::env::temp_dir().join(format!(
-            "navya-timeline-sub-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("amaara-timeline-sub-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("blocks")).unwrap();
         std::fs::write(
             dir.join("composition.html"),

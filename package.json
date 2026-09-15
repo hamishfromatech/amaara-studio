@@ -1,8 +1,8 @@
 {
-  "name": "navya-studio-monorepo",
+  "name": "amaara-studio-monorepo",
   "version": "0.1.0",
   "private": true,
-  "description": "Navya Studio — an AI content-creation studio (Tauri + React). M0 vertical slice.",
+  "description": "Amaara Studio — an AI content-creation studio (Tauri + React). M0 vertical slice.",
   "type": "module",
   "engines": {
     "node": ">=22"

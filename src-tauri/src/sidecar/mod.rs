@@ -39,11 +39,14 @@ pub mod spec {
             spec
         }
 
-        /// Resolve the binary path from a per-name `NAVYA_SIDECAR_<NAME>_BIN`
+        /// Resolve the binary path from a per-name `AMAARA_SIDECAR_<NAME>_BIN`
         /// env var, then PATH via `which`. Returns the resolved name even if not
         /// found on PATH — validation happens later in `validate()`.
         pub fn resolve_bin(&mut self) {
-            if let Ok(p) = std::env::var(format!("NAVYA_SIDECAR_{}_BIN", self.name.to_uppercase().replace("-", "_"))) {
+            if let Ok(p) = std::env::var(format!(
+                "AMAARA_SIDECAR_{}_BIN",
+                self.name.to_uppercase().replace("-", "_")
+            )) {
                 self.bin = p;
                 return;
             }
@@ -64,7 +67,10 @@ pub mod spec {
             if full.exists() {
                 Ok(full)
             } else {
-                Err(SidecarError::NotFound { name: self.name.clone(), bin: self.bin.clone() })
+                Err(SidecarError::NotFound {
+                    name: self.name.clone(),
+                    bin: self.bin.clone(),
+                })
             }
         }
 
@@ -116,7 +122,10 @@ pub fn which_path(bin: &str) -> Option<PathBuf> {
 }
 
 fn now_ms() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 /// The supervised-process state machine. Thread-safe; shared across the app via
@@ -172,7 +181,10 @@ impl Supervisor {
 
     pub fn stop(&mut self, name: &str) -> Option<SidecarStatus> {
         let mut entry = self.entries.remove(name)?;
-        if matches!(entry.status, SidecarStatus::Running | SidecarStatus::Starting) {
+        if matches!(
+            entry.status,
+            SidecarStatus::Running | SidecarStatus::Starting
+        ) {
             entry.status = SidecarStatus::Stopped;
         }
         Some(entry.status)
@@ -187,7 +199,10 @@ impl Supervisor {
                 bin: String::new(),
             });
         };
-        if matches!(entry.status, SidecarStatus::Running | SidecarStatus::Starting) {
+        if matches!(
+            entry.status,
+            SidecarStatus::Running | SidecarStatus::Starting
+        ) {
             return Ok(()); // don't double-start a live sidecar
         }
         let spec = entry.spec.clone();
@@ -202,7 +217,10 @@ impl Supervisor {
         let Some(entry) = self.entries.get_mut(name) else {
             return;
         };
-        entry.log_lines.push((now_ms(), format!("exit={}", outcome.exit_code.unwrap_or(-1))));
+        entry.log_lines.push((
+            now_ms(),
+            format!("exit={}", outcome.exit_code.unwrap_or(-1)),
+        ));
         let code = outcome.exit_code.unwrap_or(-1);
         let first_exit = !matches!(entry.status, SidecarStatus::Exited(_));
         if self.restart_on_exit && !entry.restarted && first_exit {
@@ -240,12 +258,18 @@ impl Supervisor {
         for (name, entry) in self.entries.iter() {
             match &entry.status {
                 SidecarStatus::Running | SidecarStatus::Starting => {
-                    let _ = app_handle.emit("studio://event", events::SidecarEvent::Ready { name: name.clone() });
+                    let _ = app_handle.emit(
+                        "studio://event",
+                        events::SidecarEvent::Ready { name: name.clone() },
+                    );
                 }
                 SidecarStatus::Exited(code) => {
                     let _ = app_handle.emit(
                         "studio://event",
-                        events::SidecarEvent::Exit { name: name.clone(), code: *code },
+                        events::SidecarEvent::Exit {
+                            name: name.clone(),
+                            code: *code,
+                        },
                     );
                 }
                 SidecarStatus::Stopped => {}
@@ -305,11 +329,10 @@ mod tests {
 
     /// Path to the bundled stub binaries used in tests.
     fn stubs_dir() -> std::path::PathBuf {
-        let p = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("tools")
-            .join("sidecar-stubs");
-        p
+            .join("sidecar-stubs")
     }
 
     fn stub_spec(name: &str, bin: &str) -> spec::SidecarSpec {
@@ -322,7 +345,7 @@ mod tests {
     #[test]
     fn start_is_idempotent_and_validates_path() {
         let mut sup = Supervisor::new();
-        let s = stub_spec("harness", "navya-harness-stub");
+        let s = stub_spec("harness", "amaara-harness-stub");
         sup.start(s.clone()).unwrap();
         assert_eq!(sup.status("harness"), Some(SidecarStatus::Starting));
         // Starting again is a no-op (still the same entry).
@@ -333,7 +356,7 @@ mod tests {
     #[test]
     fn restart_after_stop() {
         let mut sup = Supervisor::new();
-        let s = stub_spec("render", "navya-render-stub");
+        let s = stub_spec("render", "amaara-render-stub");
         sup.start(s.clone()).unwrap();
         // stop() returns the final status (Stopped for a previously Starting/Running entry).
         // The entry is removed from the map.
@@ -347,13 +370,27 @@ mod tests {
     #[test]
     fn restart_on_exit_cycles_status_once() {
         let mut sup = Supervisor::new();
-        let s = stub_spec("sd-server", "navya-sd-stub");
+        let s = stub_spec("sd-server", "amaara-sd-stub");
         sup.start(s).unwrap();
         // First exit with a nonzero code: supervisor cycles back to Starting.
-        sup.on_exit("sd-server", CommandOutcome { exit_code: Some(1), stdout: String::new(), stderr: String::new() });
+        sup.on_exit(
+            "sd-server",
+            CommandOutcome {
+                exit_code: Some(1),
+                stdout: String::new(),
+                stderr: String::new(),
+            },
+        );
         assert_eq!(sup.status("sd-server"), Some(SidecarStatus::Starting));
         // Second exit: terminal (restart-once, no crash loop).
-        sup.on_exit("sd-server", CommandOutcome { exit_code: Some(1), stdout: String::new(), stderr: String::new() });
+        sup.on_exit(
+            "sd-server",
+            CommandOutcome {
+                exit_code: Some(1),
+                stdout: String::new(),
+                stderr: String::new(),
+            },
+        );
         assert_eq!(sup.status("sd-server"), Some(SidecarStatus::Exited(1)));
     }
 
@@ -361,9 +398,16 @@ mod tests {
     fn no_restart_when_disabled() {
         let mut sup = Supervisor::new();
         sup.restart_on_exit = false;
-        let s = stub_spec("harness", "navya-harness-stub");
+        let s = stub_spec("harness", "amaara-harness-stub");
         sup.start(s).unwrap();
-        sup.on_exit("harness", CommandOutcome { exit_code: Some(0), stdout: String::new(), stderr: String::new() });
+        sup.on_exit(
+            "harness",
+            CommandOutcome {
+                exit_code: Some(0),
+                stdout: String::new(),
+                stderr: String::new(),
+            },
+        );
         assert_eq!(sup.status("harness"), Some(SidecarStatus::Exited(0)));
     }
 

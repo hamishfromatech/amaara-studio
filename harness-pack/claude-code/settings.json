@@ -11,7 +11,7 @@
     ]
   },
   "mcpServers": {
-    "navya-studio-tools": {
+    "amaara-studio-tools": {
       "command": "uv",
       "args": [
         "run",
@@ -21,11 +21,11 @@
         "httpx",
         "fastmcp",
         "run",
-        "<abs>/navya_mcp/server.py"
+        "<abs>/amaara_mcp/server.py"
       ],
       "env": {
-        "NAVYA_CONTROL_URL": "http://127.0.0.1:<port>",
-        "NAVYA_CONTROL_TOKEN": "<token>"
+        "AMAARA_CONTROL_URL": "http://127.0.0.1:<port>",
+        "AMAARA_CONTROL_TOKEN": "<token>"
       }
     }
   }

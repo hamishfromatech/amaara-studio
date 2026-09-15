@@ -3,8 +3,8 @@
 //! OpenClaw is gateway-centric: a WebSocket gateway runs at `ws://127.0.0.1:18789`
 //! and exposes JSON-RPC calls such as `tools.invoke` with `confirm: "request"`
 //! or `confirm: "report"` approval modes. The adapter connects to that gateway,
-//! wires the Navya MCP server indirectly through the gateway's own MCP bridge,
-//! and translates normalized Navya commands to JSON-RPC messages.
+//! wires the Amaara MCP server indirectly through the gateway's own MCP bridge,
+//! and translates normalized Amaara commands to JSON-RPC messages.
 //!
 //! In a dev environment the gateway is assumed to be started separately (or via
 //! `openclaw mcp serve` for the MCP bridge). This adapter connects to the
@@ -12,19 +12,14 @@
 
 use async_trait::async_trait;
 use futures_util::{SinkExt, StreamExt};
-use std::{
-    collections::HashMap,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use tokio::sync::{mpsc, mpsc::Receiver};
 use tokio_tungstenite::connect_async;
 
 use crate::harness::{
     common::{self, ChildState},
     event::{HarnessEvent, ModelInfo},
-    registry,
-    Capabilities, HarnessCtx, HarnessError, Harness as HarnessTrait, PromptMode,
+    registry, Capabilities, Harness as HarnessTrait, HarnessCtx, HarnessError, PromptMode,
 };
 
 /// OpenClaw harness implementation.
@@ -69,11 +64,7 @@ impl OpenClawHarness {
     }
 
     /// Send a JSON-RPC request to the gateway.
-    fn send_rpc(
-        &self,
-        method: &str,
-        params: serde_json::Value,
-    ) -> Result<(), HarnessError> {
+    fn send_rpc(&self, method: &str, params: serde_json::Value) -> Result<(), HarnessError> {
         let mut inner = self.inner.lock().unwrap();
         if !inner.state.started {
             return Err(HarnessError::NotStarted);
@@ -90,7 +81,9 @@ impl OpenClawHarness {
             let _ = tx.try_send(msg);
             Ok(())
         } else {
-            Err(HarnessError::Process("OpenClaw gateway sender not ready".into()))
+            Err(HarnessError::Process(
+                "OpenClaw gateway sender not ready".into(),
+            ))
         }
     }
 }
@@ -151,7 +144,11 @@ impl HarnessTrait for OpenClawHarness {
             let writer = tokio::spawn(async move {
                 while let Some(msg) = rx.recv().await {
                     if let Ok(text) = serde_json::to_string(&msg) {
-                        if write.send(tokio_tungstenite::tungstenite::Message::Text(text)).await.is_err() {
+                        if write
+                            .send(tokio_tungstenite::tungstenite::Message::Text(text))
+                            .await
+                            .is_err()
+                        {
                             break;
                         }
                     }
@@ -162,7 +159,9 @@ impl HarnessTrait for OpenClawHarness {
             while let Some(Ok(msg)) = read.next().await {
                 let text = match msg {
                     tokio_tungstenite::tungstenite::Message::Text(t) => t.to_string(),
-                    tokio_tungstenite::tungstenite::Message::Binary(b) => String::from_utf8_lossy(&b).to_string(),
+                    tokio_tungstenite::tungstenite::Message::Binary(b) => {
+                        String::from_utf8_lossy(&b).to_string()
+                    }
                     _ => continue,
                 };
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
@@ -181,7 +180,9 @@ impl HarnessTrait for OpenClawHarness {
             if notify {
                 let mut g = inner.lock().unwrap();
                 common::broadcast(
-                    &mut g.state.subscribers, HarnessEvent::Error("OpenClaw gateway disconnected".into()));
+                    &mut g.state.subscribers,
+                    HarnessEvent::Error("OpenClaw gateway disconnected".into()),
+                );
             }
         });
 
@@ -211,10 +212,7 @@ impl HarnessTrait for OpenClawHarness {
     }
 
     async fn abort(&self) -> Result<(), HarnessError> {
-        self.send_rpc(
-            "session.cancel",
-            serde_json::json!({}),
-        )
+        self.send_rpc("session.cancel", serde_json::json!({}))
     }
 
     async fn set_model(&self, _model: &str) -> Result<(), HarnessError> {
@@ -267,67 +265,132 @@ impl HarnessTrait for OpenClawHarness {
 
 fn handle_message(inner: &Arc<std::sync::Mutex<Inner>>, json: &serde_json::Value) {
     if let Some(method) = json.get("method").and_then(|v| v.as_str()) {
-        let params = json.get("params").cloned().unwrap_or(serde_json::Value::Null);
+        let params = json
+            .get("params")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
         match method {
             "agent.start" => {
                 let mut g = inner.lock().unwrap();
                 common::broadcast(
-                    &mut g.state.subscribers, HarnessEvent::AgentStart { model: "default".to_string() });
+                    &mut g.state.subscribers,
+                    HarnessEvent::AgentStart {
+                        model: "default".to_string(),
+                    },
+                );
             }
             "agent.text_delta" => {
                 if let Some(delta) = params.get("delta").and_then(|v| v.as_str()) {
                     let mut g = inner.lock().unwrap();
-                    common::broadcast(&mut g.state.subscribers, HarnessEvent::TextDelta(delta.to_string()));
+                    common::broadcast(
+                        &mut g.state.subscribers,
+                        HarnessEvent::TextDelta(delta.to_string()),
+                    );
                 }
             }
             "agent.thinking_delta" => {
                 if let Some(delta) = params.get("delta").and_then(|v| v.as_str()) {
                     let mut g = inner.lock().unwrap();
-                    common::broadcast(&mut g.state.subscribers, HarnessEvent::ThinkingDelta(delta.to_string()));
+                    common::broadcast(
+                        &mut g.state.subscribers,
+                        HarnessEvent::ThinkingDelta(delta.to_string()),
+                    );
                 }
             }
             "agent.tool_call" => {
                 if let Some(tool) = params.get("tool_call") {
-                    let id = tool.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let name = tool.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let args = tool.get("arguments").cloned().unwrap_or(serde_json::Value::Null);
+                    let id = tool
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let name = tool
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let args = tool
+                        .get("arguments")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null);
                     let mut g = inner.lock().unwrap();
                     common::broadcast(
-                        &mut g.state.subscribers, HarnessEvent::ToolStart { tool_id: id, name, args });
+                        &mut g.state.subscribers,
+                        HarnessEvent::ToolStart {
+                            tool_id: id,
+                            name,
+                            args,
+                        },
+                    );
                 }
             }
             "agent.tool_result" => {
                 if let Some(result) = params.get("tool_result") {
-                    let id = result.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let id = result
+                        .get("tool_call_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     let content = result.get("content").and_then(content_text);
-                    let is_error = result.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+                    let is_error = result
+                        .get("is_error")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
                     let mut g = inner.lock().unwrap();
                     common::broadcast(
-                        &mut g.state.subscribers, HarnessEvent::ToolEnd { tool_id: id, result: content, is_error });
+                        &mut g.state.subscribers,
+                        HarnessEvent::ToolEnd {
+                            tool_id: id,
+                            result: content,
+                            is_error,
+                        },
+                    );
                 }
             }
             "agent.end" => {
                 let mut g = inner.lock().unwrap();
                 common::broadcast(
-                    &mut g.state.subscribers, HarnessEvent::AgentEnd { success: true, message: None });
+                    &mut g.state.subscribers,
+                    HarnessEvent::AgentEnd {
+                        success: true,
+                        message: None,
+                    },
+                );
             }
             "agent.error" => {
                 if let Some(err) = params.get("error").and_then(|v| v.as_str()) {
                     let mut g = inner.lock().unwrap();
-                    common::broadcast(&mut g.state.subscribers, HarnessEvent::Error(err.to_string()));
+                    common::broadcast(
+                        &mut g.state.subscribers,
+                        HarnessEvent::Error(err.to_string()),
+                    );
                 }
             }
             "approval.request" => {
                 if let Some(req) = params.get("request") {
-                    let id = req.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let kind = req.get("kind").and_then(|v| v.as_str()).unwrap_or("confirm").to_string();
+                    let id = req
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let kind = req
+                        .get("kind")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("confirm")
+                        .to_string();
                     {
                         let mut g = inner.lock().unwrap();
                         g.pending_approvals.insert(id.clone(), req.clone());
                     }
                     let mut g = inner.lock().unwrap();
                     common::broadcast(
-                        &mut g.state.subscribers, HarnessEvent::ApprovalRequest { id, kind, payload: req.clone() });
+                        &mut g.state.subscribers,
+                        HarnessEvent::ApprovalRequest {
+                            id,
+                            kind,
+                            payload: req.clone(),
+                        },
+                    );
                 }
             }
             _ => {}

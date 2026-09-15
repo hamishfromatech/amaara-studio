@@ -1,6 +1,6 @@
 {
-  "identifier": "navya-studio",
-  "productName": "Navya Studio",
+  "identifier": "amaara-studio",
+  "productName": "Amaara Studio",
   "version": "0.1.0",
   "build": {
     "beforeDevCommand": "pnpm --filter ./ui dev",
@@ -11,12 +11,13 @@
   "bundle": {
     "active": true,
     "category": "Developer Tool",
-    "copyright": "© 2026 Navya Studio",
+    "copyright": "© 2026 Amaara Studio",
     "shortDescription": "AI content-creation studio",
-    "longDescription": "Navya Studio is a Tauri desktop content-creation studio powered by AI. Direct an agent, watch it make, render to video.",
+    "longDescription": "Amaara Studio is a Tauri desktop content-creation studio powered by AI. Direct an agent, watch it make, render to video.",
     "resources": ["binaries/render-worker.mjs"],
     "targets": "all",
     "icon": [
+      "icons/icon.png",
       "icons/icon.ico",
       "icons/icon.svg"
     ]
@@ -30,7 +31,7 @@
         "minHeight": 760,
         "maximized": true,
         "resizable": true,
-        "title": "Navya Studio",
+        "title": "Amaara Studio",
         "width": 1280
       }
     ]

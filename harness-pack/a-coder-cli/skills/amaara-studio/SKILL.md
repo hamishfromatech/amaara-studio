@@ -1,21 +1,21 @@
-# Navya Studio Skill
+# Amaara Studio Skill
 
-Use this skill when working with the Navya Studio content-creation studio. The studio is a Tauri desktop app powered by AI that orchestrates script/storyboard writing, image generation, and video rendering via HyperFrames/Remotion.
+Use this skill when working with the Amaara Studio content-creation studio. The studio is a Tauri desktop app powered by AI that orchestrates script/storyboard writing, image generation, and video rendering via HyperFrames/Remotion.
 
 ## Core Concepts
 
 ### Cloud vs Local Source
-Navya Studio supports two generation sources:
-- **Cloud (default)**: Navya Cloud AI models (remote, OpenAI-compatible) via `/v1/chat/completions`, `/v1/images/generations`, etc. Billed by Navya.
+Amaara Studio supports two generation sources:
+- **Cloud (default)**: Amaara Cloud AI models (remote, OpenAI-compatible) via `/v1/chat/completions`, `/v1/images/generations`, etc. Billed by Amaara.
 - **Local**: Local LLM + stable-diffusion.cpp `sd-server`. Free, user's GPU/CPU.
 
 The studio's `Source` toggle in the UI drives where `generate_image` routes. Default is Cloud (cloud-first).
 
 ## Studio Tools
 
-When working in Navya Studio, use these tools via the a-coder-cli extension:
+When working in Amaara Studio, use these tools via the a-coder-cli extension:
 
-- `generate_image(project_id, composition_id?, prompt, model?, size?)`: Generate an image via Navya Cloud or local sd-server. Returns `GeneratedImage` with asset record created in the store.
+- `generate_image(project_id, composition_id?, prompt, model?, size?)`: Generate an image via Amaara Cloud or local sd-server. Returns `GeneratedImage` with asset record created in the store.
 - `render_to_video(project_id, composition_id, quality, target)`: Queue a video render via the HyperFrames render sidecar. Quality: `draft` or `high`. Target: `local`, `docker`, `cloud`, `lambda`, `cloudrun`. Returns `RenderJob` id.
 - `list_local_models()`: List available cloud and local models.
 - `set_generation_source(source)`: Set the generation source (`cloud` or `local`).
@@ -34,4 +34,4 @@ When authoring videos/compositions, point the agent at the **HyperFrames skills*
 - `hyperframes-animation` — atomic motion rules, multi-phase scene blueprints, runtime adapters (GSAP, Lottie, Three.js, Anime.js, CSS keyframes, WAAPI, TypeGPU)
 - `faceless-explainer`, `product-launch-video`, `talking-head-recut` — specialized video workflows
 
-Use these skills for video authoring; use Navya Studio tools (`generate_image`, `render_to_video`) for generation and rendering coordination.
+Use these skills for video authoring; use Amaara Studio tools (`generate_image`, `render_to_video`) for generation and rendering coordination.

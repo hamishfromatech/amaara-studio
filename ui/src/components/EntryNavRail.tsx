@@ -168,7 +168,7 @@ export function EntryNavRail({navId, onChange}: Props) {
         <span className="entry-nav-rail__brand-mark" aria-hidden>
           ⬢
         </span>
-        <span className="entry-nav-rail__brand-name">Navya Studio</span>
+        <span className="entry-nav-rail__brand-name">Amaara Studio</span>
       </div>
 
       <div className="entry-nav-rail__scroll">

@@ -143,7 +143,7 @@ export function HomeView({
   return (
     <div className="home-wash entry-main__scroll-inner">
       <div className="home-hero">
-        <h1 className="home-hero__logo">Navya Studio</h1>
+        <h1 className="home-hero__logo">Amaara Studio</h1>
         <p className="home-hero__tagline">Direct an agent. Watch it make. Render to video.</p>
 
         <div className="home-pill-row" role="tablist" aria-label="Scenarios">

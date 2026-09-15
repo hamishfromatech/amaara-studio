@@ -1,7 +1,7 @@
 [project]
-name = "navya-mcp"
+name = "amaara-mcp"
 version = "0.1.0"
-description = "Navya Studio FastMCP server for studio tools"
+description = "Amaara Studio FastMCP server for studio tools"
 requires-python = ">=3.11"
 dependencies = [
     "fastmcp>=4.0.0b3",

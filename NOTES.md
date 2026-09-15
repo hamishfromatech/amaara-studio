@@ -54,3 +54,78 @@ edit history. Unknowns that change early phases must also be raised to the user.
   `cargo tauri build --config src-tauri/tauri.release.conf.json` (overlay adds
   `bundle.externalBin: [binaries/sd-server]`). When the binary is absent,
   `sidecar/bootstrap.rs` download-on-first-run covers the runtime path.
+
+## Full E2E verification pass on macOS (2026-09-15)
+
+Ran every CI gate + the headless and live E2E suites on Apple Silicon
+(macOS — first non-Windows verification of this tree). 146 Rust tests green;
+all UI gates green; release build compiles. Issues found and fixed:
+
+- **macOS builds failed: `generate_context!` requires a PNG icon on
+  non-Windows targets** (tauri-codegen falls back to the hardcoded
+  `icons/icon.png` when no `.ico` applies; only `icon.ico`/`icon.svg`
+  existed). Added `icons/icon.png` (512px, brand ring) and listed it first in
+  `tauri.conf.json` bundle icons.
+- **clippy `-D warnings` failed on a current toolchain** (rustc/clippy
+  1.97.1; the Windows dev box ran an older clippy): fixed 13 lints —
+  `option_as_ref_deref`, `unnecessary_to_owned` ×2, `bool_assert_comparison`
+  ×2, `len_zero`, `let_and_return`, `doc_lazy_continuation`,
+  `too_many_arguments` (allow-commented: the arg count is the Tauri wire
+  contract), `empty line after doc comment`, unused import; `llama.rs`
+  (built, not yet wired into app state) got a documented module-level
+  `#![allow(dead_code)]` until its wiring phase.
+- **`cargo fmt --check` failed tree-wide** (pre-rustfmt drift). Applied
+  `cargo fmt`; tree is now format-clean on the pinned stable.
+- **RESOLVED a long-standing loose end**: `live_rpc_models_round_trip`
+  "hung against the real a-coder-cli". Root cause was NOT first-run trust
+  prompts — the test used the default current-thread `#[tokio::test]` while
+  the adapter's stdout reader blocks in `read_line` inside a spawned task,
+  deadlocking the single-worker runtime before the command was ever sent.
+  Switched to `#[tokio::test(flavor = "multi_thread", worker_threads = 2)]`
+  (same lesson the e2e stub test already documented). The live round-trip now
+  completes in ~3s against a fully configured a-coder-cli and returns the
+  real model catalog — validating the adapter framing against the live CLI.
+- Verified on this machine additionally: render-worker.mjs parses under Node
+  22; navya-mcp FastMCP server imports and registers all 7 tools; release
+  `cargo build --release` succeeds (CI build-matrix macOS equivalent).
+
+Still manual/host-dependent gates: real video render (needs HyperFrames +
+FFmpeg + a project), sd-server image generation (needs staged weights),
+packaged installers, and the `--ignored` live test remains a manual gate by
+design (needs a configured CLI).
+
+## Rebrand: Navya Studio → Amaara Studio (2026-09-15)
+
+Decision: full rename across product, code, and infrastructure; the remote
+service (formerly Navya Cloud) is now **Amaara Cloud**. Clean break on data —
+existing installs under the old identity (identifier `navya-studio`,
+`navya.db`, `navya_base_url` config key, old keyring services) are NOT
+migrated; a fresh install starts empty.
+
+Renamed (779 occurrences / 66 living files):
+- Product/UI strings, README, ARCHITECTURE/design docs.
+- Tauri identifier `amaara-studio`, productName "Amaara Studio", binary
+  `amaara-studio`, data dir follows the identifier.
+- Crates: `amaara-studio`, `amaara-tools` (dir + package names).
+- Python: `amaara-mcp/` dir + `amaara_mcp` package, FastMCP server name
+  `amaara-studio-tools`.
+- Env-var contracts (renamed together across adapter/extension/MCP/stubs/
+  scripts so every component stays in sync): `AMAARA_CONTROL_URL/TOKEN`,
+  `AMAARA_SD_RELEASE_BASE`, `AMAARA_SD_SERVER_BIN`, `AMAARA_SD_RELEASE_URL`,
+  `AMAARA_MCP_DIR`, `AMAARA_AACODER_BIN`, `AMAARA_SIDECAR_*_BIN`,
+  `AMAARA_KEYRING_FAKE`.
+- Config: keyring services `amaara-api-key` / `amaara-control-token`,
+  `amaara_base_url`, default model `amaara/auto`, db file `amaara.db`,
+  harness-pack extension/skill filenames, sidecar stub binaries
+  (`amaara-harness-stub`, `amaara-render-stub`, `amaara-sd-stub`).
+
+Deliberately NOT rewritten (append-only history, per this log's convention):
+`NOTES.md`, `plan/NOTES.md`, `plan/plan.md`, `plan/BUILD-GAPS.md`,
+`plan/RESEARCH.md`, and the research snapshot `docs/research/` (file renamed
+to `amaara-cloud-api.md`, content left as the dated record of the API at
+research time — its `X-Navya-*` header names describe the service as
+observed pre-rebrand).
+
+All gates re-verified green after the rename: fmt, clippy -D warnings,
+146 Rust tests (incl. headless e2e), UI typecheck/lint/build, release build
+(`target/release/amaara-studio`), FastMCP import, render-worker parse.

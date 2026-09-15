@@ -14,11 +14,11 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
-use crate::config::{self, NavyaConfig, SERVICE_NAVYA};
-use crate::events::{ProjectEvent, PreviewEvent, StudioEvent};
-use crate::render::{RenderJob, RenderQuality, RenderStatus, RenderTarget};
+use crate::config::{self, AmaaraConfig, SERVICE_AMAARA};
+use crate::events::{PreviewEvent, ProjectEvent, StudioEvent};
 use crate::preview::{poll_ready, spawn_preview};
-use crate::state::{AppState, ModelEntry, Session, StateSnapshot, cloud_models};
+use crate::render::{RenderJob, RenderQuality, RenderStatus, RenderTarget};
+use crate::state::{cloud_models, AppState, ModelEntry, Session, StateSnapshot};
 
 // ---------------------------------------------------------------------------
 // State + config
@@ -26,8 +26,10 @@ use crate::state::{AppState, ModelEntry, Session, StateSnapshot, cloud_models};
 
 /// Full snapshot for the UI on mount + after any mutation.
 #[tauri::command]
-pub async fn get_state(state: State<'_, std::sync::Arc<AppState>>) -> Result<StateSnapshot, String> {
-    let has_api_key = config::get_secret(SERVICE_NAVYA, "api-key")
+pub async fn get_state(
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<StateSnapshot, String> {
+    let has_api_key = config::get_secret(SERVICE_AMAARA, "api-key")
         .map_err(|e| e.to_string())?
         .is_some();
     let mut snap = (*state).snapshot(has_api_key);
@@ -38,20 +40,23 @@ pub async fn get_state(state: State<'_, std::sync::Arc<AppState>>) -> Result<Sta
 }
 
 #[tauri::command]
-pub fn get_config(state: State<'_, std::sync::Arc<AppState>>) -> Result<NavyaConfig, String> {
+pub fn get_config(state: State<'_, std::sync::Arc<AppState>>) -> Result<AmaaraConfig, String> {
     Ok(state.config.lock().clone())
 }
 
 /// Persist config to the app-data JSON file it was loaded from.
 #[tauri::command]
-pub fn save_config(state: State<'_, std::sync::Arc<AppState>>, config: NavyaConfig) -> Result<NavyaConfig, String> {
+pub fn save_config(
+    state: State<'_, std::sync::Arc<AppState>>,
+    config: AmaaraConfig,
+) -> Result<AmaaraConfig, String> {
     let path = state.config_path.clone();
     let json = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| e.to_string())?;
     *state.config.lock() = config.clone();
-    // Re-sync the Navya client with the new endpoint/router flags.
-    *state.navya.lock() = crate::navya::NavyaClient::new(
-        config.navya_base_url.clone(),
+    // Re-sync the Amaara client with the new endpoint/router flags.
+    *state.amaara.lock() = crate::amaara::AmaaraClient::new(
+        config.amaara_base_url.clone(),
         config.use_auto_router,
         config.byok,
     );
@@ -61,28 +66,26 @@ pub fn save_config(state: State<'_, std::sync::Arc<AppState>>, config: NavyaConf
 }
 
 // ---------------------------------------------------------------------------
-// Secrets (Navya API key) — keyring only, never on disk.
+// Secrets (Amaara API key) — keyring only, never on disk.
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
 pub fn set_api_key(key: String) -> Result<(), String> {
-    config::set_secret(SERVICE_NAVYA, "api-key", key).map_err(|e| e.to_string())
+    config::set_secret(SERVICE_AMAARA, "api-key", key).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn clear_api_key() -> Result<(), String> {
     // Best-effort delete via set empty (keyring delete is backend-specific).
-    config::set_secret(SERVICE_NAVYA, "api-key", String::new()).map_err(|e| e.to_string())
+    config::set_secret(SERVICE_AMAARA, "api-key", String::new()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn has_api_key() -> Result<bool, String> {
-    Ok(
-        config::get_secret(SERVICE_NAVYA, "api-key")
-            .map_err(|e| e.to_string())?
-            .filter(|k| !k.is_empty())
-            .is_some(),
-    )
+    Ok(config::get_secret(SERVICE_AMAARA, "api-key")
+        .map_err(|e| e.to_string())?
+        .filter(|k| !k.is_empty())
+        .is_some())
 }
 
 // ---------------------------------------------------------------------------
@@ -108,7 +111,14 @@ pub async fn new_project(
     let session = state.session.lock().clone();
     let store = state.store.lock();
     let row = store
-        .create_project(&id, &args.name, dir.to_string_lossy().as_ref(), &session.harness, &session.model, &session.source)
+        .create_project(
+            &id,
+            &args.name,
+            dir.to_string_lossy().as_ref(),
+            &session.harness,
+            &session.model,
+            &session.source,
+        )
         .map_err(|e| e.to_string())?;
 
     // Switch the session to the new project.
@@ -127,7 +137,9 @@ pub async fn new_project(
 }
 
 #[tauri::command]
-pub async fn list_projects(state: State<'_, std::sync::Arc<AppState>>) -> Result<Vec<crate::store::ProjectRow>, String> {
+pub async fn list_projects(
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<Vec<crate::store::ProjectRow>, String> {
     let store = state.store.lock();
     store.list_projects().map_err(|e| e.to_string())
 }
@@ -138,7 +150,8 @@ pub async fn delete_project(
     state: State<'_, std::sync::Arc<AppState>>,
     project_id: String,
 ) -> Result<bool, String> {
-    let was_active = state.session.lock().current_project_id.as_deref() == Some(project_id.as_str());
+    let was_active =
+        state.session.lock().current_project_id.as_deref() == Some(project_id.as_str());
     if was_active {
         // Stop a harness running inside that project before removing it.
         let harness = {
@@ -209,7 +222,10 @@ pub async fn open_project(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub async fn set_model(state: State<'_, std::sync::Arc<AppState>>, model: String) -> Result<Session, String> {
+pub async fn set_model(
+    state: State<'_, std::sync::Arc<AppState>>,
+    model: String,
+) -> Result<Session, String> {
     {
         let mut s = state.session.lock();
         s.model = model.clone();
@@ -232,7 +248,10 @@ pub async fn set_model(state: State<'_, std::sync::Arc<AppState>>, model: String
 }
 
 #[tauri::command]
-pub fn set_source(state: State<'_, std::sync::Arc<AppState>>, source: String) -> Result<Session, String> {
+pub fn set_source(
+    state: State<'_, std::sync::Arc<AppState>>,
+    source: String,
+) -> Result<Session, String> {
     if source != "cloud" && source != "local" {
         return Err("source must be 'cloud' or 'local'".to_string());
     }
@@ -244,7 +263,10 @@ pub fn set_source(state: State<'_, std::sync::Arc<AppState>>, source: String) ->
 }
 
 #[tauri::command]
-pub fn set_harness(state: State<'_, std::sync::Arc<AppState>>, harness: String) -> Result<Session, String> {
+pub fn set_harness(
+    state: State<'_, std::sync::Arc<AppState>>,
+    harness: String,
+) -> Result<Session, String> {
     {
         let mut s = state.session.lock();
         s.harness = harness;
@@ -253,7 +275,9 @@ pub fn set_harness(state: State<'_, std::sync::Arc<AppState>>, harness: String) 
 }
 
 #[tauri::command]
-pub async fn list_models(state: State<'_, std::sync::Arc<AppState>>) -> Result<Vec<ModelEntry>, String> {
+pub async fn list_models(
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<Vec<ModelEntry>, String> {
     let session = state.session.lock().clone();
     let mut models: Vec<ModelEntry> = Vec::new();
 
@@ -307,7 +331,7 @@ pub async fn list_models(state: State<'_, std::sync::Arc<AppState>>) -> Result<V
     // 2. Cloud (image generation) + Engine + local models — unchanged.
     let mut cloud = cloud_models(&session.model);
 
-    // Try to discover Navya Engine and list its models.
+    // Try to discover Amaara Engine and list its models.
     let engine = state.engine.lock().clone();
     if engine.health_check().await {
         let engine_models = engine.list_models().await;
@@ -429,7 +453,10 @@ pub async fn send_prompt(
         *state.pump_handle.lock() = Some(handle);
     }
 
-    harness.prompt(&msg, prompt_mode).await.map_err(|e| e.to_string())?;
+    harness
+        .prompt(&msg, prompt_mode)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -437,8 +464,12 @@ pub async fn send_prompt(
 /// serde round-trip (both enums share the same normalized shape), then emit it
 /// on the studio://event channel.
 fn emit_harness_event(app: &AppHandle, ev: crate::harness::event::HarnessEvent) {
-    let Ok(value) = serde_json::to_value(&ev) else { return };
-    let Ok(ui_ev) = serde_json::from_value::<crate::events::HarnessEvent>(value) else { return };
+    let Ok(value) = serde_json::to_value(&ev) else {
+        return;
+    };
+    let Ok(ui_ev) = serde_json::from_value::<crate::events::HarnessEvent>(value) else {
+        return;
+    };
     let _ = app.emit("studio://event", StudioEvent::Harness(ui_ev));
 }
 
@@ -448,6 +479,7 @@ fn emit_harness_event(app: &AppHandle, ev: crate::harness::event::HarnessEvent) 
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri IPC surface — arg count is the wire contract
 pub async fn approve(
     app: AppHandle,
     state: State<'_, std::sync::Arc<AppState>>,
@@ -554,8 +586,7 @@ pub async fn save_attachment(
     };
     let project_dir = current_project_dir(&state, &session);
     let assets_dir = project_dir.join("assets");
-    std::fs::create_dir_all(&assets_dir)
-        .map_err(|e| format!("creating assets dir: {e}"))?;
+    std::fs::create_dir_all(&assets_dir).map_err(|e| format!("creating assets dir: {e}"))?;
 
     // Sanitize the display name (strip any path components the picker might
     // include) and make the on-disk name unique.
@@ -567,7 +598,11 @@ pub async fn save_attachment(
         .filter(|c| !matches!(c, '\0' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
         .collect::<String>();
     let stem = safe.trim().to_string();
-    let stem = if stem.is_empty() { "attachment".to_string() } else { stem };
+    let stem = if stem.is_empty() {
+        "attachment".to_string()
+    } else {
+        stem
+    };
     let mut path = assets_dir.join(&stem);
     let mut n = 1;
     while path.exists() {
@@ -596,7 +631,14 @@ pub async fn save_attachment(
     let id = state
         .store
         .lock()
-        .insert_asset(project_id, None, &path.to_string_lossy().to_string(), asset_kind, "local", None)
+        .insert_asset(
+            project_id,
+            None,
+            path.to_string_lossy().as_ref(),
+            asset_kind,
+            "local",
+            None,
+        )
         .map_err(|e| e.to_string())?;
 
     let _ = app.emit(
@@ -620,13 +662,13 @@ pub async fn save_attachment(
 }
 
 // ---------------------------------------------------------------------------
-// MCP server status (Tools view) — where the built-in navya-mcp server lives,
+// MCP server status (Tools view) — where the built-in amaara-mcp server lives,
 // whether its runtime (uv) is installed, and the user's configured servers.
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize)]
 pub struct McpStatus {
-    /// Resolved navya-mcp workspace directory (NAVYA_MCP_DIR or bundled path).
+    /// Resolved amaara-mcp workspace directory (AMAARA_MCP_DIR or bundled path).
     pub mcp_dir: String,
     /// Path to the FastMCP server entrypoint.
     pub server_py: String,
@@ -642,12 +684,17 @@ pub struct McpStatus {
 }
 
 #[tauri::command]
-pub async fn get_mcp_status(state: State<'_, std::sync::Arc<AppState>>) -> Result<McpStatus, String> {
+pub async fn get_mcp_status(
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<McpStatus, String> {
     let mcp_dir = crate::harness::common::mcp_workspace_dir();
-    let server_py = mcp_dir.join("navya_mcp").join("server.py");
+    let server_py = mcp_dir.join("amaara_mcp").join("server.py");
 
     let (uv_available, uv_version) = match crate::harness::registry::which_path("uv") {
-        Some(p) => (true, crate::harness::registry::probe_version(&p, &["--version"])),
+        Some(p) => (
+            true,
+            crate::harness::registry::probe_version(&p, &["--version"]),
+        ),
         None => (false, None),
     };
 
@@ -659,13 +706,22 @@ pub async fn get_mcp_status(state: State<'_, std::sync::Arc<AppState>>) -> Resul
         uv_available,
         uv_version,
         control_url: state.control_url.lock().clone(),
-        has_control_token: state.control_token.lock().as_deref().map(|t| !t.is_empty()).unwrap_or(false),
+        has_control_token: state
+            .control_token
+            .lock()
+            .as_deref()
+            .map(|t| !t.is_empty())
+            .unwrap_or(false),
         mcp_servers: cfg.mcp_servers,
     })
 }
 
 #[tauri::command]
-pub async fn steer(app: AppHandle, state: State<'_, std::sync::Arc<AppState>>, msg: String) -> Result<(), String> {
+pub async fn steer(
+    app: AppHandle,
+    state: State<'_, std::sync::Arc<AppState>>,
+    msg: String,
+) -> Result<(), String> {
     let session = state.session.lock().clone();
     let harness = {
         let registry = state.harness_registry.lock();
@@ -833,7 +889,9 @@ async fn run_render_attempt(app: AppHandle, job: RenderJob, attempt: u32) {
                 "studio://event",
                 StudioEvent::Render(crate::events::RenderEvent::Failed {
                     job_id: job.job_id.clone(),
-                    error: format!("failed to spawn node render worker: {e}. Is Node.js installed?"),
+                    error: format!(
+                        "failed to spawn node render worker: {e}. Is Node.js installed?"
+                    ),
                 }),
             );
             return;
@@ -928,7 +986,11 @@ async fn run_render_attempt(app: AppHandle, job: RenderJob, attempt: u32) {
                     "studio://event",
                     StudioEvent::Render(crate::events::RenderEvent::Progress {
                         job_id: job_id_for_stdout.clone(),
-                        stage: parsed.get("stage").and_then(|v| v.as_str()).unwrap_or("rendering").to_string(),
+                        stage: parsed
+                            .get("stage")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("rendering")
+                            .to_string(),
                         frame: parsed.get("frame").and_then(|v| v.as_u64()).unwrap_or(0),
                         total_frames: parsed.get("total_frames").and_then(|v| v.as_u64()),
                     }),
@@ -945,7 +1007,11 @@ async fn run_render_attempt(app: AppHandle, job: RenderJob, attempt: u32) {
                 if cancelled {
                     continue;
                 }
-                let out = parsed.get("output_path").and_then(|v| v.as_str()).unwrap_or("renders/out.mp4").to_string();
+                let out = parsed
+                    .get("output_path")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("renders/out.mp4")
+                    .to_string();
                 {
                     let mut q = state.render_queue.lock();
                     q.complete(&job_id_for_stdout, &out);
@@ -972,7 +1038,11 @@ async fn run_render_attempt(app: AppHandle, job: RenderJob, attempt: u32) {
                 if cancelled {
                     continue;
                 }
-                let err = parsed.get("error").and_then(|v| v.as_str()).unwrap_or("render failed").to_string();
+                let err = parsed
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("render failed")
+                    .to_string();
                 {
                     let mut q = state.render_queue.lock();
                     q.update_status(&job_id_for_stdout, RenderStatus::Failed);
@@ -1030,7 +1100,9 @@ async fn run_render_attempt(app: AppHandle, job: RenderJob, attempt: u32) {
                 Some(crate::retry::FailureCategory::Transient),
                 rand::random::<f64>,
             );
-            tracing::info!("render {job_id}: worker exited without completion; retrying in {delay}ms");
+            tracing::info!(
+                "render {job_id}: worker exited without completion; retrying in {delay}ms"
+            );
             let _ = app.emit(
                 "studio://event",
                 StudioEvent::Sidecar(crate::events::SidecarEvent::LogLine {
@@ -1079,7 +1151,9 @@ async fn run_render_attempt(app: AppHandle, job: RenderJob, attempt: u32) {
 }
 
 #[tauri::command]
-pub async fn list_renders(state: State<'_, std::sync::Arc<AppState>>) -> Result<Vec<RenderJob>, String> {
+pub async fn list_renders(
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<Vec<RenderJob>, String> {
     // SQLite is the durable source of truth (survives restarts); fall back to
     // the in-memory queue only if the store read fails.
     match state.store.lock().list_renders() {
@@ -1093,7 +1167,10 @@ pub async fn list_renders(state: State<'_, std::sync::Arc<AppState>>) -> Result<
 }
 
 #[tauri::command]
-pub async fn cancel_render(state: State<'_, std::sync::Arc<AppState>>, job_id: String) -> Result<bool, String> {
+pub async fn cancel_render(
+    state: State<'_, std::sync::Arc<AppState>>,
+    job_id: String,
+) -> Result<bool, String> {
     // Kill the live worker process (if any) BEFORE flipping the status — a
     // cancelled job whose `node render-worker.mjs` keeps running would race
     // the queue and could later report Completed over the Cancelled state.
@@ -1104,7 +1181,10 @@ pub async fn cancel_render(state: State<'_, std::sync::Arc<AppState>>, job_id: S
         let _ = c.kill().await;
     }
     drop(child);
-    let ok = state.render_queue.lock().update_status(&job_id, RenderStatus::Cancelled);
+    let ok = state
+        .render_queue
+        .lock()
+        .update_status(&job_id, RenderStatus::Cancelled);
     if ok {
         if let Some(j) = state.render_queue.lock().get(&job_id) {
             persist_render_job(&state, j);
@@ -1112,7 +1192,6 @@ pub async fn cancel_render(state: State<'_, std::sync::Arc<AppState>>, job_id: S
     }
     Ok(ok)
 }
-
 
 // ---------------------------------------------------------------------------
 // Preview server — live HyperFrames preview for the Timeline tab (Phase 10).
@@ -1157,10 +1236,7 @@ pub async fn preview_start(
             drop(guard);
             let _ = app.emit(
                 "studio://event",
-                StudioEvent::Preview(PreviewEvent::Started {
-                    url,
-                    port: PORT,
-                }),
+                StudioEvent::Preview(PreviewEvent::Started { url, port: PORT }),
             );
             Ok(())
         }
@@ -1210,7 +1286,7 @@ pub struct PreviewStatus {
 }
 
 // ---------------------------------------------------------------------------
-// Image generation — Cloud (Navya) vs Local (sd-server) routing.
+// Image generation — Cloud (Amaara) vs Local (sd-server) routing.
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
@@ -1247,11 +1323,20 @@ pub async fn generate_image_core(
     args: GenerateImageArgs,
 ) -> Result<GeneratedImageResult, String> {
     let session = state.session.lock().clone();
-    let model = args.model.unwrap_or_else(|| if session.source == "local" { "sd-xl".to_string() } else { "dall-e-3".to_string() });
+    let model = args.model.unwrap_or_else(|| {
+        if session.source == "local" {
+            "sd-xl".to_string()
+        } else {
+            "dall-e-3".to_string()
+        }
+    });
 
     if session.source == "cloud" {
-        let client = state.navya.lock().clone();
-        match client.generate_image(&args.prompt, &model, args.size.as_deref()).await {
+        let client = state.amaara.lock().clone();
+        match client
+            .generate_image(&args.prompt, &model, args.size.as_deref())
+            .await
+        {
             Ok(img) => Ok(GeneratedImageResult {
                 source: "cloud".to_string(),
                 url: img.url,
@@ -1300,10 +1385,16 @@ pub async fn generate_image_core(
             );
         };
         let app_for_attach = app.clone();
-        let attach = move |stream: &str, stream_io: Box<dyn tokio::io::AsyncRead + Send + Unpin>| {
-            let level = if stream == "error" { "error" } else { "info" };
-            crate::sidecar::spawn_log_forwarder("sd-server", stream_io, level, app_for_attach.clone());
-        };
+        let attach =
+            move |stream: &str, stream_io: Box<dyn tokio::io::AsyncRead + Send + Unpin>| {
+                let level = if stream == "error" { "error" } else { "info" };
+                crate::sidecar::spawn_log_forwarder(
+                    "sd-server",
+                    stream_io,
+                    level,
+                    app_for_attach.clone(),
+                );
+            };
         let sup_ref: &crate::sd::OutputForwarder = &attach;
         match sup
             .ensure_running(
@@ -1340,13 +1431,17 @@ pub async fn generate_image_core(
 }
 
 #[tauri::command]
-pub async fn list_cloud_models(state: State<'_, std::sync::Arc<AppState>>) -> Result<Vec<crate::navya::ModelSummary>, String> {
-    let client = state.navya.lock().clone();
+pub async fn list_cloud_models(
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<Vec<crate::amaara::ModelSummary>, String> {
+    let client = state.amaara.lock().clone();
     client.list_models().await
 }
 
 #[tauri::command]
-pub async fn detect_engine(state: State<'_, std::sync::Arc<AppState>>) -> Result<Vec<crate::engine::EngineModel>, String> {
+pub async fn detect_engine(
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<Vec<crate::engine::EngineModel>, String> {
     let engine = state.engine.lock().clone();
     if !engine.health_check().await {
         return Ok(Vec::new());
@@ -1364,7 +1459,9 @@ fn persist_render_job(state: &AppState, job: &crate::render::RenderJob) {
 }
 
 #[tauri::command]
-pub fn get_sidecar_status(state: State<'_, std::sync::Arc<AppState>>) -> Result<Vec<crate::state::SidecarHealth>, String> {
+pub fn get_sidecar_status(
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<Vec<crate::state::SidecarHealth>, String> {
     let snap = (*state).snapshot(false);
     Ok(snap.sidecars)
 }
@@ -1374,7 +1471,10 @@ pub fn get_sidecar_status(state: State<'_, std::sync::Arc<AppState>>) -> Result<
 /// zip path so the UI can reveal it. Config contains no secrets (they live
 /// in the keyring — enforced by the leak test in config.rs).
 #[tauri::command]
-pub fn package_feedback(app: tauri::AppHandle, state: State<'_, std::sync::Arc<AppState>>) -> Result<String, String> {
+pub fn package_feedback(
+    app: tauri::AppHandle,
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<String, String> {
     let data_dir = app
         .path()
         .app_data_dir()

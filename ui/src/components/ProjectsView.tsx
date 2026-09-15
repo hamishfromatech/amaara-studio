@@ -1,7 +1,7 @@
 /**
  * ProjectsView — a card grid for the projects surface.
  *
- * open-design's `DesignsTab` shows projects as visual cards; navya's
+ * open-design's `DesignsTab` shows projects as visual cards; amaara's
  * rail-as-list approach was less inviting. This view uses the same
  * recent-project card vocabulary as Home (deterministic swatch, mono
  * timestamp), with a header that mirrors the entry-section idiom and an

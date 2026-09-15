@@ -1,9 +1,9 @@
 {
   "providerEntries": [
     {
-      "name": "Navya Cloud",
+      "name": "Amaara Cloud",
       "type": "openai-compatible",
-      "baseUrl": "https://api.navya.cloud/v1"
+      "baseUrl": "https://api.amaara.cloud/v1"
     }
   ],
   "approvalPolicy": "request"

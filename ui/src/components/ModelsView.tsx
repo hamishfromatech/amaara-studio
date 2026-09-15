@@ -150,7 +150,7 @@ export function ModelsView() {
           <div className="list-card__body">
             {local.length === 0 && engine.length === 0 && (
               <div style={{padding: '14px 18px', color: 'var(--text-faint)', fontSize: 12}}>
-                No local models detected. Start the SD sidecar or Navya Engine to register one.
+                No local models detected. Start the SD sidecar or Amaara Engine to register one.
               </div>
             )}
             {local.map((m) => (

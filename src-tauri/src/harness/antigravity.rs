@@ -7,21 +7,16 @@
 //!
 //! Because there is no mid-stream steering, `steer()` degrades to `abort` +
 //! re-prompt (the Antigravity capability matrix declares `steer: false`).
-//! Tools come from the Navya MCP server injected into `~/.claude/mcp-servers.json`.
+//! Tools come from the Amaara MCP server injected into `~/.claude/mcp-servers.json`.
 
 use async_trait::async_trait;
-use std::{
-    io::BufRead,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{io::BufRead, path::PathBuf, sync::Arc};
 use tokio::sync::{mpsc, mpsc::Receiver};
 
 use crate::harness::{
     common::{self, ChildState},
     event::{HarnessEvent, ModelInfo},
-    registry,
-    Capabilities, HarnessCtx, HarnessError, Harness as HarnessTrait, PromptMode,
+    registry, Capabilities, Harness as HarnessTrait, HarnessCtx, HarnessError, PromptMode,
 };
 
 /// Antigravity harness implementation.
@@ -57,14 +52,14 @@ impl AntigravityHarness {
     }
 
     /// Write the Claude-Code-compatible `~/.claude/mcp-servers.json` fragment
-    /// that points the Antigravity CLI at the Navya MCP server.
+    /// that points the Antigravity CLI at the Amaara MCP server.
     fn write_mcp_config(
         &self,
         control_url: Option<&str>,
         control_token: Option<&str>,
     ) -> Result<(), HarnessError> {
         let mcp_dir = common::mcp_workspace_dir();
-        let server_py = mcp_dir.join("navya_mcp").join("server.py");
+        let server_py = mcp_dir.join("amaara_mcp").join("server.py");
         let server_py_abs = server_py.to_string_lossy().to_string();
 
         let home = std::env::var_os("USERPROFILE")
@@ -84,7 +79,7 @@ impl AntigravityHarness {
         };
 
         existing.insert(
-            "navya-studio-tools".to_string(),
+            "amaara-studio-tools".to_string(),
             serde_json::json!({
                 "command": "uv",
                 "args": [
@@ -96,8 +91,8 @@ impl AntigravityHarness {
                     server_py_abs
                 ],
                 "env": {
-                    "NAVYA_CONTROL_URL": control_url.unwrap_or("http://127.0.0.1:8080"),
-                    "NAVYA_CONTROL_TOKEN": control_token.unwrap_or("")
+                    "AMAARA_CONTROL_URL": control_url.unwrap_or("http://127.0.0.1:8080"),
+                    "AMAARA_CONTROL_TOKEN": control_token.unwrap_or("")
                 }
             }),
         );
@@ -109,12 +104,10 @@ impl AntigravityHarness {
     }
 
     /// Spawn `agy -p msg --output-format stream-json` and pump events.
-    async fn spawn_turn(
-        &self,
-        msg: &str,
-        ctx: &HarnessCtx,
-    ) -> Result<(), HarnessError> {
-        let Some(binary) = registry::descriptor_for(&self.id).and_then(|d| registry::detect(d).path) else {
+    async fn spawn_turn(&self, msg: &str, ctx: &HarnessCtx) -> Result<(), HarnessError> {
+        let Some(binary) =
+            registry::descriptor_for(&self.id).and_then(|d| registry::detect(d).path)
+        else {
             return Err(HarnessError::Process("agy binary not found on PATH".into()));
         };
 
@@ -123,7 +116,8 @@ impl AntigravityHarness {
         let args = vec![
             "-p".to_string(),
             msg.to_string(),
-            "--output-format".to_string(), "stream-json".to_string(),
+            "--output-format".to_string(),
+            "stream-json".to_string(),
         ];
 
         let (mut child, _stdin) = common::spawn_command(
@@ -163,7 +157,9 @@ impl AntigravityHarness {
                             let mut g = inner.lock().unwrap();
                             common::broadcast(
                                 &mut g.state.subscribers,
-                                HarnessEvent::AgentStart { model: "default".to_string() },
+                                HarnessEvent::AgentStart {
+                                    model: "default".to_string(),
+                                },
                             );
                         }
                         if let Some(ev) = parse_stream_json(&json) {
@@ -177,7 +173,10 @@ impl AntigravityHarness {
             let mut g = inner.lock().unwrap();
             common::broadcast(
                 &mut g.state.subscribers,
-                HarnessEvent::AgentEnd { success: true, message: None },
+                HarnessEvent::AgentEnd {
+                    success: true,
+                    message: None,
+                },
             );
             g.state.project_dir = project_dir;
             g.child_handle.lock().unwrap().take();
@@ -278,30 +277,66 @@ fn parse_stream_json(json: &serde_json::Value) -> Option<HarnessEvent> {
             let step_type = json.get("step_type").and_then(|v| v.as_str()).unwrap_or("");
             match step_type {
                 "thinking" => Some(HarnessEvent::ThinkingDelta(
-                    json.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    json.get("content")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                 )),
                 "text" => Some(HarnessEvent::TextDelta(
-                    json.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    json.get("content")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                 )),
                 "tool_use" => Some(HarnessEvent::ToolStart {
-                    tool_id: json.get("tool_id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    name: json.get("tool_name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    args: json.get("tool_input").cloned().unwrap_or(serde_json::Value::Null),
+                    tool_id: json
+                        .get("tool_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    name: json
+                        .get("tool_name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    args: json
+                        .get("tool_input")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
                 }),
                 "tool_result" => Some(HarnessEvent::ToolEnd {
-                    tool_id: json.get("tool_id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    result: json.get("content").and_then(|v| v.as_str()).map(String::from),
-                    is_error: json.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false),
+                    tool_id: json
+                        .get("tool_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    result: json
+                        .get("content")
+                        .and_then(|v| v.as_str())
+                        .map(String::from),
+                    is_error: json
+                        .get("is_error")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
                 }),
                 _ => None,
             }
         }
         "final_result" => Some(HarnessEvent::AgentEnd {
-            success: !json.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false),
-            message: json.get("content").and_then(|v| v.as_str()).map(String::from),
+            success: !json
+                .get("is_error")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+            message: json
+                .get("content")
+                .and_then(|v| v.as_str())
+                .map(String::from),
         }),
         "error" => Some(HarnessEvent::Error(
-            json.get("message").and_then(|v| v.as_str()).unwrap_or("Antigravity error").to_string(),
+            json.get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Antigravity error")
+                .to_string(),
         )),
         _ => None,
     }
@@ -321,10 +356,15 @@ mod tests {
 
     #[test]
     fn parse_step_updates() {
-        let thinking = serde_json::json!({"type":"step_update","step_type":"thinking","content":"hmm"});
-        assert!(matches!(parse_stream_json(&thinking), Some(HarnessEvent::ThinkingDelta(t)) if t == "hmm"));
+        let thinking =
+            serde_json::json!({"type":"step_update","step_type":"thinking","content":"hmm"});
+        assert!(
+            matches!(parse_stream_json(&thinking), Some(HarnessEvent::ThinkingDelta(t)) if t == "hmm")
+        );
 
         let tool = serde_json::json!({"type":"step_update","step_type":"tool_use","tool_id":"t1","tool_name":"Bash","tool_input":{"cmd":"ls"}});
-        assert!(matches!(parse_stream_json(&tool), Some(HarnessEvent::ToolStart { tool_id, name, .. }) if tool_id == "t1" && name == "Bash"));
+        assert!(
+            matches!(parse_stream_json(&tool), Some(HarnessEvent::ToolStart { tool_id, name, .. }) if tool_id == "t1" && name == "Bash")
+        );
     }
 }

@@ -21,9 +21,9 @@ Thumbs.db
 *.swp
 *~
 
-# Navya Studio app data (never commit secrets or projects)
-Navya Studio*/
-.navya-studio-cache/
+# Amaara Studio app data (never commit secrets or projects)
+Amaara Studio*/
+.amaara-studio-cache/
 
 # ---------- Node / UI ----------
 node_modules
@@ -39,3 +39,6 @@ harness-pack/*/node_modules
 # never committed — see scripts/build-sidecars.*)
 third_party/
 src-tauri/binaries/sd-server-*
+
+# Python
+__pycache__/

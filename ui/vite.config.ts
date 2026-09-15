@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath } from "node:url";
 
-// Navya Studio webview SPA (Phase 0 scaffold). Panels added in later phases.
+// Amaara Studio webview SPA (Phase 0 scaffold). Panels added in later phases.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {

@@ -1,8 +1,8 @@
 [package]
-name = "navya-tools"
+name = "amaara-tools"
 version = "0.1.0"
 edition = "2021"
-description = "Navya Studio shared tool-backend lib (logic, no I/O deps)."
+description = "Amaara Studio shared tool-backend lib (logic, no I/O deps)."
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
