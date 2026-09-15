@@ -20,6 +20,7 @@
 //! Framing: strict JSONL, split on \n only, strip trailing \r.
 
 use async_trait::async_trait;
+use serde::Deserialize;
 use std::{
     collections::HashMap,
     io::{BufRead, Write},
@@ -48,6 +49,13 @@ struct Inner {
     stopping: bool,       // stop() was requested — suppresses the EOF error event
     project_dir: PathBuf, // project dir the child was spawned in
     model: String,        // model from HarnessCtx, injected into AgentStart events
+    /// Bumped on every spawn/stop. Each stdout reader captures its generation;
+    /// a reader whose generation is no longer current belongs to a replaced or
+    /// killed process and must NEVER report against the newer generation —
+    /// without this, the old reader's EOF fired after stop()+spawn() reset the
+    /// shared flags and broadcast a false "process exited" over the new
+    /// session's reply (the stale-reader bug that masked every agent reply).
+    generation: u64,
     stdin: std::sync::Mutex<Option<std::process::ChildStdin>>,
     child_handle: std::sync::Mutex<Option<std::process::Child>>,
     /// Every live subscriber gets every event (event pump + future consumers).
@@ -141,6 +149,7 @@ impl AaaCoderCliHarness {
                 stopping: false,
                 project_dir: PathBuf::new(),
                 model: String::new(),
+                generation: 0,
                 stdin: std::sync::Mutex::new(None),
                 child_handle: std::sync::Mutex::new(None),
                 subscribers: Vec::new(),
@@ -264,6 +273,7 @@ impl HarnessTrait for AaaCoderCliHarness {
             .spawn()
             .map_err(|e| HarnessError::Process(format!("failed to spawn a-coder-cli: {e}")))?;
 
+        let child_pid = c.id();
         let stdout = c.stdout.take().expect("stdout should be open");
         let stdin = c.stdin.take().expect("stdin should be open");
         let stderr = c.stderr.take().expect("stderr should be open");
@@ -276,10 +286,16 @@ impl HarnessTrait for AaaCoderCliHarness {
             inner.model = ctx.model.clone();
             *inner.stdin.lock().unwrap() = Some(stdin);
             inner.child_handle.lock().unwrap().replace(c);
+            inner.generation += 1;
         }
+        let my_generation = self.inner.lock().unwrap().generation;
 
         // Reader loop: parse stdout JSONL per docs/rpc.md and broadcast to all
         // subscribers. Locks Inner per event so late subscribe() calls are seen.
+        tracing::info!(
+            "a-coder-cli spawned (pid {child_pid}) in {}",
+            ctx.project_dir.display()
+        );
         let inner = Arc::clone(&self.inner);
         tokio::spawn(async move {
             let mut reader = std::io::BufReader::new(stdout);
@@ -287,41 +303,72 @@ impl HarnessTrait for AaaCoderCliHarness {
             loop {
                 buf.clear();
                 match reader.read_line(&mut buf) {
-                    Ok(0) => break, // EOF — process exited
+                    Ok(0) => {
+                        tracing::warn!("a-coder-cli (pid {child_pid}) stdout EOF");
+                        break; // EOF — process exited (or closed stdout)
+                    }
                     Ok(_) => {
                         let line = buf.trim_end_matches(['\n', '\r']);
                         if line.is_empty() {
                             continue;
                         }
-                        let Ok(json) = serde_json::from_str::<serde_json::Value>(line) else {
-                            continue;
-                        };
-                        handle_stdout_line(&inner, &json);
+                        // Deeply nested session/event trees exceed serde_json's
+                        // default 128-level recursion limit. The desktop app hit
+                        // this as the "lost-response bug": unparseable lines were
+                        // silently dropped. Parse with the limit disabled + a
+                        // heap-allocated deserialize stack (same as desktop).
+                        let mut de = serde_json::Deserializer::from_str(line);
+                        de.disable_recursion_limit();
+                        match serde_json::Value::deserialize(serde_stacker::Deserializer::new(
+                            &mut de,
+                        )) {
+                            Ok(json) => handle_stdout_line(&inner, &json),
+                            Err(e) => tracing::warn!(
+                                "a-coder-cli: unparseable stdout line ({e}): {}",
+                                &line[..line.len().min(200)]
+                            ),
+                        }
                     }
-                    Err(_) => break,
+                    Err(e) => {
+                        tracing::warn!("a-coder-cli (pid {child_pid}) stdout read error: {e}");
+                        break;
+                    }
                 }
             }
-            // EOF: mark stopped; surface an error unless stop() was requested.
-            // Include the exit code when the child has already been reaped so
-            // the chat shows "exited (code 1)" instead of a bare EOF mystery.
-            let (notify, code) = {
+            // EOF/read-error: report only if this reader's generation is still
+            // current — a replaced/killed process's reader must stay silent
+            // (the stale-reader bug broadcast a false "process exited" over
+            // the new session's reply). Otherwise include the exit code when
+            // the child has already been reaped so the chat shows "exited
+            // (code 1)"; if the child is STILL RUNNING the CLI closed its own
+            // stdout — a different failure mode than an exit.
+            let (notify, code, still_running) = {
                 let mut g = inner.lock().unwrap();
-                let was_started = g.started;
-                g.started = false;
-                let code = g
-                    .child_handle
-                    .lock()
-                    .unwrap()
-                    .as_mut()
-                    .and_then(|c| c.try_wait().ok().flatten())
-                    .and_then(|s| s.code());
-                (was_started && !g.stopping, code)
+                if g.generation != my_generation {
+                    tracing::debug!(
+                        "a-coder-cli (pid {child_pid}) stale reader EOF (gen {my_generation} != current) — ignoring"
+                    );
+                    (false, None, false)
+                } else {
+                    let was_started = g.started;
+                    g.started = false;
+                    let mut handle = g.child_handle.lock().unwrap();
+                    let status = handle.as_mut().and_then(|c| c.try_wait().ok().flatten());
+                    let still_running = !handle.is_none() && status.is_none();
+                    let code = status.and_then(|s| s.code());
+                    (was_started && !g.stopping, code, still_running)
+                }
             };
             if notify {
-                let detail = match code {
-                    Some(code) => format!("a-coder-cli process exited (code {code})"),
-                    None => "a-coder-cli process exited".into(),
+                let detail = if still_running {
+                    format!("a-coder-cli (pid {child_pid}) closed its output while still running")
+                } else {
+                    match code {
+                        Some(code) => format!("a-coder-cli process exited (code {code})"),
+                        None => "a-coder-cli process exited".into(),
+                    }
                 };
+                tracing::warn!("{detail}");
                 broadcast(&inner, HarnessEvent::Error(detail));
             }
         });
@@ -518,12 +565,14 @@ impl HarnessTrait for AaaCoderCliHarness {
             let mut inner = self.inner.lock().unwrap();
             inner.stopping = true;
             inner.started = false;
+            inner.generation += 1; // orphan this process's stdout reader
             *inner.stdin.lock().unwrap() = None; // closing stdin lets it exit too
             let mut handle = inner.child_handle.lock().unwrap();
             handle.take()
         };
         if let Some(child) = child {
             let pid = child.id();
+            tracing::info!("a-coder-cli stop(): killing pid {pid}");
             if cfg!(windows) {
                 let _ = std::process::Command::new("taskkill")
                     .args(["/F", "/T", "/PID", &pid.to_string()])

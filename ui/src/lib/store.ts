@@ -1080,7 +1080,13 @@ function handleHarnessEvent(
         break
       }
       case 'Error': {
-        if (lastAgent) {
+        // Only fold an error into an agent message that is still running —
+        // a finished/replied message keeps its text, and the error surfaces
+        // as its own system row instead of destroying the reply.
+        if (
+          lastAgent &&
+          (lastAgent.status === 'thinking' || lastAgent.status === 'tool-calling')
+        ) {
           const idx = chat.findIndex((m) => m.id === lastAgent.id)
           if (idx >= 0) chat[idx] = {...chat[idx], status: 'error', content: String(payload)}
         } else {

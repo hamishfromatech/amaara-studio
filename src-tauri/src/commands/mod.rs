@@ -298,16 +298,26 @@ pub async fn list_models(
             Err(_) => {
                 // Not started (or harness has no listing yet) — lazy-start
                 // with the current session context, then ask again.
-                let ctx = crate::harness::HarnessCtx {
-                    project_dir: current_project_dir(&state, &session),
-                    model: session.model.clone(),
-                    source: session.source.clone(),
-                    control_url: state.control_url.lock().clone(),
-                    control_token: state.control_token.lock().clone(),
-                };
-                match harness.start(&ctx).await {
-                    Ok(()) => harness.available_models().await.unwrap_or_default(),
-                    Err(_) => vec![],
+                // NEVER spawn with the "no project" placeholder dir: the
+                // picker firing at app boot would start a CLI in the app's
+                // cwd (staging the tool-bridge extension there), and the
+                // first real send would then restart it — the churn behind
+                // the stale-reader bug. No project open → static catalog.
+                let dir = current_project_dir(&state, &session);
+                if dir.as_os_str().is_empty() || dir == std::path::Path::new(".") {
+                    vec![]
+                } else {
+                    let ctx = crate::harness::HarnessCtx {
+                        project_dir: dir,
+                        model: session.model.clone(),
+                        source: session.source.clone(),
+                        control_url: state.control_url.lock().clone(),
+                        control_token: state.control_token.lock().clone(),
+                    };
+                    match harness.start(&ctx).await {
+                        Ok(()) => harness.available_models().await.unwrap_or_default(),
+                        Err(_) => vec![],
+                    }
                 }
             }
         };
@@ -418,6 +428,11 @@ pub async fn send_prompt(
         control_url: state.control_url.lock().clone(),
         control_token: state.control_token.lock().clone(),
     };
+    // Never spawn the agent into the "no project" placeholder dir — the CLI
+    // would boot in the app's cwd with the tool-bridge extension staged there.
+    if ctx.project_dir.as_os_str().is_empty() || ctx.project_dir == std::path::Path::new(".") {
+        return Err("Open or create a project before chatting with the agent.".into());
+    }
     let prompt_mode = match mode.as_str() {
         "steer" => crate::harness::PromptMode::Steer,
         "follow_up" => crate::harness::PromptMode::FollowUp,
