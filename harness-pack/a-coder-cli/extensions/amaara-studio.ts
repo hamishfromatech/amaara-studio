@@ -78,6 +78,15 @@ const TOOLS = [
       required: ["timecode_ms"],
     },
   },
+  {
+    name: "open_in_folder",
+    description: "Reveal a file or folder in the OS file manager.",
+    parameters: {
+      type: "object",
+      properties: { path: { type: "string" } },
+      required: ["path"],
+    },
+  },
 ];
 
 /**

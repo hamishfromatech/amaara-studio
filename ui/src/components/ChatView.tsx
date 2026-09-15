@@ -20,6 +20,7 @@ import {useVirtualRows} from '../lib/virtualize'
 import {elapsedLabel} from '../lib/format'
 import {Composer} from './Composer'
 import {EmptyState} from './EmptyState'
+import {ThinkingBlock} from './ThinkingBlock'
 
 // ---------------------------------------------------------------------------
 // Turn header
@@ -167,6 +168,9 @@ function ToolCard({tool}: {tool: ToolCall}) {
 }
 
 // ---------------------------------------------------------------------------
+// Thinking disclosure — the harness reasoning stream, collapsed by default.
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // Message
 // ---------------------------------------------------------------------------
 
@@ -253,6 +257,7 @@ function ChatMessageRow({
         {msg.status === 'error' && <span className="chat-msg__clock">error</span>}
         {msg.status === 'done' && msg.content && <CopyButton text={msg.content} />}
       </div>
+      {msg.thinking && <ThinkingBlock text={msg.thinking} live={runLive} />}
       {msg.content && (
         <div className="chat-msg__body">
           {msg.content}

@@ -57,6 +57,7 @@ pub async fn dispatch_tool(
         "list_local_models" => dispatch_list_models(&state.app).await,
         "get_project_state" => dispatch_project_state(&state.app).await,
         "snapshot" => dispatch_snapshot(&state.app, body).await,
+        "open_in_folder" => dispatch_open_in_folder(body),
         other => Err(format!("unknown tool: {other}")),
     };
 
@@ -290,6 +291,19 @@ async fn dispatch_list_models(state: &Arc<AppState>) -> Result<serde_json::Value
         local_models,
     };
     serde_json::to_value(resp).map_err(|e| e.to_string())
+}
+
+/// open_in_folder — reveal a path in the OS file manager. Mirrors the
+/// reveal_in_folder Tauri command (the MCP server proxies here, so the
+/// harness-facing dispatch must know this tool too).
+fn dispatch_open_in_folder(body: serde_json::Value) -> Result<serde_json::Value, String> {
+    let path = body
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or("open_in_folder: missing 'path'")?
+        .to_string();
+    crate::commands::reveal_in_folder(path)?;
+    Ok(serde_json::json!({ "ok": true }))
 }
 
 async fn dispatch_set_source(

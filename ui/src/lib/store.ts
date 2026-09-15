@@ -62,6 +62,9 @@ export interface ChatMessage {
   /** How the user sent this message (⌘⇧Enter = steer, ⌘⌥Enter = follow-up).
    *  Rendered with a small glyph so steers/follow-ups are legible in chat. */
   mode?: 'normal' | 'steer' | 'follow_up'
+  /** Harness reasoning stream (ThinkingDelta) — shown collapsed while the
+   *  turn runs, kept for the finished turn (collapsed by default). */
+  thinking: string
 }
 
 interface AppState extends Partial<StateSnapshot> {
@@ -574,7 +577,7 @@ export const useStore = create<AppState>((set, get) => ({
       const chat = [...s.chat]
       const idx = chat.findIndex((m) => m.role === 'agent' && m.status === 'thinking')
       if (idx >= 0) chat[idx] = {...chat[idx], status: 'thinking', startedAtMs: Date.now()}
-      chat.push({id: `u${Date.now()}`, role: 'you', content: finalMsg, tools: [], mode})
+      chat.push({id: `u${Date.now()}`, role: 'you', content: finalMsg, tools: [], thinking: '', mode})
       chat.push({
         id: `a${Date.now()}`,
         role: 'agent',
@@ -582,6 +585,7 @@ export const useStore = create<AppState>((set, get) => ({
         status: 'thinking',
         startedAtMs: Date.now(),
         tools: [],
+        thinking: '',
       })
       return {chat}
     })
@@ -670,7 +674,7 @@ export const useStore = create<AppState>((set, get) => ({
         (m) => m.role === 'agent' && m.status !== 'done' && m.status !== 'error',
       )
       if (idx >= 0) chat[idx] = {...chat[idx], status: 'tool-calling'}
-      chat.push({id: `u${Date.now()}`, role: 'you', content: msg, tools: [], mode: 'steer'})
+      chat.push({id: `u${Date.now()}`, role: 'you', content: msg, tools: [], thinking: '', mode: 'steer'})
       return {chat}
     })
     try {
@@ -735,7 +739,9 @@ export const useStore = create<AppState>((set, get) => ({
         req.payload,
         approved,
         alwaysAllow,
-        answer === 'edit' ? (value ?? undefined) : undefined,
+        // The relayed value: the user's edited text for edit answers, and the
+        // chosen option for `select` dialogs (ignored by boolean protocols).
+        value ?? undefined,
       )
     } catch (e) {
       set({error: String(e)})
@@ -995,6 +1001,33 @@ function handleHarnessEvent(
         }
         break
       }
+      case 'ThinkingDelta': {
+        // The harness's reasoning stream — accumulated on the running agent
+        // turn and shown collapsed (a “thinking” disclosure in the chat).
+        if (lastAgent) {
+          const idx = chat.findIndex((m) => m.id === lastAgent.id)
+          if (idx >= 0) {
+            chat[idx] = {
+              ...chat[idx],
+              thinking: chat[idx].thinking + String(payload),
+            }
+          }
+        }
+        break
+      }
+      case 'Retry': {
+        // Auto-retry visibility (open-design: never silently retry). A system
+        // line per attempt keeps the transcript honest.
+        const p = payload as {attempt: number; reason: string}
+        chat.push({
+          id: `r${Date.now()}`,
+          role: 'system',
+          content: `auto-retry #${p.attempt} — ${p.reason}`,
+          tools: [],
+          thinking: '',
+        })
+        break
+      }
       case 'ToolStart': {
         // Structured tool card (design.md §3): the call renders as its own
         // expandable block instead of a line of text.
@@ -1105,7 +1138,7 @@ function handleHarnessEvent(
           const idx = chat.findIndex((m) => m.id === lastAgent.id)
           if (idx >= 0) chat[idx] = {...chat[idx], status: 'error', content: String(payload)}
         } else {
-          chat.push({id: `e${Date.now()}`, role: 'system', content: String(payload), tools: []})
+          chat.push({id: `e${Date.now()}`, role: 'system', content: String(payload), tools: [], thinking: ''})
         }
         break
       }

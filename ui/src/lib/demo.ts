@@ -28,6 +28,7 @@ export const demoChat: ChatMessage[] = [
     role: 'you',
     content: 'Make a 20-second launch video for our product. Dark, cinematic, confident.',
     tools: [],
+    thinking: '',
     mode: 'normal',
   },
   {
@@ -37,6 +38,7 @@ export const demoChat: ChatMessage[] = [
     content:
       'Storyboard drafted — six shots, one hook per two seconds.\n\nShot 1 opens on a black frame; a single phosphor-green cursor blinks twice, then ignites a typing run. Shot 2 whips through the product surface at cut-the-curve velocity, landing on the hero stat. Shots 3–4 pair the tagline with kinetic type; shot 5 shows the render finishing; shot 6 holds the wordmark on grain.\n\nComposition "launch-v1" is written to the project and the draft render is queued.',
     startedAtMs: now - 240_000,
+    thinking: '',
     tools: [
       {
         id: 't1',
@@ -67,6 +69,7 @@ export const demoChat: ChatMessage[] = [
     content: '',
     startedAtMs: now - 4_000,
     tools: [],
+    thinking: '',
   },
 ]
 

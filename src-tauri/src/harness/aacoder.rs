@@ -80,6 +80,10 @@ const MODELS_CACHE_TTL: Duration = Duration::from_secs(300);
 /// so the installed app can stage it without packaging harness-pack.
 const STUDIO_EXTENSION_TS: &str =
     include_str!("../../../harness-pack/a-coder-cli/extensions/amaara-studio.ts");
+const STUDIO_SKILL_MD: &str =
+    include_str!("../../../harness-pack/a-coder-cli/skills/amaara-studio/SKILL.md");
+const STUDIO_PROMPTS_MD: &str =
+    include_str!("../../../harness-pack/a-coder-cli/prompts/studio-prompts.md");
 
 /// Stage the studio tool-bridge extension into the project-local a-coder-cli
 /// extensions dir (`.a-coder-cli/extensions/`, auto-discovered by the CLI).
@@ -89,15 +93,26 @@ const STUDIO_EXTENSION_TS: &str =
 /// studio's tools (render_to_video, generate_image, …) — the extension is what
 /// proxies tool calls to the control server, and project-local staging keeps
 /// the bridge scoped to the project instead of touching the global config.
+///
+/// Also stages the studio SKILL (`.a-coder-cli/skills/amaara-studio/SKILL.md`)
+/// and prompt pack (`.a-coder-cli/prompts/studio-prompts.md`) — both are
+/// auto-discovered by the CLI's resource loader, and without them the agent
+/// never learns the studio's tool contracts or the /new-video /render flows.
 fn stage_project_extension(project_dir: &std::path::Path) {
-    let dir = project_dir.join(".a-coder-cli").join("extensions");
-    let file = dir.join("amaara-studio.ts");
-    let needs_write = match std::fs::read_to_string(&file) {
-        Ok(existing) => existing != STUDIO_EXTENSION_TS,
-        Err(_) => true,
-    };
-    if needs_write && std::fs::create_dir_all(&dir).is_ok() {
-        let _ = std::fs::write(&file, STUDIO_EXTENSION_TS);
+    let staged: [(&str, &str); 3] = [
+        ("extensions/amaara-studio.ts", STUDIO_EXTENSION_TS),
+        ("skills/amaara-studio/SKILL.md", STUDIO_SKILL_MD),
+        ("prompts/studio-prompts.md", STUDIO_PROMPTS_MD),
+    ];
+    for (rel, content) in staged {
+        let file = project_dir.join(".a-coder-cli").join(rel);
+        let needs_write = match std::fs::read_to_string(&file) {
+            Ok(existing) => existing != content,
+            Err(_) => true,
+        };
+        if needs_write && std::fs::create_dir_all(file.parent().unwrap_or(project_dir)).is_ok() {
+            let _ = std::fs::write(&file, content);
+        }
     }
 }
 
@@ -524,13 +539,21 @@ impl HarnessTrait for AaaCoderCliHarness {
                         serde_json::json!({ "type": "extension_ui_response", "id": request_id, "confirmed": true })
                     }
                     "select" => {
-                        let first = r
-                            .get("options")
-                            .and_then(|v| v.as_array())
-                            .and_then(|a| a.first())
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("Allow");
-                        serde_json::json!({ "type": "extension_ui_response", "id": request_id, "value": first })
+                        // Prefer the option the user actually picked in the
+                        // studio dialog (relayed as `value`); fall back to the
+                        // first option for boolean-only UI flows.
+                        let chosen = value
+                            .clone()
+                            .filter(|v| !v.trim().is_empty())
+                            .or_else(|| {
+                                r.get("options")
+                                    .and_then(|v| v.as_array())
+                                    .and_then(|a| a.first())
+                                    .and_then(|v| v.as_str())
+                                    .map(String::from)
+                            })
+                            .unwrap_or_else(|| "Allow".into());
+                        serde_json::json!({ "type": "extension_ui_response", "id": request_id, "value": chosen })
                     }
                     _ => {
                         // input / editor — approve, carrying the user's edited

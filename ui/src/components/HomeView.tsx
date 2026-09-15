@@ -20,6 +20,7 @@ import {useEffect, useState} from 'react'
 import {useStore} from '../lib/store'
 import {elapsedLabel, formatRelative, swatchFor} from '../lib/format'
 import {Composer} from './Composer'
+import {ThinkingBlock} from './ThinkingBlock'
 
 interface ScenarioPill {
   id: string
@@ -226,6 +227,9 @@ export function HomeView({
                       (m.status === 'thinking' || m.status === 'tool-calling') &&
                       m.content && <span className="stream-caret">▍</span>}
                   </div>
+                  {m.role === 'agent' && m.thinking && (
+                    <ThinkingBlock text={m.thinking} live={m.status === 'thinking' || m.status === 'tool-calling'} />
+                  )}
                   {/* Failure recovery (open-design): one-click retry of the
                     prompt this failed turn was answering. */}
                   {m.role === 'agent' && m.status === 'error' && m.failedPrompt && (

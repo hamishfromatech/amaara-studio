@@ -41,6 +41,19 @@ function extractCommand(request: ApprovalDialogProps['request']): string {
   return request.kind === 'bash' ? '$ (no command in payload)' : 'Tool execution'
 }
 
+/** The option list for a `select` dialog (a-coder-cli extension_ui_request
+ *  carries {options: string[]}); null when this isn't a select with options. */
+function extractOptions(request: ApprovalDialogProps['request']): string[] | null {
+  if (request.kind !== 'select') return null
+  const p = request.payload as Record<string, unknown> | null
+  const opts = p?.options
+  if (Array.isArray(opts)) {
+    const list = opts.filter((o): o is string => typeof o === 'string' && o.trim().length > 0)
+    if (list.length > 0) return list
+  }
+  return null
+}
+
 function payloadJson(request: ApprovalDialogProps['request']): string | null {
   try {
     const s = JSON.stringify(request.payload, null, 2)
@@ -63,12 +76,21 @@ export function ApprovalDialog({request, onAnswer}: ApprovalDialogProps) {
   const [alwaysAllow, setAlwaysAllow] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState('')
+  // Selected option for `select` dialogs — defaults to the first option so
+  // Enter/Allow still works without touching the list.
+  const options = extractOptions(request)
+  const [selectedOption, setSelectedOption] = useState<string | null>(options?.[0] ?? null)
   const dialogRef = useRef<HTMLDivElement | null>(null)
   const primaryRef = useRef<HTMLButtonElement | null>(null)
   const editRef = useRef<HTMLTextAreaElement | null>(null)
   const restoreRef = useRef<HTMLElement | null>(null)
 
   const command = extractCommand(request)
+
+  // The value relayed when the user approves: the chosen option for select
+  // dialogs, the edited text for input/editor edits, otherwise none.
+  const approveValue =
+    request.kind === 'select' ? (selectedOption ?? undefined) : undefined
 
   // Focus management (native-modal semantics): remember the trigger, move
   // focus to the primary action on open, restore on unmount.
@@ -101,7 +123,7 @@ export function ApprovalDialog({request, onAnswer}: ApprovalDialogProps) {
     }
     if (e.key === 'Enter' && !e.shiftKey && !editing) {
       e.preventDefault()
-      onAnswer('allow', alwaysAllow)
+      onAnswer('allow', alwaysAllow, approveValue)
       return
     }
     if (e.key === 'Tab' && dialogRef.current) {
@@ -156,9 +178,35 @@ export function ApprovalDialog({request, onAnswer}: ApprovalDialogProps) {
         </div>
 
         {!editing ? (
-          <div className="mono mb-4 max-h-40 overflow-y-auto rounded-md border border-line-soft bg-panel p-3 text-xs leading-relaxed text-ink">
-            {command}
-          </div>
+          request.kind === 'select' && options ? (
+            <div className="mb-4" role="radiogroup" aria-label="Options">
+              {options.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedOption === opt}
+                  className={`row ${selectedOption === opt ? 'is-active' : ''}`}
+                  onClick={() => setSelectedOption(opt)}
+                >
+                  <span
+                    aria-hidden
+                    style={{
+                      fontSize: 9,
+                      color: selectedOption === opt ? 'var(--brand)' : 'var(--text-faint)',
+                    }}
+                  >
+                    ●
+                  </span>
+                  <span className="flex-1 truncate">{opt}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="mono mb-4 max-h-40 overflow-y-auto rounded-md border border-line-soft bg-panel p-3 text-xs leading-relaxed text-ink">
+              {command}
+            </div>
+          )
         ) : (
           <div className="mb-4">
             <label
@@ -235,10 +283,10 @@ export function ApprovalDialog({request, onAnswer}: ApprovalDialogProps) {
               </button>
               <button
                 ref={primaryRef}
-                onClick={() => onAnswer('allow', alwaysAllow)}
+                onClick={() => onAnswer('allow', alwaysAllow, approveValue)}
                 className="btn btn-primary btn-sm"
               >
-                Allow
+                {request.kind === 'select' && selectedOption ? 'Choose' : 'Allow'}
               </button>
             </>
           )}
