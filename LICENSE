@@ -1,0 +1,54 @@
+# Dual License: MIT or The A-Tech Corporation License
+
+Copyright (c) 2026 The A-Tech Corporation PTY LTD
+
+This project is made available under one of two licenses, at your option:
+
+- the **MIT License** (Section 1), or
+- **The A-Tech Corporation License** (Section 2), which is required
+  *instead of* the MIT License for commercial use by a Covered Enterprise.
+
+---
+
+## 1. MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## 2. The A-Tech Corporation License (required for Covered Enterprises)
+
+A **Covered Enterprise** is any company — together with any parent,
+subsidiary, or affiliated entity acting on its behalf — whose annual gross
+revenue exceeds USD $10,000,000.
+
+No rights are granted under the MIT License (Section 1) for *commercial use*
+of this software by a Covered Enterprise. A Covered Enterprise must obtain a
+commercial license — **The A-Tech Corporation License** — from The A-Tech
+Corporation PTY LTD before any such use, including but not limited to
+internal business use, production deployments, hosted offerings, or
+incorporation into a paid product or service.
+
+To inquire about The A-Tech Corporation License, contact The A-Tech
+Corporation via <https://github.com/hamishfromatech>.
+
+Everyone else — individuals, open-source projects, non-profit organizations,
+educational institutions, and companies with annual gross revenue of
+USD $10,000,000 or less — may use, modify, and distribute this software
+commercially under the MIT License in Section 1.
