@@ -129,3 +129,39 @@ observed pre-rebrand).
 All gates re-verified green after the rename: fmt, clippy -D warnings,
 146 Rust tests (incl. headless e2e), UI typecheck/lint/build, release build
 (`target/release/amaara-studio`), FastMCP import, render-worker parse.
+
+## First live product trial on macOS (2026-09-15, post-rebrand DMG)
+
+Installed `Amaara Studio_0.1.0_aarch64.dmg` to /Applications and drove the
+real prompt → harness → tools flow. Findings:
+
+- **Harness model selection now works end to end** (post 074c265): the CLI
+  session records `model_change → ollama-cloud/glm-5.3-flash` from the
+  studio picker; the agent ran real turns on the user's chosen model.
+- **macOS GUI PATH**: `open -a` inherited a full dev PATH on this machine
+  (launchd global env). On a vanilla Mac the Finder-launch PATH is minimal
+  (/usr/bin:/bin:...) — Gate 14 clean-VM smoke must verify harness/node
+  discovery there; a login-shell PATH refresh may be needed.
+- **Rebuilt-binary keychain gotcha**: a rebuilt ad-hoc binary can't silently
+  rewrite the control-token keychain item the previous binary created — the
+  control-server launch task blocked on the security prompt (app boots but
+  no control server, empty log). Deleting the stale
+  `amaara-control-token` item unblocks. Dev-loop only; real installs sign
+  consistently.
+- **Bash tool hang (fixed upstream in a-coder-cli 4adfa19d7)**: the agent's
+  `python3` wedged during interpreter startup — anaconda site-packages has
+  a broken `__editable__.ecommerce_admin-1.0.0.pth` that intermittently
+  hangs python init. The CLI's bash tool had NO default timeout, so the
+  turn hung forever and the studio could only show a silent stall. Killing
+  the wedged child unblocked the tool; the agent adapted immediately
+  (switched to node -e). CLI now defaults bash timeout to 120s (takes
+  effect on next CLI rebuild/reinstall). The broken .pth should be removed
+  from anaconda site-packages machine-side.
+- Studio log stays too quiet around harness spawn/exit (only "model set"
+  and "control server started" lines). The EOF error broadcasts to chat
+  but isn't tracing-logged; consider logging harness lifecycle (spawn,
+  exit code, stderr lines already log at warn).
+- **Follow-up (same day):** the broken `__editable__.ecommerce_admin-1.0.0.pth`
+  was uninstalled from anaconda (`pip uninstall ecommerce-admin`) — python
+  startup is back to ~20ms with no .pth errors; the agent's python tool
+  shape verified clean.
