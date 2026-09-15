@@ -12,6 +12,7 @@ pub mod events;
 pub mod feedback;
 pub(crate) mod harness;
 pub mod logging;
+pub(crate) mod pathenv;
 pub mod preview;
 pub(crate) mod render;
 pub mod retry;
@@ -53,6 +54,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .app_data_dir()
                 .unwrap_or_else(|_| PathBuf::from("."));
             logging::init(&data_dir.join("logs"));
+
+            // A GUI launch on macOS gets the minimal launchd PATH — the
+            // user's installed CLIs (a-coder-cli, node, ffmpeg) are invisible
+            // to `which` and child spawns. Reconstruct the user's PATH before
+            // anything resolves or spawns a binary.
+            pathenv::apply_reconstructed_path();
 
             // Config: load from app-data JSON (or default + persist).
             let cfg_path = config_path(&handle);
