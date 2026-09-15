@@ -42,3 +42,6 @@ src-tauri/binaries/sd-server-*
 
 # Python
 __pycache__/
+
+# a-coder-cli per-machine state (trust markers, session-local config)
+.a-coder-cli/
