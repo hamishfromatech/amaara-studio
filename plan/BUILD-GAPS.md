@@ -447,3 +447,12 @@ Known remaining (accepted for now): user-configured MCP servers in Tools view
 are stored but not injected into any harness; antigravity has no tool bridge
 (streaming-only by design); claude adapter writes the GLOBAL
 ~/.claude/mcp-servers.json (documented side effect).
+
+
+## 2026-09-15 — user MCP servers now injected into harness sessions (commit 649d11d)
+Resolved the "user-configured MCP servers stored but not injected" gap:
+- a-coder-cli: global agent settings merge (amaaraManaged marker, idempotent,
+  foreign entries preserved, disabled/removed entries pruned).
+- claude-code / codex / hermes: added to their per-project studio-owned MCP maps.
+- openclaw (gateway protocol) and antigravity (streaming-only) have no MCP
+  injection point — accepted limitation.
