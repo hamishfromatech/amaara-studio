@@ -224,6 +224,7 @@ impl HarnessTrait for AntigravityHarness {
                 source: "cloud".to_string(),
                 control_url: None,
                 control_token: None,
+                mcp_servers: Vec::new(),
             };
         }
         self.spawn_turn(msg, &ctx).await

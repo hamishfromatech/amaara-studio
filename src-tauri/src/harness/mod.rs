@@ -103,6 +103,10 @@ pub struct HarnessCtx {
     pub control_url: Option<String>,
     /// Control server bearer token.
     pub control_token: Option<String>,
+    /// User-configured MCP servers (Tools view), already filtered to enabled.
+    /// Injected into each harness's native MCP config at spawn so third-party
+    /// MCP tools run inside studio sessions.
+    pub mcp_servers: Vec<crate::config::McpServerConfig>,
 }
 
 /// Prompt modes for the harness.

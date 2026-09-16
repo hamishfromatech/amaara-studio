@@ -313,6 +313,7 @@ pub async fn list_models(
                         source: session.source.clone(),
                         control_url: state.control_url.lock().clone(),
                         control_token: state.control_token.lock().clone(),
+                        mcp_servers: state.config.lock().mcp_servers.clone(),
                     };
                     match harness.start(&ctx).await {
                         Ok(()) => harness.available_models().await.unwrap_or_default(),
@@ -427,6 +428,7 @@ pub async fn send_prompt(
         source: session.source.clone(),
         control_url: state.control_url.lock().clone(),
         control_token: state.control_token.lock().clone(),
+        mcp_servers: state.config.lock().mcp_servers.clone(),
     };
     // Never spawn the agent into the "no project" placeholder dir — the CLI
     // would boot in the app's cwd with the tool-bridge extension staged there.

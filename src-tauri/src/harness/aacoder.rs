@@ -25,6 +25,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, mpsc::Receiver, oneshot};
 
 use crate::harness::{
+    common,
     event::{HarnessEvent, ModelInfo},
     Capabilities, Harness as HarnessTrait, HarnessCtx, HarnessError, PromptMode,
 };
@@ -234,6 +235,18 @@ impl HarnessTrait for AaaCoderCliHarness {
         // Ensure the studio tool-bridge extension is staged in the project so
         // the harness can call studio tools over the control server.
         stage_project_extension(&ctx.project_dir);
+
+        // Inject the user's configured MCP servers (Tools view) into the
+        // CLI's global settings so third-party MCP tools join every session.
+        if !ctx.mcp_servers.is_empty() {
+            if let Some(path) = common::aacoder_global_settings_path() {
+                match common::sync_aacoder_user_mcp_servers(&path, &ctx.mcp_servers) {
+                    Ok(true) => tracing::info!("synced user MCP servers into {}", path.display()),
+                    Ok(false) => {}
+                    Err(e) => tracing::warn!("user MCP injection failed: {e}"),
+                }
+            }
+        }
 
         let binary = match which("a-coder-cli") {
             Some(b) => b,
@@ -1133,6 +1146,7 @@ mod tests {
             source: "cloud".into(),
             control_url: None,
             control_token: None,
+            mcp_servers: Vec::new(),
         };
         h.start(&ctx).await.expect("rpc process should start");
         eprintln!("[2] started");
@@ -1197,6 +1211,7 @@ mod e2e_stub {
             source: "cloud".into(),
             control_url: None,
             control_token: None,
+            mcp_servers: Vec::new(),
         };
         h.start(&ctx).await.expect("stub should start");
 

@@ -78,16 +78,48 @@ impl CodexHarness {
         Ok(id)
     }
 
-    /// Write the per-project Codex config that registers the Amaara MCP server.
+    /// Write the per-project Codex config that registers the Amaara MCP server
+    /// plus the user's configured MCP servers (Tools view).
     fn write_project_config(
         &self,
         project_dir: &std::path::Path,
         control_url: Option<&str>,
         control_token: Option<&str>,
+        user_mcp: &[common::UserMcpServer],
     ) -> Result<(), HarnessError> {
         let mcp_dir = common::mcp_workspace_dir();
         let server_py = mcp_dir.join("amaara_mcp").join("server.py");
         let server_py_abs = server_py.to_string_lossy().to_string();
+
+        let mut mcp_servers = serde_json::Map::new();
+        mcp_servers.insert(
+            "amaara-studio-tools".to_string(),
+            serde_json::json!({
+                "command": "uv",
+                "args": [
+                    "run",
+                    "--with", "fastmcp",
+                    "--with", "httpx",
+                    "fastmcp",
+                    "run",
+                    server_py_abs
+                ],
+                "env": {
+                    "AMAARA_CONTROL_URL": control_url.unwrap_or("http://127.0.0.1:8080"),
+                    "AMAARA_CONTROL_TOKEN": control_token.unwrap_or("")
+                }
+            }),
+        );
+        for s in user_mcp {
+            mcp_servers.insert(
+                s.name.clone(),
+                serde_json::json!({
+                    "command": s.command,
+                    "args": s.args,
+                    "env": s.env,
+                }),
+            );
+        }
 
         let config = serde_json::json!({
             "providerEntries": [
@@ -97,23 +129,7 @@ impl CodexHarness {
                     "baseUrl": control_url.unwrap_or("http://127.0.0.1:8080")
                 }
             ],
-            "mcpServers": {
-                "amaara-studio-tools": {
-                    "command": "uv",
-                    "args": [
-                        "run",
-                        "--with", "fastmcp",
-                        "--with", "httpx",
-                        "fastmcp",
-                        "run",
-                        server_py_abs
-                    ],
-                    "env": {
-                        "AMAARA_CONTROL_URL": control_url.unwrap_or("http://127.0.0.1:8080"),
-                        "AMAARA_CONTROL_TOKEN": control_token.unwrap_or("")
-                    }
-                }
-            },
+            "mcpServers": serde_json::Value::Object(mcp_servers),
             "approvalPolicy": "request"
         });
 
@@ -171,6 +187,7 @@ impl HarnessTrait for CodexHarness {
             &ctx.project_dir,
             ctx.control_url.as_deref(),
             ctx.control_token.as_deref(),
+            &common::user_mcp_servers(&ctx.mcp_servers),
         )?;
 
         let config_path = ctx.project_dir.join("codex.json");

@@ -94,6 +94,7 @@ impl ClaudeCodeHarness {
         project_dir: &std::path::Path,
         control_url: Option<&str>,
         control_token: Option<&str>,
+        user_mcp: &[common::UserMcpServer],
     ) -> Result<(), HarnessError> {
         let settings_dir = project_dir.join(".claude");
         let settings_path = settings_dir.join("settings.json");
@@ -102,28 +103,44 @@ impl ClaudeCodeHarness {
         let server_py = mcp_dir.join("amaara_mcp").join("server.py");
         let server_py_abs = server_py.to_string_lossy().to_string();
 
+        let mut mcp_servers = serde_json::Map::new();
+        mcp_servers.insert(
+            "amaara-studio-tools".to_string(),
+            serde_json::json!({
+                "command": "uv",
+                "args": [
+                    "run",
+                    "--with", "fastmcp",
+                    "--with", "httpx",
+                    "fastmcp",
+                    "run",
+                    server_py_abs
+                ],
+                "env": {
+                    "AMAARA_CONTROL_URL": control_url.unwrap_or("http://127.0.0.1:8080"),
+                    "AMAARA_CONTROL_TOKEN": control_token.unwrap_or("")
+                }
+            }),
+        );
+        // User-configured MCP servers (Tools view) ride in the same map —
+        // the studio owns this key, so injection is idempotent per spawn.
+        for s in user_mcp {
+            mcp_servers.insert(
+                s.name.clone(),
+                serde_json::json!({
+                    "command": s.command,
+                    "args": s.args,
+                    "env": s.env,
+                }),
+            );
+        }
+
         let mut settings = serde_json::json!({
             "permissions": {
                 "allow": ["Read", "Bash", "Write", "Edit", "Glob", "Grep"],
                 "deny": ["WebFetch", "WebSearch"]
             },
-            "mcpServers": {
-                "amaara-studio-tools": {
-                    "command": "uv",
-                    "args": [
-                        "run",
-                        "--with", "fastmcp",
-                        "--with", "httpx",
-                        "fastmcp",
-                        "run",
-                        server_py_abs
-                    ],
-                    "env": {
-                        "AMAARA_CONTROL_URL": control_url.unwrap_or("http://127.0.0.1:8080"),
-                        "AMAARA_CONTROL_TOKEN": control_token.unwrap_or("")
-                    }
-                }
-            }
+            "mcpServers": serde_json::Value::Object(mcp_servers)
         });
 
         // Preserve any existing user settings.json so we don't clobber their
@@ -196,6 +213,7 @@ impl HarnessTrait for ClaudeCodeHarness {
             &ctx.project_dir,
             ctx.control_url.as_deref(),
             ctx.control_token.as_deref(),
+            &common::user_mcp_servers(&ctx.mcp_servers),
         )?;
 
         // Spawn Claude in persistent bidirectional stream-json mode.

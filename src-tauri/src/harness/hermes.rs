@@ -77,38 +77,46 @@ impl HermesHarness {
         Ok(id)
     }
 
-    /// Write Hermes MCP config into the project directory.
+    /// Write Hermes MCP config into the project directory: the Amaara MCP
+    /// server plus the user's configured MCP servers (Tools view).
     fn write_project_config(
         &self,
         project_dir: &std::path::Path,
         control_url: Option<&str>,
         control_token: Option<&str>,
+        user_mcp: &[common::UserMcpServer],
     ) -> Result<(), HarnessError> {
         let mcp_dir = common::mcp_workspace_dir();
         let server_py = mcp_dir.join("amaara_mcp").join("server.py");
         let server_py_abs = server_py.to_string_lossy().to_string();
 
-        let config = serde_json::json!({
-            "mcp": {
-                "servers": [
-                    {
-                        "name": "amaara-studio-tools",
-                        "command": "uv",
-                        "args": [
-                            "run",
-                            "--with", "fastmcp",
-                            "--with", "httpx",
-                            "fastmcp",
-                            "run",
-                            server_py_abs
-                        ],
-                        "env": {
-                            "AMAARA_CONTROL_URL": control_url.unwrap_or("http://127.0.0.1:8080"),
-                            "AMAARA_CONTROL_TOKEN": control_token.unwrap_or("")
-                        }
-                    }
-                ]
+        let mut servers = vec![serde_json::json!({
+            "name": "amaara-studio-tools",
+            "command": "uv",
+            "args": [
+                "run",
+                "--with", "fastmcp",
+                "--with", "httpx",
+                "fastmcp",
+                "run",
+                server_py_abs
+            ],
+            "env": {
+                "AMAARA_CONTROL_URL": control_url.unwrap_or("http://127.0.0.1:8080"),
+                "AMAARA_CONTROL_TOKEN": control_token.unwrap_or("")
             }
+        })];
+        for s in user_mcp {
+            servers.push(serde_json::json!({
+                "name": s.name,
+                "command": s.command,
+                "args": s.args,
+                "env": s.env,
+            }));
+        }
+
+        let config = serde_json::json!({
+            "mcp": { "servers": servers }
         });
 
         let path = project_dir.join("hermes-config.yaml");
@@ -166,6 +174,7 @@ impl HarnessTrait for HermesHarness {
             &ctx.project_dir,
             ctx.control_url.as_deref(),
             ctx.control_token.as_deref(),
+            &common::user_mcp_servers(&ctx.mcp_servers),
         )?;
 
         let args = vec![
