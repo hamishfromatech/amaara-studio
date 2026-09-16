@@ -2290,9 +2290,6 @@ code {
   border-top: 1px solid var(--border-soft);
   background: var(--bg);
 }
-.composer--compact .composer__textarea {
-  min-height: 64px;
-}
 .composer__attachments {
   display: flex;
   flex-wrap: wrap;
@@ -2361,8 +2358,13 @@ code {
   border: 0;
   padding: 12px 14px 4px;
   resize: none;
-  min-height: 96px;
+  min-height: 44px;
+  max-height: 220px;
+  overflow-y: auto;
   outline: none;
+}
+.composer--compact .composer__textarea {
+  min-height: 40px;
 }
 .composer__textarea::placeholder {
   color: var(--text-faint);

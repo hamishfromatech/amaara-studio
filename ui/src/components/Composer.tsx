@@ -8,7 +8,8 @@
  * Anatomy:
  *   queued-sends strip   — prompts held while a run is in flight (FIFO)
  *   attachment chip row  — staged images/files (thumbnail + remove)
- *   textarea             — ⌘↵ send · ⇧⌘↵ steer · ⌘⌥↵ follow-up
+ *   textarea             — ⏎ send · ⇧⏎ newline · ⇧⌘↵ steer · ⌘⌥↵ follow-up
+ *                          (IME-safe: composing Enter never sends)
  *   send bar             — Send / Steer / attach / hint
  *
  * Attachments: the webview has no fs access, so picked files are read as
@@ -17,7 +18,7 @@
  * path in the prompt text.
  */
 
-import {useRef} from 'react'
+import {useEffect, useRef} from 'react'
 import {useStore} from '../lib/store'
 import {formatBytes} from '../lib/format'
 
@@ -50,6 +51,14 @@ export function Composer({
 
   const taRef = useRef<HTMLTextAreaElement | null>(null)
   const fileRef = useRef<HTMLInputElement | null>(null)
+
+  // Auto-grow with the draft (capped by CSS max-height, then scroll).
+  useEffect(() => {
+    const ta = taRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    ta.style.height = `${ta.scrollHeight}px`
+  }, [draft])
 
   const send = (mode: 'normal' | 'steer' | 'follow_up') => {
     const msg = draft.trim()
@@ -146,11 +155,19 @@ export function Composer({
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
-          // ⌘Enter send · ⇧⌘Enter steer · ⌘⌥Enter queue follow-up.
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault()
-            if (e.altKey) send('follow_up')
-            else send(e.shiftKey ? 'steer' : 'normal')
+          // Enter sends, Shift+Enter is a newline, IME-safe (CJK input:
+          // Enter confirming a candidate must never send).
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+            const mod = e.metaKey || e.ctrlKey
+            if (!mod && !e.shiftKey) {
+              e.preventDefault()
+              send('normal')
+              return
+            }
+            if (mod) {
+              e.preventDefault()
+              send(e.altKey ? 'follow_up' : e.shiftKey ? 'steer' : 'normal')
+            }
           }
         }}
         rows={compact ? 2 : 3}
@@ -164,7 +181,7 @@ export function Composer({
           className="btn btn-primary btn-sm"
           onClick={() => send('normal')}
           disabled={disabled || !draft.trim()}
-          title="Send (⌘↵)"
+          title="Send (⏎)"
         >
           Send
         </button>
@@ -195,7 +212,7 @@ export function Composer({
             e.target.value = '' // allow re-picking the same file
           }}
         />
-        <span className="composer__hint">⌘↵ send · ⇧⌘↵ steer · ⌘⌥↵ follow-up</span>
+        <span className="composer__hint">⏎ send · ⇧⏎ newline · ⇧⌘↵ steer · ⌘⌥↵ follow-up</span>
       </div>
     </div>
   )
