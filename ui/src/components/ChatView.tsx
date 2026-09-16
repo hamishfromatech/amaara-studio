@@ -21,6 +21,7 @@ import {elapsedLabel} from '../lib/format'
 import {Composer} from './Composer'
 import {EmptyState} from './EmptyState'
 import {ThinkingBlock} from './ThinkingBlock'
+import {Markdown} from './Markdown'
 
 // ---------------------------------------------------------------------------
 // Turn header
@@ -230,7 +231,7 @@ function ChatMessageRow({
   if (msg.role === 'system') {
     return (
       <div className="chat-msg chat-msg--system">
-        <div className="chat-msg__body">{msg.content}</div>
+        <Markdown text={msg.content} />
       </div>
     )
   }
@@ -260,7 +261,7 @@ function ChatMessageRow({
       {msg.thinking && <ThinkingBlock text={msg.thinking} live={runLive} />}
       {msg.content && (
         <div className="chat-msg__body">
-          {msg.content}
+          <Markdown text={msg.content} />
           {runLive && <span className="stream-caret">▍</span>}
         </div>
       )}

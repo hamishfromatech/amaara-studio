@@ -21,6 +21,7 @@ import {useStore} from '../lib/store'
 import {elapsedLabel, formatRelative, swatchFor} from '../lib/format'
 import {Composer} from './Composer'
 import {ThinkingBlock} from './ThinkingBlock'
+import {Markdown} from './Markdown'
 
 interface ScenarioPill {
   id: string
@@ -222,7 +223,13 @@ export function HomeView({
                     {m.status === 'error' && <span>· error</span>}
                   </div>
                   <div className="home-hero__history-msg-body">
-                    {m.content || (m.status === 'thinking' ? '…' : '')}
+                    {m.role === 'agent' ? (
+                      <Markdown text={m.content} />
+                    ) : (
+                      <>
+                        {m.content || (m.status === 'thinking' ? '…' : '')}
+                      </>
+                    )}
                     {m.role === 'agent' &&
                       (m.status === 'thinking' || m.status === 'tool-calling') &&
                       m.content && <span className="stream-caret">▍</span>}

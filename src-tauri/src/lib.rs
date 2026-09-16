@@ -202,6 +202,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             commands::timeline::get_timeline,
             commands::timeline::snapshot,
             commands::reveal_in_folder,
+            commands::open_external,
             commands::generate_image,
             commands::list_cloud_models,
             commands::detect_engine,

@@ -36,9 +36,10 @@ export const demoChat: ChatMessage[] = [
     role: 'agent',
     status: 'done',
     content:
-      'Storyboard drafted — six shots, one hook per two seconds.\n\nShot 1 opens on a black frame; a single phosphor-green cursor blinks twice, then ignites a typing run. Shot 2 whips through the product surface at cut-the-curve velocity, landing on the hero stat. Shots 3–4 pair the tagline with kinetic type; shot 5 shows the render finishing; shot 6 holds the wordmark on grain.\n\nComposition "launch-v1" is written to the project and the draft render is queued.',
+      '## Storyboard — `launch-v1`\n\nSix shots, one hook per **two seconds**. The plan:\n\n1. Black frame — a single phosphor cursor blinks twice\n2. Whip through the product surface at cut-the-curve velocity\n3. Hero stat lands with the *waterfall entry*\n4. Tagline pairs with kinetic type\n5. Render finishes on grain\n6. Wordmark holds, slow fade\n\n> Timing rule: the exit velocity of every shot must match the entry velocity of the next — the film is one continuous move.\n\n```html\n<div class="clip" data-start="0" data-duration="2000">\n  <h1 class="hero-title">Direct an agent.</h1>\n</div>\n```\n\n| Shot | Duration | Technique |\n| ---- | -------- | --------- |\n| 1 | 2.0s | cursor ignition |\n| 2 | 1.8s | zoom-through |\n| 3 | 2.4s | waterfall entry |\n\n- [x] Storyboard written to `compositions/launch-v1.html`\n- [x] Draft render queued (`r7f3a91c2`)\n- [ ] High-quality render after review — see the [shot list](https://example.com/shots)\n\nComposition **launch-v1** is written to the project and the draft render is queued.',
     startedAtMs: now - 240_000,
-    thinking: '',
+    thinking:
+      'The user wants a launch video. Dark and cinematic reads as the darkroom identity — lean on the phosphor cursor motif and keep every seam velocity-matched. Six shots at two seconds each gives a 12-second base; with the tagline beat it lands near 20s.',
     tools: [
       {
         id: 't1',

@@ -1548,6 +1548,44 @@ pub fn reveal_in_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Open an external URL in the user's default browser. Markdown links in
+/// chat route here — navigating the webview itself would replace the studio
+/// UI. Only http/https schemes are allowed.
+#[tauri::command]
+pub fn open_external(url: String) -> Result<(), String> {
+    let trimmed = url.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let scheme_ok = lower.starts_with("http://") || lower.starts_with("https://");
+    let chars_ok = trimmed
+        .chars()
+        .all(|c| !c.is_whitespace() && !c.is_control());
+    if !scheme_ok || !chars_ok {
+        return Err("only http(s) URLs can be opened".into());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "", trimmed])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(trimmed)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(trimmed)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

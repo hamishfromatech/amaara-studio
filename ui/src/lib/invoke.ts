@@ -244,6 +244,7 @@ export const Commands = {
 
   getSidecarStatus: () => invoke<SidecarHealth[]>('get_sidecar_status'),
   revealInFolder: (path: string) => invoke<void>('reveal_in_folder', {path}),
+  openExternal: (url: string) => invoke<void>('open_external', {url}),
   packageFeedback: () => invoke<string>('package_feedback'),
 
   generateImage: (prompt: string, model?: string, size?: string) =>
